@@ -51,4 +51,6 @@ class AllocationDetailViewTest(TestCase):
         response = self.c.get('/allocation/1/')
         self.assertEqual(response.status_code, 200)
         # check that allocation_quota_tb has value 
+        self.assertEqual(response.context['allocation_quota_bytes'], 109951162777600)
         # check that allocation_usage_tb has value
+        self.assertEqual(response.context['allocation_usage_bytes'], 10995116277760)
