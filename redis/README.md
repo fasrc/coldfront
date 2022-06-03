@@ -1,3 +1,5 @@
+# Redis Container Configuration
+
 This directory is meant to be used in the generation of a redis docker 
 container that connects with the coldfront docker container.
 
