@@ -7,6 +7,6 @@ The docker container can be created ad-hoc with the following command:
 
 `docker run --network coldfront --name coldfront-redis -v /srv/coldfront/coldfront/redis/:/usr/local/etc/redis redis:latest /usr/local/etc/redis/redis.conf`
 
-`redis.conf` has its `bind` setting commented out and `protected-mode` set to `no`.
-These settings enable the created container to connect and accept connections.
+`redis.conf` has its `bind` setting commented out.
+This enables the created container to connect and accept connections.
 
