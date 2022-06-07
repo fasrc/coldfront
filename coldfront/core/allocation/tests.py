@@ -1,8 +1,18 @@
+import unittest
+
+from django.db.models import Count
 from django.test import TestCase, Client
 from django.urls import reverse, reverse_lazy
 from django.contrib.auth import get_user_model
 
+from coldfront.core.allocation.models import Allocation
+
 # Create your tests here.
+class AllocationQC(unittest.TestCase):
+    def check_resource_counts(self):
+        over_one = Allocation.objects.annotate(resource_count=Count('resources')).filter(resource_count__gt=1)
+        print(over_one)
+        self.assertEqual(over_one.count(), 0)
 
 class AllocationViewTest(TestCase):
     fixtures = [
@@ -22,7 +32,7 @@ class AllocationViewTest(TestCase):
 
     def test_allocation_list_template(self):
         """Confirm that allocation-list renders correctly
-        """ 
+        """
         response = self.c.get("/allocation/")
         # response = self.client.get(reverse_lazy('allocation-list'))
         self.assertEqual(response.status_code, 200)
@@ -45,12 +55,12 @@ class AllocationDetailViewTest(TestCase):
         self.c.force_login(user, backend="django.contrib.auth.backends.ModelBackend")
 
     def test_allocation_detail_template_value_render(self):
-        """Confirm that quota_tb and usage_tb are correctly rendered in the generated 
+        """Confirm that quota_tb and usage_tb are correctly rendered in the generated
         AllocationDetailView
-        """ 
+        """
         response = self.c.get('/allocation/1/')
         self.assertEqual(response.status_code, 200)
-        # check that allocation_quota_tb has value 
+        # check that allocation_quota_tb has value
         self.assertEqual(response.context['allocation_quota_bytes'], 109951162777600)
         # check that allocation_usage_tb has value
         self.assertEqual(response.context['allocation_usage_bytes'], 10995116277760)
