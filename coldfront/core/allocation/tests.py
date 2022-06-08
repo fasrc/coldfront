@@ -11,7 +11,6 @@ from coldfront.core.allocation.models import Allocation, AllocationAttribute, Al
 class AllocationQC(unittest.TestCase):
     def check_resource_quotas(self):
         zero_quotas = AllocationAttribute.objects.filter(allocation_attribute_type__in=[1,5], allocation__status_id=1, value=0)
-        print(f"number of active allocations with a quota value of 0: {zero_quotas.count()}")
         self.assertEqual(zero_quotas.count(), 0)
                                                          
     def check_resource_counts(self):
