@@ -5,14 +5,20 @@ from django.test import TestCase, Client
 from django.urls import reverse, reverse_lazy
 from django.contrib.auth import get_user_model
 
-from coldfront.core.allocation.models import Allocation
+from coldfront.core.allocation.models import Allocation, AllocationAttribute, AllocationAttributeUsage
 
-# Create your tests here.
+
 class AllocationQC(unittest.TestCase):
+    def check_resource_quotas(self):
+        zero_quotas = AllocationAttribute.objects.filter(allocation_attribute_type__in=[1,5], allocation__status_id=1, value=0)
+        print(f"number of active allocations with a quota value of 0: {zero_quotas.count()}")
+        self.assertEqual(zero_quotas.count(), 0)
+                                                         
     def check_resource_counts(self):
         over_one = Allocation.objects.annotate(resource_count=Count('resources')).filter(resource_count__gt=1)
         print(over_one)
         self.assertEqual(over_one.count(), 0)
+
 
 class AllocationViewTest(TestCase):
     fixtures = [
@@ -36,6 +42,7 @@ class AllocationViewTest(TestCase):
         response = self.c.get("/allocation/")
         # response = self.client.get(reverse_lazy('allocation-list'))
         self.assertEqual(response.status_code, 200)
+
 
 class AllocationDetailViewTest(TestCase):
 
