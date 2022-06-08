@@ -10,7 +10,7 @@ from coldfront.core.allocation.models import Allocation, AllocationAttribute, Al
 
 class AllocationQC(unittest.TestCase):
     def check_resource_quotas(self):
-        zero_quotas = AllocationAttribute.objects.filter(allocation_attribute_type__in=[1,5], allocation__status_id=1, value=0)
+        zero_quotas = AllocationAttribute.objects.filter(allocation_attribute_type__in=[1,5], value=0)
         self.assertEqual(zero_quotas.count(), 0)
                                                          
     def check_resource_counts(self):
