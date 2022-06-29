@@ -243,6 +243,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         context['guage_data'] = guage_data
         context['attributes_with_usage'] = attributes_with_usage
         context['attributes'] = attributes
+        context['allocation_users'] = allocation_users
         context['allocation_changes'] = allocation_changes
 
         # set price
