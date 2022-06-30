@@ -1151,8 +1151,8 @@ class AllocationActivateRequestView(LoginRequiredMixin, UserPassesTestMixin, Vie
         allocation_status_active_obj = AllocationStatusChoice.objects.get(
             name='Active')
         start_date = datetime.datetime.now()
-        end_date = datetime.datetime.now(
-        ) + relativedelta(days=ALLOCATION_DEFAULT_ALLOCATION_LENGTH)
+        # end_date = datetime.datetime.now(
+        # ) + relativedelta(days=ALLOCATION_DEFAULT_ALLOCATION_LENGTH)
 
         allocation_obj.status = allocation_status_active_obj
         allocation_obj.start_date = start_date

@@ -45,7 +45,7 @@ We do not have information about your research. Please provide a detailed descri
     field_of_science = models.ForeignKey(FieldOfScience, on_delete=models.CASCADE, default=FieldOfScience.DEFAULT_PK)
     status = models.ForeignKey(ProjectStatusChoice, on_delete=models.CASCADE)
     force_review = models.BooleanField(default=False)
-    requires_review = models.BooleanField(default=True)
+    requires_review = models.BooleanField(default=False)
     history = HistoricalRecords()
 
     def clean(self):
