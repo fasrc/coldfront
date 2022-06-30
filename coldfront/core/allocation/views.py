@@ -47,6 +47,7 @@ from coldfront.core.allocation.models import (Allocation, AllocationAccount,
                                               AllocationAttributeChangeRequest,
                                               AllocationStatusChoice,
                                               AllocationUser,
+                                              AllocationAttributeUsage,
                                               AllocationUserNote,
                                               AllocationUserStatusChoice)
 from coldfront.core.allocation.signals import (allocation_activate,
@@ -212,10 +213,9 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             status__name__in=['Removed']).exclude(usage_bytes__isnull=True).order_by('user__username')
 
         # set visible usage attributes
-        alloc_attr_set = return_alloc_attr_set(allocation_obj,
+        attributes = return_alloc_attr_set(allocation_obj,
                                                 self.request.user.is_superuser)
-        attributes_with_usage = [a for a in alloc_attr_set if hasattr(a, 'allocationattributeusage')]
-        attributes = alloc_attr_set
+        attributes_with_usage = [a for a in attributes if hasattr(a, 'allocationattributeusage')]
 
         allocation_changes = allocation_obj.allocationchangerequest_set.all().order_by('-pk')
 
@@ -682,8 +682,12 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                 value=allocation_account
             )
 
-        for linked_resource in resource_obj.linked_resources.all():
-            allocation_obj.resources.add(linked_resource)
+        allocation_attribute = AllocationAttribute.objects.create(
+                        allocation=allocation_obj,
+                        allocation_attribute_type = AllocationAttributeType.objects.get(pk=1),
+                        value=quantity
+                                                    ).save()
+        allocation_obj.set_usage("Storage Quota (TB)", 0)
 
         allocation_user_active_status = AllocationUserStatusChoice.objects.get(
             name='Active')
