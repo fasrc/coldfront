@@ -18,12 +18,6 @@
 
 
 {% block content %}
-{% if allocation.project.status.name == 'Archived' %}
-  <div class="alert alert-warning" role="alert">
-    This is a allocation from an archived project! You cannot make any changes.
-  </div>
-{% endif %}
-
 
 {% if form.non_field_errors %}
   <div class="alert alert-danger" role="alert">
@@ -47,7 +41,7 @@
 
   <div class="card mb-3">
     <div class="card-header">
-      <h3><i class="fas fa-list" aria-hidden="true"></i> Usage Summary For: {{ allocation.project.pi.first_name }} {{ allocation.project.pi.last_name }}</h3>
+      <h3><i class="fas fa-list" aria-hidden="true"></i> Usage Summary For: {{ department.description}}</h3>
     </div>
     <div class="card-body">
       <form method="post">
@@ -55,32 +49,23 @@
         <div class="table-responsive">
           <table class="table table-bordered table-sm">
             <tr>
-              <th scope="row" class="text-nowrap">Lab Group:</th>
+              <th scope="row" class="text-nowrap">Department:</th>
               <td>
-                {% if request.user.is_superuser %}
-                  <a href="{% url 'project-detail' allocation.project.pk %}">{{ allocation.project }}</a>
-                {% else %}
-                  {{ allocation.project }}
-                {% endif %}
+                  {{ department.description }}
               </td>
             </tr>
             <tr>
-              <th scope="row" class="text-nowrap">Principal Investigator:</th>
+              <th scope="row" class="text-nowrap">Total Labs in Bill:</th>
               <td>
-                {{ allocation.project.pi.first_name }} {{ allocation.project.pi.last_name }}
-                ({{ allocation.project.pi.email }})
+                {{ projects.count }}
               </td>
             </tr>
             <tr>
-                <th scope="row" class="text-nowrap">Service Type:</th>
+                <th scope="row" class="text-nowrap">Total Allocations in Bill:</th>
                 <td>
-                 Storage
+                 {{allocations.count}}
                 </td>
               </tr>
-            <tr>
-              <th scope="row" class="text-nowrap">Resource{{ allocation.resources.all|pluralize }} in allocation:</th>
-              <td>{{ allocation.get_resources_as_string }}</td>
-            </tr>
             <tr>
               <th scope="row" class="text-nowrap">Service Period:</th>
               <td> 1 Month
@@ -93,24 +78,15 @@
              </td>
             </tr>
 
-
             <tr>
                 <th scope="row" class="text-nowrap">Total Users in Your Bill:</th>
                 <td>{{ allocation_users.count }}</td>
             </tr>
 
             <tr>
-                <th scope="row" class="text-nowrap">Created:</th>
-                <td>{{ allocation.created }}</td>
-              </tr>
-              <tr>
-                <th scope="row" class="text-nowrap">Last Modified:</th>
-                <td>{{ allocation.modified }}</td>
-              </tr>
-            <tr>
                 <th  style="background-color:#D3D3D3" bordercolor="red" scope="row" class="text-nowrap">Total Amount Due:   </th>
+                <td style="background-color:#D3D3D3">${{full_price}}</td>
 
-                <td style="background-color:#D3D3D3">${{allocation_users.0.allocation_group_quota| div:1073741824|mul:50| div:12|floatformat:2}}</td>
                 {% comment %} <td  style="background-color:#D3D3D3" id = "totalamount"></td> {% endcomment %}
               </tr>
           </table>
@@ -122,55 +98,37 @@
   <script>
       const selectElement = document.getElementById('billingPeriod');
       console.log(selectElement);
-      var price = {{ allocation_users.0.allocation_group_quota | div:1073741824|floatformat:2 }} * 1 / 12 * 50;
+      var price = {{ full_price }} * 1 / 12 * 50;
       var n = price.toFixed(2);
 
       document.getElementById("totalamount").innerHTML = n;
       selectElement.addEventListener('change', (event) => {
             if (event.target.value=="1month") {
-              var price = {{ allocation_users.0.allocation_group_quota | div:1073741824|floatformat:2 }} * 1 / 12 * 50;
-              var n = price.toFixed(2);
-
-              document.getElementById("totalamount").innerHTML = n;
+              var price = {{ full_price }} * 1 / 12 * 50;
             }
             // console.log(event.target.value);
             if (event.target.value=="3month") {
-              var price = {{ allocation_users.0.allocation_group_quota | div:1073741824|floatformat:2 }} * 3 / 12 * 50;
-              var n = price.toFixed(2);
-
-              document.getElementById("totalamount").innerHTML = n;
+              var price = {{ full_price }} * 3 / 12 * 50;
             }
             if (event.target.value=="6month") {
-              var price = {{ allocation_users.0.allocation_group_quota | div:1073741824|floatformat:2 }} * 6 / 12 * 50;
-              var n = price.toFixed(2);
-
-              document.getElementById("totalamount").innerHTML = n;
+              var price = {{ full_price }} * 6 / 12 * 50;
             }
             if (event.target.value=="1year") {
-              var price = {{ allocation_users.0.allocation_group_quota | div:1073741824|floatformat:2 }} * 12 / 12 * 50;
-              var n = price.toFixed(2);
-
-              document.getElementById("totalamount").innerHTML = n;
+              var price = {{ full_price }} * 12 / 12 * 50;
             }
+            var n = price.toFixed(2);
+            document.getElementById("totalamount").innerHTML = n;
       });
 
     </script>
-<!-- Start Allocation Users -->
+<!-- Start Department Projects -->
 
 <div class="html2pdf__page-break"></div>
 <div class="card mb-3">
   <div class="card-header">
-    <h3 class="d-inline"><i class="fas fa-users" aria-hidden="true"></i> Users in Allocation</h3>
-    <span class="badge badge-secondary">{{allocation_users.count}}</span>
+    <h3 class="d-inline"><i class="fas fa-users" aria-hidden="true"></i> Projects in Department</h3>
+    <span class="badge badge-secondary">{{projects.count}}</span>
     {% comment %} <div class="float-right">
-      {% if allocation.project.status.name != 'Archived' and is_allowed_to_update_project and allocation.status.name in 'Active,New,Renewal Requested' %}
-        <a class="btn btn-success" href="{% url 'allocation-add-users' allocation.pk %}" role="button">
-          <i class="fas fa-user-plus" aria-hidden="true"></i> Add Users
-        </a>
-        <a class="btn btn-danger" href="{% url 'allocation-remove-users' allocation.pk %}" role="button">
-          <i class="fas fa-user-times" aria-hidden="true"></i> Remove Users
-        </a>
-      {% endif %}
 
     </div> {% endcomment %}
   </div>
@@ -181,24 +139,23 @@
         <thead>
           <tr>
             <th scope="col">Name</th>
-            <th scope="col">Usage</th>
-            <th scope="col">Percent</th>
+            <th scope="col">Allocations</th>
+            <th scope="col">Total Usage</th>
+            <th scope="col">Price Breakdown</th>
             <th scope="col">Monthly Cost in Dollars</th>
 
           </tr>
         </thead>
         <tbody>
 
-          {% for user in allocation_users %}
+          {% for project in projects %}
 
             <tr>
-              <td>{{ user.user.first_name }} {{ user.user.last_name }}</td>
-              <td data-sort = "{{user.usage}}">{{ user.usage }}</td>
-              <td>{{user.usage|div:1024|div:user.allocation_group_usage_bytes|mul:100|floatformat:2}}</td>
-              <td>{{4.167|mul:user.allocation_group_quota|div:1073741824|mul:user.usage|div:1024|div:user.allocation_group_usage_bytes|floatformat:2}}</td>
-
-              {% comment %} <td>{{user.usage|mul:100 | div:user.allocation_group_usage_bytes|floatformat:2}}</td>
-              <td>{{user.usage|mul:100 | div:user.allocation_group_usage_bytes|floatformat:2|div:100|mul:allocation_users.0.allocation_group_quota|mul:50|div:12|floatformat:2}}</td> {% endcomment %}
+              <td><a href="{% url 'project-detail' project.pk %}"> {{ project.title }}</a></td>
+              <td>{{ project.allocation_set.count }}</td>
+              <td>{{project.total_quota}}</td>
+              <td>{{project.price_detail }}</td>
+              <td data-sort = "{{project.total_price}}">{{ project.total_price }}</td>
 
             </tr>
 
@@ -218,7 +175,7 @@
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/vfs_fonts.js"></script>
 <script type="text/javascript" src="https://cdn.datatables.net/v/dt/jszip-2.5.0/dt-1.10.24/af-2.3.5/b-1.7.0/b-colvis-1.7.0/b-html5-1.7.0/b-print-1.7.0/cr-1.5.3/date-1.0.2/fc-3.3.2/kt-2.6.1/r-2.2.7/rg-1.1.2/rr-1.2.7/sl-1.3.2/datatables.min.js"></script>
 
-</script> -->
+</script>
 
 
 <script>
