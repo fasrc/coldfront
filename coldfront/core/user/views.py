@@ -183,7 +183,6 @@ class UserProjectsManagersView(ListView):
         else:
             context['user_pronounish'] = 'This user'
             context['user_verbform_be'] = 'is'
-
         return context
 
 

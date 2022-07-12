@@ -85,7 +85,7 @@
 
             <tr>
                 <th  style="background-color:#D3D3D3" bordercolor="red" scope="row" class="text-nowrap">Total Amount Due:   </th>
-                <td style="background-color:#D3D3D3">${{full_price}}</td>
+                <td style="background-color:#D3D3D3">${{full_price|floatformat:2}}</td>
 
                 {% comment %} <td  style="background-color:#D3D3D3" id = "totalamount"></td> {% endcomment %}
               </tr>
@@ -138,26 +138,38 @@
         <table id = "mydatatable" class = "table table-striped table-bordered">
         <thead>
           <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Allocations</th>
-            <th scope="col">Total Usage</th>
-            <th scope="col">Price Breakdown</th>
-            <th scope="col">Monthly Cost in Dollars</th>
-
+            <th scope="col">Project Name</th>
+            <th scope="col">Allocation ID</th>
+            <th scope="col">Resource Type</th>
+            <th scope="col">Total Space</th>
+            <th scope="col">Total Monthly Cost</th>
+            <th></th>  
           </tr>
         </thead>
         <tbody>
 
           {% for project in projects %}
 
-            <tr>
-              <td><a href="{% url 'project-detail' project.pk %}"> {{ project.title }}</a></td>
-              <td>{{ project.allocation_set.count }}</td>
-              <td>{{project.total_quota}}</td>
-              <td>{{project.price_detail }}</td>
-              <td data-sort = "{{project.total_price}}">{{ project.total_price }}</td>
-
+            <tr style="background-color:#C2C2C2">
+              <td><a href="{% url 'project-detail' project.pk %}">{{ project.title }}</a></td>
+              <td></td>  
+              <td></td>  
+              <td></td>  
+              <td data-sort = "{{project.total_price}}">${{ project.total_price|floatformat:2 }}</td>
+ 
             </tr>
+              {% for allocation in project.allocations.all %}
+
+            <tr style="background-color:#FFFFFF">
+              <td></td>  
+              <td><a href="{% url 'allocation-detail' allocation.id %}">{{allocation.id}}</a></td>  
+              <td>{{allocation.resources__name}}</td>  
+              <td>{{allocation.allocationattribute__value|floatformat:1}}</td>
+              <td>${{allocation.cost| floatformat:2}}</td>  
+              <td></td>  
+            </tr>
+
+              {% endfor %}
 
           {% endfor %}
         </tbody>
@@ -197,54 +209,6 @@
     );
     } );
 </script>
-
-<div class="html2pdf__page-break"></div>
-<div class="card mb-3">
-    <div class="card-header">
-      <h3 class="d-inline"><i class="fas fa-users" aria-hidden="true"></i> Notes from Staff</h3>
-      <span class="badge badge-secondary">{{allocation.allocationusernote_set.count}}</span>
-      <div class="float-right">
-        <a class="btn btn-success" href="{% url 'allocation-add-invoice-note' allocation.pk %}" role="button">
-          <i class="fas fa-plus" aria-hidden="true"></i> Add Note
-        </a>
-        <a class="btn btn-danger" href="{% url 'allocation-delete-invoice-note' allocation.pk %}" role="button">
-          <i class="fas fa-minus" aria-hidden="true"></i> Delete Notes
-        </a>
-      </div>
-    </div>
-    <div class="card-body">
-      {% if allocation.allocationusernote_set.all %}
-        <div class="table-responsive">
-          <table class="table table-hover">
-            <thead>
-              <tr>
-                <th scope="col">Comment</th>
-                <th scope="col">Author</th>
-                <th scope="col">Last Modified</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for note in allocation.allocationusernote_set.all %}
-                <tr>
-                  <td>{{ note.note }}</td>
-                  <td>{{ note.author.first_name }} {{ note.author.last_name }} ({{ note.author.username }})</td>
-                  <td>{{ note.modified }}</td>
-                  <td><a href="{% url 'allocation-update-invoice-note' note.pk %}"><i class="fas fa-edit" aria-hidden="true"></i><span class="sr-only">Edit</span></a></td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <div class="alert alert-info" role="alert">
-          <i class="fa fa-info-circle" aria-hidden="true"></i> There are no messages from system administrators.
-        </div>
-      {% endif %}
-    </div>
-  </div>
-</div>
-
 
 <script type="text/javascript">
 window.onload = function () {

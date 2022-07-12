@@ -1,4 +1,4 @@
-from django.db.models import Count, Sum, Q, Value
+from django.db.models import Count, Sum, Q, Value, F, When, Case, FloatField
 from django.shortcuts import get_object_or_404, render
 from django.views.generic import DetailView, ListView, TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
@@ -8,6 +8,8 @@ from coldfront.core.utils.common import import_from_settings
 from coldfront.core.field_of_science.models import FieldOfScience
 from coldfront.core.allocation.models import Allocation, AllocationUser 
 from coldfront.core.allocation.forms import AllocationInvoiceUpdateForm
+
+# from coldfront.plugins.ifx.calculator import calculateCharges
 
 
 ALLOCATION_ENABLE_ALLOCATION_RENEWAL = import_from_settings(
@@ -76,18 +78,22 @@ class DepartmentAllocationInvoiceDetailView(LoginRequiredMixin, UserPassesTestMi
         pk = self.kwargs.get('pk')
         department_obj = get_object_or_404(FieldOfScience, pk=pk)
         project_objs = department_obj.project_set.all()\
-                    .annotate(total_quota=Sum('allocation__allocationattribute__value', filter=(Q(allocation__allocationattribute__allocation_attribute_type_id=1))\
+                    .annotate(total_quota=Sum('allocation__allocationattribute__value', filter=(
+                                Q(allocation__allocationattribute__allocation_attribute_type_id=1))\
                                 &(Q(allocation__status_id=1))))#\
 
         price_dict = {1:4.16, 17:20.80, 8:20.80, 7:.41, 2:4.16 }
 
+        whens = [When(resources=k, then=Value(v)) for k, v in price_dict.items()]
+
         for p in project_objs:
-            alloc = p.allocation_set.all().\
+            p.allocations = p.allocation_set.all().\
                     filter(allocationattribute__allocation_attribute_type_id=1).\
-                    values('resources','allocationattribute__value')
-            p.price_detail = " || ".join(f"{a['allocationattribute__value']}*${price_dict[a['resources']]} = "\
-                        f"{float(a['allocationattribute__value'])*price_dict[a['resources']]}" for a in alloc)
-            p.total_price = sum(float(a['allocationattribute__value']) * price_dict[a['resources']] for a in alloc)
+                    values('resources__name', 'resources','allocationattribute__value','id').\
+                    annotate(price=Case(*whens, output_field=FloatField(), default=Value(0))).\
+                    annotate(cost=Sum(F('price')*F('allocationattribute__value'), output_field=FloatField()))
+                    
+            p.total_price = sum(float(a['allocationattribute__value']) * price_dict[a['resources']] for a in p.allocations)
             
         context['full_price'] = sum(p.total_price for p in project_objs)
         context['projects'] = project_objs
@@ -106,7 +112,6 @@ class DepartmentAllocationInvoiceDetailView(LoginRequiredMixin, UserPassesTestMi
         form = AllocationInvoiceUpdateForm(initial=initial_data)
         context['form'] = form
 
-        context['allocation'] = allocation_objs.first()
         context['department'] = department_obj
 
         # Can the user update the project?
