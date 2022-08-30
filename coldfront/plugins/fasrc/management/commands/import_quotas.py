@@ -28,8 +28,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **kwargs):
-        volumes = volumes = kwargs['volumes'].split(",")
-
+        volumes = volumes = kwargs['volumes']
+        if volumes:
+            volumes = volumes.split(",")
         attconn = AllTheThingsConn()
         result_file = attconn.pull_quota_data(volumes=volumes)
         # result_file = "coldfront/plugins/fasrc/data/allthethings_output.json"
