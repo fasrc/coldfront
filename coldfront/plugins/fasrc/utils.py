@@ -42,11 +42,18 @@ class AllTheThingsConn:
         self.headers = generate_headers(self.token)
 
 
-    def pull_quota_data(self):
+    def pull_quota_data(self, volumes=None):
         """Produce JSON file of quota data for LFS and Isilon from AlltheThings.
+
+        Parameters
+        ----------
+        volumes : List of volume names to collect. Optional, default None.
         """
         result_file = 'coldfront/plugins/fasrc/data/allthethings_output.json'
-        volumes = "|".join([r.name.split("/")[0] for r in Resource.objects.all()])
+        if volumes:
+            volumes = "|".join(volumes)
+        else:
+            volumes = "|".join([r.name.split("/")[0] for r in Resource.objects.all()])
         logger.debug("volumes: %s", volumes)
 
         quota = {"match": "[:HasQuota]-(e:Quota)",
@@ -105,7 +112,7 @@ class AllTheThingsConn:
         for entry in resp_json_formatted:
             if (entry['storage_type'] == 'Quota' and entry['byte_usage'] in [0, None]) or\
             (entry['storage_type'] == 'Isilon' and entry['byte_allocation'] in [0, None]):
-                logger.debug(f"removed: {entry}")
+                logger.debug("removed: %s", entry)
                 continue
             resp_json_by_lab[entry['lab']].append(entry)
         # logger.debug(resp_json_by_lab)
@@ -125,20 +132,21 @@ class AllTheThingsConn:
         proj_models = Project.objects.filter(title__in=lablist)
         proj_titles = [p.title for p in proj_models]
         # log labs w/o projects, remove them from result_json
-        missing_projs = log_missing("project", proj_titles,lablist)
+        missing_projs = log_missing("project", proj_titles, lablist)
         counts['proj_err'] = len(missing_projs)
         [result_json.pop(key) for key in missing_projs]
 
         # produce set of server values for which to locate matching resources
         resource_set = {a['server'] for l in result_json.values() for a in l}
         # get resource model
-        res_models = Resource.objects.filter(reduce(operator.or_, (Q(name__contains=x) for x in resource_set)))
+        res_models = Resource.objects.filter(reduce(operator.or_, (
+                                    Q(name__contains=x) for x in resource_set)))
         res_names = [str(r.name).split("/")[0] for r in res_models]
         missing_res = log_missing("resource", res_names, resource_set)
         counts['proj_err'] = len(missing_res)
 
-        for k, v in result_json.items():
-            result_json[k] = [a for a in v if a['server'] not in missing_res]
+        for key, val in result_json.items():
+            result_json[key] = [a for a in val if a['server'] not in missing_res]
 
         for lab, allocations in result_json.items():
             logger.debug("PROJECT: %s ====================================", lab)
@@ -187,15 +195,15 @@ class AllTheThingsConn:
                 if allocation['byte_allocation'] != None:
                     allocation_values['Quota_In_Bytes'] = [allocation['byte_allocation'], allocation['byte_usage']]
 
-                for k, v in allocation_values.items():
+                for key, val in allocation_values.items():
                     allocation_attribute_type_obj = AllocationAttributeType.objects.get(
-                        name=k)
+                        name=key)
                     try:
                         allocation_attribute_obj = AllocationAttribute.objects.get(
                             allocation_attribute_type=allocation_attribute_type_obj,
                             allocation=a,
                         )
-                        allocation_attribute_obj.value = v[0]
+                        allocation_attribute_obj.value = val[0]
                         allocation_attribute_obj.save()
                         allocation_attribute_exist = True
                     except AllocationAttribute.DoesNotExist:
@@ -205,10 +213,10 @@ class AllTheThingsConn:
                         allocation_attribute_obj,_ =AllocationAttribute.objects.get_or_create(
                             allocation_attribute_type=allocation_attribute_type_obj,
                             allocation=a,
-                            value = v[0])
+                            value = val[0])
                         allocation_attribute_type_obj.save()
 
-                    allocation_attribute_obj.allocationattributeusage.value = v[1]
+                    allocation_attribute_obj.allocationattributeusage.value = val[1]
                     allocation_attribute_obj.allocationattributeusage.save()
 
                 # 5. AllocationAttribute
@@ -229,7 +237,7 @@ def log_missing(modelname,
                 fpath_pref="./coldfront/plugins/fasrc/data/",
                 pattern = "I,D"):
     fpath = f'{fpath_pref}missing_{modelname}s.csv'
-    missing = [i for i in search_list if i not in [i for i in model_attr_list]]
+    missing = [i for i in search_list if i not in list(model_attr_list)]
     if missing:
         datestr = datetime.today().strftime("%Y%m%d")
         patterns = [pattern.replace("I", i).replace("D", datestr).replace("G", group) for i in missing]
