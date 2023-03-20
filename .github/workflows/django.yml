@@ -2,11 +2,12 @@ name: Coldfront CI
 
 on:
   push:
-    branches: [ "cp_ci_cd", "development" ]
+    branches: [ "cp_cicd", "development" ]
   pull_request:
-    branches: [ "cp_ci_cd", "development" ]
+    branches: [ "cp_cicd", "development" ]
 
 env:
+  GITLAB_IFX_URL: https://ifx:${{ secrets.IFX_GITLAB_DEPLOY_TOKEN }}@gitlab-int.rc.fas.harvard.edu/informatics
   IFXBILLING_COMMIT: 5f345d5592636091e288c567a18c15a7e586398b
   IFXURLS_COMMIT: 549af42dbe83d07b12dd37055a5ec6368d4b649
   NANITES_CLIENT_COMMIT: 1e67ce787e27c9c0e32a4c97a4967c297d30b7cf
@@ -32,15 +33,25 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install git+$GITLAB_IFX_URL/fiine.client.git@$FIINE_CLIENT_COMMIT && \
+        pip install git+$GITLAB_IFX_URL/ifxvalidcode.git@$IFXVALIDCODE_COMMIT && \
+        pip install git+$GITLAB_IFX_URL/ifxbilling.git@$IFXBILLING_COMMIT && \
         pip install git+ssh://git@github.com/harvardinformatics/ifxurls.git@$IFXURLS_COMMIT && \
-        pip install git+ssh://git@github.com/harvardinformatics/nanites.client.git@$NANITES_CLIENT_COMMIT && \
+        pip install git+$GITLAB_IFX_URL/nanites.client.git@$NANITES_CLIENT_COMMIT && \
         pip install git+ssh://git@github.com/harvardinformatics/ifxuser.git@$IFXUSER_COMMIT && \
         pip install git+ssh://git@github.com/harvardinformatics/ifxmail.client.git@$IFXMAIL_CLIENT_COMMIT && \
-        pip install git+ssh://git@gitlab-int.rc.fas.harvard.edu/informatics/fiine.client.git@$FIINE_CLIENT_COMMIT && \
-        pip install git+ssh://git@gitlab-int.rc.fas.harvard.edu/informatics/ifxvalidcode.git@$IFXVALIDCODE_COMMIT && \
-        pip install git+ssh://git@gitlab-int.rc.fas.harvard.edu/informatics/ifxbilling.git@$IFXBILLING_COMMIT && \
         pip install ldap3 django_auth_ldap && \
         pip install -r requirements.txt
+    - name: Configure SSH
+      env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          SSH_KEY: ${{ secrets.ACTION_SSH }}
+      run: |
+          mkdir -p /home/runner/.ssh
+          echo "$SSH_KEY" > ~/.ssh/staging.key
+          chmod 600 /home/runner/.ssh/github_actions
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add /home/runner/.ssh/github_actions
     # - name: Format with black
     #   run: |
     #     pip install black
