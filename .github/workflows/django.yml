@@ -45,7 +45,7 @@ jobs:
         pip install git+$GITHUB_URL/ifxbilling.git@$IFXBILLING_COMMIT && \
         pip install git+$GITHUB_URL/nanites.client.git@$NANITES_CLIENT_COMMIT && \
         pip install git+$GITHUB_URL/ifxuser.git@$IFXUSER_COMMIT && \
-        pip install ldap3 django_auth_ldap && \
+        pip install ldap3 django_auth_ldap setuptools && \
         pip install -r requirements.txt
       env:
           GITHUB_URL: ssh://git@github.com/harvardinformatics
