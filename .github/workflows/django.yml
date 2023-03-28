@@ -43,12 +43,12 @@ jobs:
 
     - name: Build the images and start the containers
       run: |
-      export GITHUB_WORKFLOW=True
-      export MODE="Test"
-      export COMPOSE_DOCKER_CLI_BUILD=1
-      export DOCKER_BUILDKIT=1
-      make build
-      docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True -p 9000:80 coldfront
+        export GITHUB_WORKFLOW=True
+        export MODE="Test"
+        export COMPOSE_DOCKER_CLI_BUILD=1
+        export DOCKER_BUILDKIT=1
+        make build
+        docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True -p 9000:80 coldfront
       env:
         SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         # docker-compose -f docker-compose.yml up -d
@@ -59,8 +59,8 @@ jobs:
       #   run: docker-compose -f "docker-compose.yml" down
     - name: Run Tests
       run: |
-      docker exec coldfront ./manage.py
-      docker exec coldfront ./manage.py test
+        docker exec coldfront ./manage.py
+        docker exec coldfront ./manage.py test
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
