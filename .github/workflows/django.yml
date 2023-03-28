@@ -38,7 +38,7 @@ jobs:
         ssh-agent -a $SSH_AUTH_SOCK > /dev/null
         ssh-add ~/.ssh/staging.key
         python -m pip install --upgrade pip
-        apt-get install build-essential python3-dev \
+        sudo apt-get install build-essential python3-dev \
               libldap2-dev libsasl2-dev slapd ldap-utils tox lcov valgrind
         pip install git+$GITHUB_URL/ifxmail.client.git@$IFXMAIL_CLIENT_COMMIT && \
         pip install git+$GITHUB_URL/ifxurls.git@$IFXURLS_COMMIT && \
