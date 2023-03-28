@@ -95,6 +95,4 @@ jobs:
     #   run: docker-compose -f "docker-compose.yml" down
     - name: Run Tests
       run: |
-        docker exec -it coldfront bash
-        python manage.py
-        python manage.py test
+        docker exec -it coldfront /bin/bash "./manage.py; ./manage.py test"
