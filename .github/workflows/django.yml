@@ -38,6 +38,8 @@ jobs:
         ssh-agent -a $SSH_AUTH_SOCK > /dev/null
         ssh-add ~/.ssh/staging.key
         python -m pip install --upgrade pip
+        apt-get install build-essential python3-dev \
+              libldap2-dev libsasl2-dev slapd ldap-utils tox lcov valgrind
         pip install git+$GITHUB_URL/ifxmail.client.git@$IFXMAIL_CLIENT_COMMIT && \
         pip install git+$GITHUB_URL/ifxurls.git@$IFXURLS_COMMIT && \
         pip install git+$GITHUB_URL/fiine.client.git@$FIINE_CLIENT_COMMIT && \
@@ -45,7 +47,7 @@ jobs:
         pip install git+$GITHUB_URL/ifxbilling.git@$IFXBILLING_COMMIT && \
         pip install git+$GITHUB_URL/nanites.client.git@$NANITES_CLIENT_COMMIT && \
         pip install git+$GITHUB_URL/ifxuser.git@$IFXUSER_COMMIT && \
-        pip install ldap3 django_auth_ldap setuptools && \
+        pip install ldap3 django_auth_ldap && \
         pip install -r requirements.txt
       env:
           GITHUB_URL: ssh://git@github.com/harvardinformatics
