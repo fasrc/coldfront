@@ -61,5 +61,4 @@ jobs:
     - name: Run Tests
       run: |
         docker exec coldfront ./manage.py
-        docker exec coldfront ./manage.py migrate
         docker exec coldfront ./manage.py test
