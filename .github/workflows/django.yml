@@ -26,6 +26,16 @@ jobs:
         python-version: [3.7, 3.8, 3.9]
     steps:
     - uses: actions/checkout@v3
+    - name: Configure SSH
+      env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          SSH_KEY: ${{ secrets.ACTION_SSH }}
+      run: |
+          mkdir -p /home/runner/.ssh
+          echo "$SSH_KEY" > ~/.ssh/staging.key
+          chmod 600 /home/runner/.ssh/github_actions
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add /home/runner/.ssh/github_actions
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
@@ -42,16 +52,6 @@ jobs:
         pip install git+ssh://git@github.com/harvardinformatics/ifxuser.git@$IFXUSER_COMMIT && \
         pip install ldap3 django_auth_ldap && \
         pip install -r requirements.txt
-    - name: Configure SSH
-      env:
-          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-          SSH_KEY: ${{ secrets.ACTION_SSH }}
-      run: |
-          mkdir -p /home/runner/.ssh
-          echo "$SSH_KEY" > ~/.ssh/staging.key
-          chmod 600 /home/runner/.ssh/github_actions
-          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-          ssh-add /home/runner/.ssh/github_actions
     # - name: Format with black
     #   run: |
     #     pip install black
