@@ -40,20 +40,21 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Test SSH connection to github
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install git+ssh://$GITHUB_URL/ifxmail.client.git@$IFXMAIL_CLIENT_COMMIT && \
-        pip install git+ssh://$GITHUB_URL/ifxurls.git@$IFXURLS_COMMIT && \
-        pip install git+ssh://$GITHUB_URL/fiine.client.git@$FIINE_CLIENT_COMMIT && \
-        pip install git+ssh://$GITHUB_URL/ifxec.git@$IFXEC_COMMIT && \
-        pip install git+ssh://$GITHUB_URL/ifxbilling.git@$IFXBILLING_COMMIT && \
-        pip install git+ssh://$GITHUB_URL/nanites.client.git@$NANITES_CLIENT_COMMIT && \
-        pip install git+ssh://$GITHUB_URL/ifxuser.git@$IFXUSER_COMMIT && \
+        pip install git+$GITHUB_URL/ifxmail.client.git@$IFXMAIL_CLIENT_COMMIT && \
+        pip install git+$GITHUB_URL/ifxurls.git@$IFXURLS_COMMIT && \
+        pip install git+$GITHUB_URL/fiine.client.git@$FIINE_CLIENT_COMMIT && \
+        pip install git+$GITHUB_URL/ifxec.git@$IFXEC_COMMIT && \
+        pip install git+$GITHUB_URL/ifxbilling.git@$IFXBILLING_COMMIT && \
+        pip install git+$GITHUB_URL/nanites.client.git@$NANITES_CLIENT_COMMIT && \
+        pip install git+$GITHUB_URL/ifxuser.git@$IFXUSER_COMMIT && \
         pip install ldap3 django_auth_ldap && \
         pip install -r requirements.txt
       env:
-          GITHUB_URL: ifxdeploy@github.com/harvardinformatics
+          GITHUB_URL: ssh://git@github.com/harvardinformatics
     # - name: Format with black
     #   run: |
     #     pip install black
