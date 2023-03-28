@@ -23,7 +23,7 @@ jobs:
     strategy:
       max-parallel: 4
       matrix:
-        python-version: [3.7, 3.8, 3.9]
+        python-version: [3.6, 3.7, 3.8]
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
@@ -77,17 +77,17 @@ jobs:
         # stop the build if there are Python syntax errors or undefined names
         isort .
         isort --check --diff .
-    # - name: Build the images and start the containers
-    #   run: |
-    #     export GITHUB_WORKFLOW=True
-    #     export MODE="Test"
-    #     export COMPOSE_DOCKER_CLI_BUILD=1
-    #     export DOCKER_BUILDKIT=1
-    #     make build
-    #     docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True \
-    #                 -p 9000:80 coldfront
+    - name: Build the images and start the containers
+      run: |
+        export GITHUB_WORKFLOW=True
+        export MODE="Test"
+        export COMPOSE_DOCKER_CLI_BUILD=1
+        export DOCKER_BUILDKIT=1
+        make build
+        docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True \
+                    -p 9000:80 coldfront
     #     docker-compose -f docker-compose.yml build
-    #     docker-compose -f docker-compose.yml up -d
+        docker-compose -f docker-compose.yml up -d
     #     # run: docker-compose up -d --build
     # - name: Stop containers
     #   if: always()
