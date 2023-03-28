@@ -40,7 +40,6 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Test SSH connection to github
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
