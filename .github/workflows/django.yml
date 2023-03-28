@@ -47,11 +47,7 @@ jobs:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
           SSH_KEY: ${{ secrets.ACTION_SSH }}
     - name: Create .env file
-      uses: SpicyPizza/create-envfile@v1.3.0
-      with:
-        envkey_NEO4JP: ${{ secrets.NEO4JP }}
-        envkey_SFUSER: ${{ secrets.SFUSER }}
-        envkey_SFPASS: ${{ secrets.SFPASS }}
+      run: echo -e "NEO4JP=${{ secrets.NEO4JP }}\nSFUSER=${{ secrets.SFUSER }}\nSFPASS=${{ secrets.SFPASS }} > .env"
     - name: Build the images and start the containers
       run: |
         export GITHUB_WORKFLOW=True
