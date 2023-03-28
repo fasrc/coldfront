@@ -86,6 +86,8 @@ jobs:
         make build
         docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True -p 9000:80 coldfront
         docker-compose -f docker-compose.yml up -d
+      env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
     #     docker-compose -f docker-compose.yml build
     #     # run: docker-compose up -d --build
     # - name: Stop containers
