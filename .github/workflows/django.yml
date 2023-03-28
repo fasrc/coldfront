@@ -84,10 +84,9 @@ jobs:
         export COMPOSE_DOCKER_CLI_BUILD=1
         export DOCKER_BUILDKIT=1
         make build
-        docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True \
-                    -p 9000:80 coldfront
-    #     docker-compose -f docker-compose.yml build
+        docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True -p 9000:80 coldfront
         docker-compose -f docker-compose.yml up -d
+    #     docker-compose -f docker-compose.yml build
     #     # run: docker-compose up -d --build
     # - name: Stop containers
     #   if: always()
