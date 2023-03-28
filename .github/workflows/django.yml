@@ -5,10 +5,6 @@ on:
     branches: [ "cp_cicd", "development" ]
   pull_request:
     branches: [ "cp_cicd", "development" ]
-env:
-  NEO4JP: ${{ secrets.NEO4JP }}
-  SFUSER: ${{ secrets.SFUSER }}
-  SFPASS: ${{ secrets.SFPASS }}
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -50,7 +46,12 @@ jobs:
       env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
           SSH_KEY: ${{ secrets.ACTION_SSH }}
-
+    - name: Create .env file
+      uses: SpicyPizza/create-envfile@v1.3.0
+      with:
+        NEO4JP: ${{ secrets.NEO4JP }}
+        SFUSER: ${{ secrets.SFUSER }}
+        SFPASS: ${{ secrets.SFPASS }}
     - name: Build the images and start the containers
       run: |
         export GITHUB_WORKFLOW=True
@@ -64,4 +65,5 @@ jobs:
     - name: Run Tests
       run: |
         docker exec coldfront ./manage.py
+        docker exec coldfront
         docker exec coldfront ./manage.py test
