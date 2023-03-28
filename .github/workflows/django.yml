@@ -43,6 +43,8 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install 'Django>3,<4' && \
+        pip install django-author==1.0.2 && \
         sudo apt-get install build-essential python3-dev \
               libldap2-dev libsasl2-dev slapd ldap-utils tox lcov valgrind
         pip install git+$GITHUB_URL/ifxmail.client.git@$IFXMAIL_CLIENT_COMMIT && \
@@ -52,11 +54,8 @@ jobs:
         pip install git+$GITHUB_URL/ifxbilling.git@$IFXBILLING_COMMIT && \
         pip install git+$GITHUB_URL/nanites.client.git@$NANITES_CLIENT_COMMIT && \
         pip install git+$GITHUB_URL/ifxuser.git@$IFXUSER_COMMIT && \
-        pip install ldap3 django_auth_ldap django-author && \
+        pip install ldap3 django_auth_ldap && \
         pip install -r requirements.txt
-        python manage.py
-        python manage.py migrate
-        python manage.py test
       env:
           GITHUB_URL: ssh://git@github.com/harvardinformatics
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
