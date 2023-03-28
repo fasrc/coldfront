@@ -26,22 +26,17 @@ jobs:
         python-version: [3.7, 3.8, 3.9]
     steps:
     - uses: actions/checkout@v3
-    - name: Configure SSH
-      env:
-          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-          SSH_KEY: ${{ secrets.ACTION_SSH }}
-      run: |
-          mkdir -p ~/.ssh/
-          echo "$SSH_KEY" > ~/.ssh/staging.key
-          chmod 600 ~/.ssh/staging.key
-          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-          ssh-add ~/.ssh/staging.key
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install Dependencies
       run: |
+        mkdir -p ~/.ssh/
+        echo "$SSH_KEY" > ~/.ssh/staging.key
+        chmod 600 ~/.ssh/staging.key
+        ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+        ssh-add ~/.ssh/staging.key
         python -m pip install --upgrade pip
         pip install git+$GITHUB_URL/ifxmail.client.git@$IFXMAIL_CLIENT_COMMIT && \
         pip install git+$GITHUB_URL/ifxurls.git@$IFXURLS_COMMIT && \
@@ -54,6 +49,8 @@ jobs:
         pip install -r requirements.txt
       env:
           GITHUB_URL: ssh://git@github.com/harvardinformatics
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          SSH_KEY: ${{ secrets.ACTION_SSH }}
     # - name: Format with black
     #   run: |
     #     pip install black
