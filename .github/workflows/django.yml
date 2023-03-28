@@ -49,9 +49,9 @@ jobs:
     - name: Create .env file
       uses: SpicyPizza/create-envfile@v1.3.0
       with:
-        NEO4JP: ${{ secrets.NEO4JP }}
-        SFUSER: ${{ secrets.SFUSER }}
-        SFPASS: ${{ secrets.SFPASS }}
+        envkey_NEO4JP: ${{ secrets.NEO4JP }}
+        envkey_SFUSER: ${{ secrets.SFUSER }}
+        envkey_SFPASS: ${{ secrets.SFPASS }}
     - name: Build the images and start the containers
       run: |
         export GITHUB_WORKFLOW=True
