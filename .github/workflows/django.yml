@@ -31,11 +31,11 @@ jobs:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
           SSH_KEY: ${{ secrets.ACTION_SSH }}
       run: |
-          mkdir -p /home/runner/.ssh
+          mkdir -p ~/.ssh/
           echo "$SSH_KEY" > ~/.ssh/staging.key
-          chmod 600 /home/runner/.ssh/github_actions
+          chmod 600 ~/.ssh/staging.key
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-          ssh-add /home/runner/.ssh/github_actions
+          ssh-add ~/.ssh/staging.key
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
