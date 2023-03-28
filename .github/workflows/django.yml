@@ -30,13 +30,18 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install Dependencies
+    - name: Set up SSH key
       run: |
         mkdir -p ~/.ssh/
         echo "$SSH_KEY" > ~/.ssh/staging.key
         chmod 600 ~/.ssh/staging.key
         ssh-agent -a $SSH_AUTH_SOCK > /dev/null
         ssh-add ~/.ssh/staging.key
+      env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          SSH_KEY: ${{ secrets.ACTION_SSH }}
+    - name: Install Dependencies
+      run: |
         python -m pip install --upgrade pip
         sudo apt-get install build-essential python3-dev \
               libldap2-dev libsasl2-dev slapd ldap-utils tox lcov valgrind
@@ -52,7 +57,6 @@ jobs:
       env:
           GITHUB_URL: ssh://git@github.com/harvardinformatics
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-          SSH_KEY: ${{ secrets.ACTION_SSH }}
     # - name: Format with black
     #   run: |
     #     pip install black
@@ -75,12 +79,22 @@ jobs:
     #   run: |
     #     export GITHUB_WORKFLOW=True
     #     export MODE="Test"
+    #     export COMPOSE_DOCKER_CLI_BUILD=1
+    #     export DOCKER_BUILDKIT=1
+    #     make build
+    #     docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True \
+    #                 -p 9000:80 coldfront
     #     docker-compose -f docker-compose.yml build
     #     docker-compose -f docker-compose.yml up -d
     #     # run: docker-compose up -d --build
     # - name: Stop containers
     #   if: always()
     #   run: docker-compose -f "docker-compose.yml" down
+    - name: Start server
+      run: |
+        python ./manage.py initial_setup &
+        python ./manage.py runserver 0.0.0.0:80 --insecure
+
     - name: Run Tests
       run: |
         python manage.py test
