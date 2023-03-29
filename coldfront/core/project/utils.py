@@ -4,7 +4,6 @@ from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.db.models import Q
 from ifxbilling.models import BillingRecord
 
-from coldfront.core.allocation.models import Allocation
 from coldfront.plugins.ifx.models import ProjectOrganization
 
 
@@ -29,32 +28,34 @@ def add_project_user_status_choices(apps, schema_editor):
         ProjectUserStatusChoice.objects.get_or_create(name=choice)
 
 def generate_usage_history_graph(project):
+    '''Create a billing record graph for a project.
+
+    '''
     current_year = date.today().year
     previous_year = current_year - 1
     current_month = date.today().month
 
     # sort billing_records by year/month
     year_months = [(previous_year, month) for month in range(current_month, 13)] + [(current_year, month) for month in range(1, current_month+1)]
-    allocations = Allocation.objects.filter(project=project)
+    allocations = project.allocation_set.all()
     columns = []
     for allocation in allocations:
         allocation_res = allocation.get_parent_resource.name
         allocation_billing_records = BillingRecord.objects.filter(
                 (Q(year=current_year) | Q(year=previous_year, month__gte=current_month)),
                 product_usage__product__product_name=allocation_res,
-                account__organization=ProjectOrganization.objects.get(project=allocation.project).organization,
+                account__organization=ProjectOrganization.objects.get(project=project).organization,
             )
         allocation_column = [allocation_res]
         for year_month in year_months:
             year = year_month[0]
             month = year_month[1]
             try:
-                ym_cost = allocation_billing_records.get(year=year, month=month).charge/100
-            except ObjectDoesNotExist:
-                ym_cost = 0
-            except MultipleObjectsReturned:
                 ym_records = allocation_billing_records.filter(year=year, month=month)
-                ym_cost = sum(r.charge/100 for r in ym_records)
+                ym_cost = float(sum(r.decimal_charge for r in ym_records))
+            except:
+                ym_cost = 0
+
             allocation_column.append(ym_cost)
         columns.append(allocation_column)
 
