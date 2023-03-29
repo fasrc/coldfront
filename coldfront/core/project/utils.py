@@ -50,16 +50,18 @@ def generate_usage_history_graph(project):
         for year_month in year_months:
             year = year_month[0]
             month = year_month[1]
-            try:
+            if year != current_year and month != current_month:
                 ym_records = allocation_billing_records.filter(year=year, month=month)
                 ym_cost = float(sum(r.decimal_charge for r in ym_records))
-            except:
-                ym_cost = 0
+            else:
+                ym_cost = allocation.cost
 
             allocation_column.append(ym_cost)
         columns.append(allocation_column)
 
-    columns.append(['month']+[f'{ym[1]}/{ym[0]}' for ym in year_months])
+    columns.append(['month'] +
+            [f'{ym[1]}/{ym[0]}' for ym in year_months[:-1]] +
+            [f'{current_month}/{current_year} (PROJECTED)'])
 
     data = {
         "x": "month",
