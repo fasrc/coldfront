@@ -47,21 +47,26 @@ def generate_usage_history_graph(project):
                 account__organization=ProjectOrganization.objects.get(project=project).organization,
             )
         allocation_column = [allocation_res]
+        projection = False
         for year_month in year_months:
             year = year_month[0]
             month = year_month[1]
-            if year != current_year and month != current_month:
-                ym_records = allocation_billing_records.filter(year=year, month=month)
-                ym_cost = float(sum(r.decimal_charge for r in ym_records))
-            else:
+            ym_records = allocation_billing_records.filter(year=year, month=month)
+            if year == current_year and month == current_month and ym_records.count() == 0:
+                projection = True
                 ym_cost = allocation.cost
+            else:
+                ym_cost = float(sum(r.decimal_charge for r in ym_records))
 
             allocation_column.append(ym_cost)
         columns.append(allocation_column)
 
-    columns.append(['month'] +
-            [f'{ym[1]}/{ym[0]}' for ym in year_months[:-1]] +
-            [f'{current_month}/{current_year} (PROJECTED)'])
+    if not projection:
+        columns.append(['month'] + [f'{ym[1]}/{ym[0]}' for ym in year_months])
+    else:
+        columns.append(['month'] +
+                [f'{ym[1]}/{ym[0]}' for ym in year_months[:-1]] +
+                [f'{current_month}/{current_year} (PROJECTED)'])
 
     data = {
         "x": "month",
