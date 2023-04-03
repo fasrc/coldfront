@@ -54,7 +54,7 @@ class AllTheThingsConn:
 
     def __init__(self):
         self.url = 'https://allthethings.rc.fas.harvard.edu:7473/db/data/transaction/commit'
-        self.token = import_from_settings('NEO4JP')
+        self.token = import_from_settings('NEO4JP', '')
         self.headers = generate_headers(self.token)
 
     def post_query(self, query):
