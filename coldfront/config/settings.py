@@ -27,6 +27,7 @@ plugin_configs = {
     'PLUGIN_AUTH_OIDC': 'plugins/openid.py',
     'PLUGIN_AUTH_LDAP': 'plugins/ldap.py',
     'PLUGIN_LDAP_USER_SEARCH': 'plugins/ldap_user_search.py',
+    'PLUGIN_LDAP': 'plugins/ldap_fasrc.py',
     'PLUGIN_SFTOCF': 'plugins/sftocf.py',
     'PLUGIN_FASRC': 'plugins/fasrc.py',
     'PLUGIN_IFX': 'plugins/ifx.py',
