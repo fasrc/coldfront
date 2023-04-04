@@ -48,7 +48,7 @@ class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         # database checks
         projects = Project.objects.all()
         pi_not_projectuser = [p for p in projects if p.pi_id not in  p.projectuser_set.values_list('user_id', flat=True)]
-        allocation_not_changeable = Allocation.objects.filter(is_changeable=False)
+        allocation_not_changeable = Allocation.objects.filter(status__name__in=['Active', 'New', 'Updated', 'Ready for Review'], is_changeable=False)
 
         # ui checks
         ui_error_file = 'local_data/error_checks.csv'
