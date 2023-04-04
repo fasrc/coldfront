@@ -55,7 +55,7 @@ jobs:
         export COMPOSE_DOCKER_CLI_BUILD=1
         export DOCKER_BUILDKIT=1
         make build
-        docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True -p 9000:80 coldfront
+        docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True -e NEO4JP=${{ secrets.NEO4JP }} -e PLUGIN_FASRC=True -p 9000:80 coldfront
       env:
         SSH_AUTH_SOCK: /tmp/ssh_agent.sock
     - name: Run Tests
