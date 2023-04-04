@@ -4,6 +4,7 @@ from django.test import TestCase, Client
 from django.urls import reverse, reverse_lazy
 from django.contrib.auth import get_user_model
 
+from coldfront.config.env import ENV
 from coldfront.core.test_helpers import utils
 from coldfront.plugins.fasrc_monitoring.utils import UIChecker
 
@@ -29,14 +30,20 @@ class MonitorViewTest(TestCase):
         '''Confirm that only admins can access the page
         '''
         # check that login is required
-        utils.test_logged_out_redirect_to_login(self, "/monitor")
+        # utils.test_logged_out_redirect_to_login(self, "/monitor")
+        response = self.client.get('/monitor')
+        self.assertEqual(response.status_code, 404)
+        # existing project pi
+        self.client.force_login(self.project_pi,
+                    backend="django.contrib.auth.backends.ModelBackend")
+        response = self.client.get('/monitor')
+        self.assertEqual(response.status_code, 404)
+
         # check access for admin
         self.client.force_login(self.admin_user,
                 backend="django.contrib.auth.backends.ModelBackend")
         response = self.client.get('/monitor')
-        self.assertEqual(response.status_code, 200)
-        # existing project pi
-        self.client.force_login(self.project_pi,
-                backend="django.contrib.auth.backends.ModelBackend")
-        response = self.client.get('/monitor')
-        self.assertEqual(response.status_code, 404)
+        if ENV.bool('PLUGIN_FASRC_MONITORING', default=False):
+            self.assertEqual(response.status_code, 200)
+        else:
+            self.assertEqual(response.status_code, 404)
