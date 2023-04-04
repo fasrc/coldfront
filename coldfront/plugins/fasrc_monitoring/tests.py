@@ -8,7 +8,6 @@ from coldfront.core.test_helpers import utils
 from coldfront.plugins.fasrc_monitoring.utils import UIChecker
 
 FIXTURES = [
-        "coldfront/core/test_helpers/test_data/test_fixtures/resources.json",
         "coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json",
         "coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json",
         "coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json",
