@@ -61,3 +61,5 @@ jobs:
     - name: Run Tests
       run: |
         docker exec coldfront ./manage.py test
+      env:
+        neo4jp: ${{ secrets.NEO4JP }}
