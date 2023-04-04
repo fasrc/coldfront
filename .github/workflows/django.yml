@@ -46,6 +46,8 @@ jobs:
       env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
           SSH_KEY: ${{ secrets.ACTION_SSH }}
+    - name: Create .env file
+      run: echo -e "NEO4JP=${{ secrets.NEO4JP }}\nPLUGIN_SFTOCF=True\nSFUSER=${{ secrets.SFUSER }}\nPLUGIN_IFX=True\nSFPASS=${{ secrets.SFPASS }}\nPLUGIN_FASRC=True\nPLUGIN_FASRC_MONITORING=True" > .env
     - name: Build the images and start the containers
       run: |
         export GITHUB_WORKFLOW=True
@@ -56,12 +58,6 @@ jobs:
         docker run -d --rm --name coldfront -v `pwd`:/usr/src/app -e PLUGIN_IFX=True -p 9000:80 coldfront
       env:
         SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-    - name: Run Tests
-      run: |
-        docker exec coldfront ./manage.py test
-
-    - name: Create .env file
-      run: echo -e "NEO4JP=${{ secrets.NEO4JP }}\nPLUGIN_SFTOCF=True\nSFUSER=${{ secrets.SFUSER }}\nPLUGIN_IFX=True\nSFPASS=${{ secrets.SFPASS }}\nPLUGIN_FASRC=True\nPLUGIN_FASRC_MONITORING=True" > .env
     - name: Run Tests
       run: |
         docker exec coldfront ./manage.py test
