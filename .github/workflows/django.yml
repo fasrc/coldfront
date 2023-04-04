@@ -61,7 +61,7 @@ jobs:
         docker exec coldfront ./manage.py test
 
     - name: Create .env file
-      run: echo -e "NEO4JP=${{ secrets.NEO4JP }}\nPLUGIN_SFTOCF=True\nSFUSER=${{ secrets.SFUSER }}\nSFPASS=${{ secrets.SFPASS }}\nPLUGIN_FASRC=True\nPLUGIN_FASRC_MONITORING=True" > .env
+      run: echo -e "NEO4JP=${{ secrets.NEO4JP }}\nPLUGIN_SFTOCF=True\nSFUSER=${{ secrets.SFUSER }}\nPLUGIN_IFX=True\nSFPASS=${{ secrets.SFPASS }}\nPLUGIN_FASRC=True\nPLUGIN_FASRC_MONITORING=True" > .env
     - name: Run Tests
       run: |
         docker exec coldfront ./manage.py test
