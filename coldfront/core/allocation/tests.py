@@ -58,7 +58,7 @@ class AllocationListViewTest(TestCase):
         self.client.force_login(self.project_admin_allocation_user, backend="django.contrib.auth.backends.ModelBackend")
         response = self.client.get("/allocation/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['allocation_list'], 1)
+        self.assertEqual(len(response.context['allocation_list']), 1)
 
 
 

@@ -60,5 +60,4 @@ jobs:
         SSH_AUTH_SOCK: /tmp/ssh_agent.sock
     - name: Run Tests
       run: |
-        docker exec coldfront ./manage.py
         docker exec coldfront ./manage.py test
