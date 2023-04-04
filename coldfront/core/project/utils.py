@@ -35,7 +35,6 @@ def generate_usage_history_graph(project):
     data : dict
         contains
         columns : list
-
     '''
     current_year = date.today().year
     previous_year = current_year - 1
