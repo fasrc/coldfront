@@ -110,6 +110,13 @@ Monitor
             <td>allocation_not_changeable</td>
           </tr>
           {% endfor %}
+          {% for allocation in multiple_allocation_resources %}
+          <tr style="background-color:#FFFFFF">
+            <td>{{ allocation }}</td>
+            <td><a href="{% url 'allocation-detail' allocation.pk %}">allocation/{{ allocation.pk }}/</td>
+            <td>multiple_allocation_resources</td>
+          </tr>
+          {% endfor %}
         </tbody>
       </table>
     </div>
