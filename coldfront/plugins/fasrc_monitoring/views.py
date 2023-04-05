@@ -8,6 +8,7 @@ from datetime import datetime
 
 import pandas as pd
 from django.http import Http404
+from django.db.models import Count
 from django.shortcuts import render
 from django.views.generic.base import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
@@ -49,6 +50,7 @@ class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         projects = Project.objects.all()
         pi_not_projectuser = [p for p in projects if p.pi_id not in  p.projectuser_set.values_list('user_id', flat=True)]
         allocation_not_changeable = Allocation.objects.filter(status__name__in=['Active', 'New', 'Updated', 'Ready for Review'], is_changeable=False)
+        multiple_allocation_resources = Allocation.objects.annotate(num_vols=Count('resources')).filter(num_vols__gte=2)
 
         # ui checks
         ui_error_file = 'local_data/error_checks.csv'
@@ -64,5 +66,6 @@ class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         context['page_issues'] = page_issues
         context['pi_not_projectuser'] = pi_not_projectuser
         context['allocation_not_changeable'] = allocation_not_changeable
+        context['multiple_allocation_resources'] = multiple_allocation_resources
 
         return context

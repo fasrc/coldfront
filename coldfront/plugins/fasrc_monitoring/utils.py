@@ -107,14 +107,14 @@ class UIChecker:
         return lines
 
 
-def simultaneous_checks(function, url_list):
+def simultaneous_checks(function, url_list, max_workers=4):
     '''run a checking function on a list of urls.
     Return a combined list of the outputs. Function must return a list.
     '''
 
     rows = []
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
     	# submit tasks
         for error_lines in executor.map(function, url_list):
             # report status
