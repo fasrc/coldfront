@@ -1,5 +1,4 @@
 from collections import Counter
-
 from django.conf import settings
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.db.models import Count, Q, Sum
@@ -14,7 +13,10 @@ from coldfront.core.portal.utils import (generate_allocations_chart_data,
 from coldfront.core.project.models import Project
 from coldfront.core.publication.models import Publication
 from coldfront.core.resource.models import Resource
-from coldfront.plugins.sftocf.utils import StarFishRedash, STARFISH_SERVER
+from coldfront.config.env import ENV
+
+if ENV.bool('PLUGIN_SFTOCF', default=False):
+    from coldfront.plugins.sftocf.utils import StarFishRedash, STARFISH_SERVER
 
 
 def home(request):
@@ -94,7 +96,7 @@ def center_summary(request):
 
             resource_allocations = resource.allocation_set.filter(status__name='Active')
 
-            allocation_sizes = [float(allocation.size) for allocation in resource_allocations if allocation.size]
+            allocation_sizes = [float(allocation.size) for allocation in resource_allocations]
             # volume['avgsize'] = allocation_sizes
             volume['avgsize'] = round(sum(allocation_sizes)/len(allocation_sizes), 2)
 
