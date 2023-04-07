@@ -33,7 +33,6 @@ class LDAPConn:
         self.LDAP_GROUP_SEARCH_BASE = import_from_settings('AUTH_LDAP_GROUP_SEARCH_BASE', None)
         self.LDAP_CONNECT_TIMEOUT = 20
         self.LDAP_USE_SSL = import_from_settings('AUTH_LDAP_USE_SSL', False)
-
         self.server = Server(self.LDAP_SERVER_URI, use_ssl=self.LDAP_USE_SSL, connect_timeout=self.LDAP_CONNECT_TIMEOUT)
         self.conn = Connection(self.server, self.LDAP_BIND_DN, self.LDAP_BIND_PASSWORD, auto_bind=True)
 
@@ -51,8 +50,19 @@ class LDAPConn:
 
     def search(self, attr_search_dict, search_base, search_type='exact'):
         '''Run a search using ldap.filter.
-        Specify attr_search_string_list like so:
-        {'cn': 'Bob Smith', 'company': 'FAS'}
+
+        Parameters
+        ----------
+        attr_search_dict : dict
+            format should be {'cn': 'Bob Smith', 'company': 'FAS'}
+        search_base : string
+            should appear similar to "ou=Domain Users,dc=mydc,dc=domain"
+        search_type : string
+            options are 'exact' or 'partial'
+
+        Returns
+        -------
+
         '''
         filter_params = format_template_assertions(attr_search_dict, search_type=search_type)
         search_filter = ldap.filter.filter_format(**filter_params)
@@ -75,6 +85,12 @@ class LDAPConn:
 
     def search_groups(self, attr_search_dict, search_type='exact'):
         '''search for groups.
+        Parameters
+        ----------
+        attr_search_dict : dict
+            format should be {'cn': 'Bob Smith', 'company': 'FAS'}
+        search_type : string
+            options are 'exact' or 'partial'
         '''
         group_entries = self.search(attr_search_dict,
                                     self.LDAP_GROUP_SEARCH_BASE,
@@ -86,7 +102,7 @@ def format_template_assertions(attr_search_dict, search_type='exact'):
     '''Format attr_search_string_dict into correct filter_template
     Parameters
     ----------
-    attr_search_string_dict : dict
+    attr_search_dict : dict
         format should be {'cn': 'Bob Smith', 'company': 'FAS'}
     search_type : str
         options are 'exact' or 'partial'
