@@ -4,24 +4,20 @@ utility functions for LDAP interaction
 import logging
 from datetime import datetime
 
-import ldap.filter
 from django.db.models import Q
 from ldap3 import Connection, Server, ALL_ATTRIBUTES
 
+from coldfront.core.allocation.models import AllocationUser
 from coldfront.core.utils.common import import_from_settings
+from coldfront.core.utils.fasrc import id_present_missing_users
 from coldfront.core.project.models import ( Project,
                                             ProjectUserRoleChoice,
                                             ProjectUserStatusChoice,
                                             ProjectUser)
 
 today = datetime.today().strftime('%Y%m%d')
-
-
 logger = logging.getLogger(__name__)
-logger.propagate = False
-logger.setLevel(logging.DEBUG)
-filehandler = logging.FileHandler(f'logs/{today}-ldap.log', 'w')
-logger.addHandler(filehandler)
+
 
 class LDAPConn:
 
@@ -49,7 +45,7 @@ class LDAPConn:
 
 
     def search(self, attr_search_dict, search_base, search_type='exact'):
-        '''Run a search using ldap.filter.
+        '''Run an LDAP search.
 
         Parameters
         ----------
@@ -64,8 +60,7 @@ class LDAPConn:
         -------
 
         '''
-        filter_params = format_template_assertions(attr_search_dict, search_type=search_type)
-        search_filter = ldap.filter.filter_format(**filter_params)
+        search_filter = format_template_assertions(attr_search_dict, search_type=search_type)
         search_parameters = {
             'search_base': search_base,
             'search_filter': search_filter,
@@ -97,8 +92,19 @@ class LDAPConn:
                                     search_type=search_type)
         return group_entries
 
+    def return_group_members(self, samaccountname):
+        '''return user entries that are members of the specified group.
+        '''
+        group_entries = self.search_groups({'sAMAccountName': samaccountname})
+        if len(group_entries) > 1:
+            raise Exception('multiple groups with same sAMAccountName')
+        group_entry = group_entries[0]
+        group_dn = group_entry['distinguishedName']
+        group_members = self.search_users({'memberOf': group_dn})
+        return group_members
 
-def format_template_assertions(attr_search_dict, search_type='exact'):
+
+def format_template_assertions(attr_search_dict, search_type='exact', search_operator='and'):
     '''Format attr_search_string_dict into correct filter_template
     Parameters
     ----------
@@ -112,13 +118,12 @@ def format_template_assertions(attr_search_dict, search_type='exact'):
     output should be dict formatted like {'filter_template': '(|(cn=%s)(company=%s))', 'assertion_values': ['Bob Smith', 'FAS']})
 
     '''
-    match_type = {'exact':'%s', 'partial': '*%s*'}
-    filter_template_vars = [f'({k}={match_type[search_type]})' for k in attr_search_dict.keys()]
-    filter_template = ''.join(filter_template_vars)
+    match_type = {'exact':'', 'partial': '*'}
+    match_operator = {'and':'&', 'or':'|'}
+    filter_template_vars = [
+                f'({k}={match_type[search_type]}{v}{match_type[search_type]})'
+                for k, v in attr_search_dict.items()]
+    search_filter = ''.join(filter_template_vars)
     if len(filter_template_vars) > 1:
-        filter_template = '(|'+filter_template+')'
-    assertion_values = list(attr_search_dict.values())
-    return {
-            'filter_template': filter_template,
-            'assertion_values': assertion_values
-            }
+        search_filter = f'({match_operator[search_operator]}'+search_filter+')'
+    return search_filter

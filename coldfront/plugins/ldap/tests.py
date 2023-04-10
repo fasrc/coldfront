@@ -9,7 +9,7 @@ class UtilFunctionTests(TestCase):
         '''Format attr_search_dict with one key-value pair into correct filter_template input
         '''
         test_data = {'company': 'FAS'}
-        desired_output = {'filter_template': '(company=%s)', 'assertion_values': ['FAS']}
+        desired_output = '(company=FAS)'
         output = format_template_assertions(test_data)
         self.assertEqual(output, desired_output)
 
@@ -17,10 +17,7 @@ class UtilFunctionTests(TestCase):
         '''Format attr_search_dict with multiple key-value pairs into correct filter_template input
         '''
         test_data = {'cn': 'Bob Smith', 'company': 'FAS'}
-        desired_output = {
-                'filter_template': '(|(cn=%s)(company=%s))',
-                'assertion_values': ['Bob Smith', 'FAS']
-                }
+        desired_output = '(&(cn=Bob Smith)(company=FAS))'
         output = format_template_assertions(test_data)
         self.assertEqual(output, desired_output)
 
@@ -32,9 +29,29 @@ class LDAPConnTest(TestCase):
     def setUp(self):
         self.ldap_conn = LDAPConn()
 
-    def test_search_function_user_one_kv(self):
+    def test_search_group_one_kv(self):
+        '''Be able to return correct group with the variables given
+        '''
+        attr_search_dict = {'sAMAccountName': 'rc_test_lab'}
+        results = self.ldap_conn.search_groups(attr_search_dict)
+        self.assertEqual(len(results), 1)
+
+
+    def test_search_user_one_kv(self):
         '''Be able to return correct user with the variables given
         '''
         attr_search_dict = {'sAMAccountName': 'atestaccount'}
-        results = self.ldap_conn.search(attr_search_dict, self.ldap_conn.LDAP_USER_SEARCH_BASE)
+        results = self.ldap_conn.search_users(attr_search_dict)
         self.assertEqual(len(results), 1)
+
+    def test_search_user_membership(self):
+        '''Be able to return correct user with the variables given
+        '''
+        attr_search_dict = {'memberOf': 'CN=rc_test_lab,OU=RC,OU=Domain Groups,DC=rc,DC=domain'}
+        results = self.ldap_conn.search_users(attr_search_dict)
+        self.assertEqual(len(results), 5)
+
+    def test_return_group_members(self):
+        samaccountname = 'rc_test_lab'
+        members = self.ldap_conn.return_group_members(samaccountname)
+        self.assertEqual(len(members), 5)
