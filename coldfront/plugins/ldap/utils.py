@@ -2,12 +2,11 @@
 utility functions for LDAP interaction
 '''
 import logging
-from datetime import datetime
 
 from django.db.models import Q
+from django.utils import timezone
 from ldap3 import Connection, Server, ALL_ATTRIBUTES
 
-from coldfront.core.allocation.models import AllocationUser
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.fasrc import id_present_missing_users
 from coldfront.core.project.models import ( Project,
@@ -15,7 +14,6 @@ from coldfront.core.project.models import ( Project,
                                             ProjectUserStatusChoice,
                                             ProjectUser)
 
-today = datetime.today().strftime('%Y%m%d')
 logger = logging.getLogger(__name__)
 
 
@@ -27,22 +25,11 @@ class LDAPConn:
         self.LDAP_BIND_PASSWORD = import_from_settings('AUTH_LDAP_BIND_PASSWORD', None)
         self.LDAP_USER_SEARCH_BASE = import_from_settings('AUTH_LDAP_USER_SEARCH_BASE', None)
         self.LDAP_GROUP_SEARCH_BASE = import_from_settings('AUTH_LDAP_GROUP_SEARCH_BASE', None)
-        self.LDAP_CONNECT_TIMEOUT = 20
+        self.LDAP_CONNECT_TIMEOUT = import_from_settings('LDAP_CONNECT_TIMEOUT', 20)
         self.LDAP_USE_SSL = import_from_settings('AUTH_LDAP_USE_SSL', False)
         self.server = Server(self.LDAP_SERVER_URI, use_ssl=self.LDAP_USE_SSL, connect_timeout=self.LDAP_CONNECT_TIMEOUT)
+        print(self.LDAP_SERVER_URI)
         self.conn = Connection(self.server, self.LDAP_BIND_DN, self.LDAP_BIND_PASSWORD, auto_bind=True)
-
-    # def parse_ldap_entry(self, entry):
-    #     '''convert attributes of a given
-    #     '''
-    #     entry_dict = json.loads(self.entries[0].entry_to_json()).get('attributes')
-    #     for k, v in entry_dict.items():
-    #         if 0 < len(v) < 2:
-    #             entry_dict[k] = v[0]
-    #         elif not v:
-    #             entry_dict[k] = None
-    #     return entry_dict
-
 
     def search(self, attr_search_dict, search_base, search_type='exact'):
         '''Run an LDAP search.
@@ -78,6 +65,7 @@ class LDAPConn:
                                     search_type=search_type)
         return user_entries
 
+
     def search_groups(self, attr_search_dict, search_type='exact'):
         '''search for groups.
         Parameters
@@ -92,6 +80,7 @@ class LDAPConn:
                                     search_type=search_type)
         return group_entries
 
+
     def return_group_members(self, samaccountname):
         '''return user entries that are members of the specified group.
         '''
@@ -99,9 +88,25 @@ class LDAPConn:
         if len(group_entries) > 1:
             raise Exception('multiple groups with same sAMAccountName')
         group_entry = group_entries[0]
-        group_dn = group_entry['distinguishedName']
+        group_dn = group_entry['distinguishedName'].value
+        group_manager_dn = group_entry['managedBy'].value
         group_members = self.search_users({'memberOf': group_dn})
-        return group_members
+        group_manager = self.search_users({'distinguishedName': group_manager_dn})
+        return (group_members, group_manager)
+
+
+    def create_user(self, fullname, additional_orgs=None, object_class=None, attributes=None):
+        '''Create a new AD user.
+        Note: the LDAP protocol doesn’t support NULL values. If you try to add
+        an attribute with an empty value or a multi-valued attributes with all
+        empty values, the attribute won’t be created.
+        '''
+        additional_ous = ','.join([f'ou={ou}' for ou in additional_orgs])
+        distinguished_name = f"CN={fullname},{additional_ous},{self.LDAP_USER_SEARCH_BASE}"
+        self.conn.add(  distinguished_name,
+                        object_class=object_class,
+                        attributes=attributes
+                        )
 
 
 def format_template_assertions(attr_search_dict, search_type='exact', search_operator='and'):
@@ -112,10 +117,12 @@ def format_template_assertions(attr_search_dict, search_type='exact', search_ope
         format should be {'cn': 'Bob Smith', 'company': 'FAS'}
     search_type : str
         options are 'exact' or 'partial'
+    search_operator : str
+        options are 'and' or 'or'
 
     Returns
     -------
-    output should be dict formatted like {'filter_template': '(|(cn=%s)(company=%s))', 'assertion_values': ['Bob Smith', 'FAS']})
+    output should be string formatted like '(|(cn=Bob Smith)(company=FAS))'
 
     '''
     match_type = {'exact':'', 'partial': '*'}
@@ -127,3 +134,102 @@ def format_template_assertions(attr_search_dict, search_type='exact', search_ope
     if len(filter_template_vars) > 1:
         search_filter = f'({match_operator[search_operator]}'+search_filter+')'
     return search_filter
+
+
+def collect_update_group_membership():
+    '''
+    Update Coldfront ProjectUser entries for existing Coldfront Projects using
+    ADGroup data.
+    '''
+
+    errors = { 'no_users': [], 'no_managers': [] }
+
+    # collect commonly used db objects
+    projectuser_role_user = ProjectUserRoleChoice.objects.get(name='User')
+    projectuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
+    projectuserstatus_removed = ProjectUserStatusChoice.objects.get(name='Removed')
+    projectuser_role_manager = ProjectUserRoleChoice.objects.get(name='Manager')
+
+    ad_conn = LDAPConn()
+
+    projectuser_status_updates = []
+    projectuser_role_updates = []
+
+    for project in Project.objects.filter(status__name__in=['Active', 'New']).prefetch_related('projectuser_set'):
+        # pull membership data for the given project
+        proj_name = project.title
+        logger.debug('updating group membership for %s', proj_name)
+        all_members, pi = ad_conn.return_group_members(proj_name)
+        logger.debug('raw AD group data:\n%s', members)
+
+
+        ### check PI ###
+        if not pi:
+            logger.warning('no active managers for project %s', proj_name)
+            print(f'WARNING: no active managers for project {proj_name}')
+            errors['no_managers'].append(proj_name)
+            continue
+        pi_name = [p['sAMAccountName'].value for p in pi][0]
+
+        # ensure that role is set to manager
+        project_manager = project.projectuser_set.get(user__username=pi_name)
+        project_manager['role'] = projectuser_role_manager
+        projectuser_role_updates.append(project_manager)
+
+        ### limit returned members to those without an expired account ###
+        members = [mem for mem in all_members if mem['accountExpires'].value > timezone.now()]
+
+        ### check presence of ADGroup members in Coldfront  ###
+        proj_usernames = [pu.user.username for pu in project.projectuser_set.filter(
+                    (~Q(status__name='Removed'))
+                            )]
+        logger.debug('projectusernames: %s', proj_usernames)
+
+        if members:
+            ad_users = [u['sAMAccountName'].value for u in members]
+        else:
+            logger.warning('WARNING: NO USERS LISTED FOR %s', project.title)
+            errors['no_users'].append(proj_name)
+            ad_users = []
+
+        # check for users not in Coldfront
+        not_added = [uname for uname in ad_users if uname not in proj_usernames]
+        logger.debug('AD users not in ProjectUsers:\n%s', not_added)
+
+        if not_added:
+            # find accompanying ifxusers in the system and add as ProjectUsers
+            ifxusers, missing_users = id_present_missing_users(not_added)
+            # log missing IFXusers
+            # log_missing('users', missing_users)
+
+            # If user is missing because status was changed to "removed", update status
+            present_users = project.projectuser_set.filter(user__in=ifxusers)
+            present_users.update(   role=projectuser_role_user,
+                                    status=projectuserstatus_active)
+            presentusers_ids = present_users.values_list('user__id', flat=True)
+            # create new entries for all new ProjectUsers
+            missing_projectusers = ifxusers.exclude(id__in=presentusers_ids)
+            ProjectUser.objects.bulk_create([ProjectUser(
+                                                project=project,
+                                                user=user,
+                                                role=projectuser_role_user,
+                                                status=projectuserstatus_active
+                                            )
+                                            for user in missing_projectusers
+                                ])
+
+        ### change statuses of inactive ProjectUsers to 'Removed' ###
+        projusers_to_remove = [uname for uname in proj_usernames if uname not in ad_users]
+        if projusers_to_remove:
+            # log removed users
+            logger.debug('users to remove: %s', projusers_to_remove)
+
+            # change ProjectUser status to Removed
+            for username in projusers_to_remove:
+                project_user = project.projectuser_set.get(user__username=username)
+                project_user['status'] = projectuserstatus_removed
+                projectuser_status_updates.append(project_user)
+                logger.debug('removed User %s from Project %s', username, project.title)
+    ProjectUser.objects.bulk_update(projectuser_status_updates, ['status'])
+    ProjectUser.objects.bulk_update(projectuser_role_updates, ['role'])
+    logger.warning('errorlist: %s', errors)

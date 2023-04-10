@@ -15,6 +15,7 @@ MESSAGE_TAGS = {
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {},
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
