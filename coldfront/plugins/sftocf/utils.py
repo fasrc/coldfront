@@ -24,11 +24,7 @@ from coldfront.core.allocation.models import (Allocation,
                                             AllocationUserStatusChoice)
 
 datestr = datetime.today().strftime('%Y%m%d')
-logger = logging.getLogger(__name__)
-logger.propagate = False
-logger.setLevel(logging.DEBUG)
-filehandler = logging.FileHandler(f'logs/starfish_to_coldfront_{datestr}.log', 'w')
-logger.addHandler(filehandler)
+logger = logging.getLogger('sftocf')
 
 STARFISH_SERVER = import_from_settings('STARFISH_SERVER')
 svp = read_json('coldfront/plugins/sftocf/servers.json')

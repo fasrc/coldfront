@@ -43,10 +43,6 @@ LOGGING = {
             'handlers': ['django-q'],
             'level': 'DEBUG',
         },
-        '': {
-            'handlers': ['console'],
-            'level': 'INFO',
-        },
         'ifx': {
             'handlers': ['console'],
             'level': 'INFO',
