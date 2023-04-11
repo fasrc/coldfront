@@ -241,16 +241,16 @@ def collect_update_group_membership():
 
     projects_users = {project: users_pi[0] for project, users_pi in proj_membs_mans.items()}
     for project, all_members in projects_users.items():
-        logger.debug('updating group membership for %s\nraw AD group data for %s users:\n%s',
-                project.title, len(all_members), all_members)
 
         ### limit returned members to those without an expired account ###
         members = [mem for mem in all_members if mem['accountExpires'].value > timezone.now()]
+        logger.debug('updating group membership for %s\nraw AD group data for %s users (%s valid)',
+        project.title, len(all_members), len(members))
 
         if members:
             ad_users = [u['sAMAccountName'].value for u in members]
         else:
-            logger.warning('WARNING: NO USERS LISTED FOR %s', project.title)
+            logger.warning('WARNING: NO AD USERS RETURNED FOR %s', project.title)
             ad_users = []
 
         ### check presence of ADGroup members in Coldfront  ###
