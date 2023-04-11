@@ -174,7 +174,7 @@ def collect_update_group_membership():
         proj_name = project.title
         logger.debug('updating group membership for %s', proj_name)
         all_members, pi = ad_conn.return_group_members(proj_name)
-        logger.debug('raw AD group data:\n%s', members)
+        logger.debug('raw AD group data:\n%s', all_members)
 
 
         ### check PI ###
@@ -187,7 +187,7 @@ def collect_update_group_membership():
 
         # ensure that role is set to manager
         project_manager = project.projectuser_set.get(user__username=pi_name)
-        project_manager['role'] = projectuser_role_manager
+        project_manager.role = projectuser_role_manager
         projectuser_role_updates.append(project_manager)
 
         ### limit returned members to those without an expired account ###
@@ -241,7 +241,7 @@ def collect_update_group_membership():
             # change ProjectUser status to Removed
             for username in projusers_to_remove:
                 project_user = project.projectuser_set.get(user__username=username)
-                project_user['status'] = projectuserstatus_removed
+                project_user.status = projectuserstatus_removed
                 projectuser_status_updates.append(project_user)
                 logger.debug('removed User %s from Project %s', username, project.title)
     ProjectUser.objects.bulk_update(projectuser_status_updates, ['status'])
