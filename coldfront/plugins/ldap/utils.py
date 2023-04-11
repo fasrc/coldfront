@@ -237,7 +237,7 @@ def collect_update_group_membership():
         ProjectUser.objects.bulk_update([
             ProjectUser(id=pi.id, role=projectuser_role_manager)
             for pi in pis_mislabeled
-        ])
+        ], ['role'])
 
     projects_users = {project: users_pi[0] for project, users_pi in proj_membs_mans.items()}
     for project, all_members in projects_users.items():
@@ -295,6 +295,6 @@ def collect_update_group_membership():
     ProjectUser.objects.bulk_update([
         ProjectUser(id=pu.id, status=projectuserstatus_removed)
         for pu in projectusers_to_remove
-    ])
+    ], ['status'])
     logger.info('changing status of these ProjectUsers to "Removed":%s',
             [(pu.user.username, pu.project.title) for pu in projectusers_to_remove])
