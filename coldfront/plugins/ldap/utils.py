@@ -224,7 +224,8 @@ def collect_update_group_membership():
     projects_pis = {group: membs_mans[1] for group, membs_mans in proj_membs_mans.items()}
     expired_pis, projects_pis = sort_dict_on_conditional(projects_pis, account_expired_condition)
     if expired_pis:
-        logger.error("LDAP query returns Projects with expired PIs: %s", expired_pis)
+        logger.error("LDAP query returns Active Projects with expired PIs: %s",
+        {proj: pi['sAMAccountName'].value for proj, pi in expired_pis})
 
     projectuser_role_manager = ProjectUserRoleChoice.objects.get(name='Manager')
     pis = [ projectuser_from_manager_uname(project, pi['sAMAccountName'].value)
