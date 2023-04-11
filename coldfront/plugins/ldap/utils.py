@@ -31,7 +31,7 @@ class LDAPConn:
         print(self.LDAP_SERVER_URI)
         self.conn = Connection(self.server, self.LDAP_BIND_DN, self.LDAP_BIND_PASSWORD, auto_bind=True)
 
-    def search(self, attr_search_dict, search_base, search_type='exact'):
+    def search(self, attr_search_dict, search_base, search_type='exact', attributes=ALL_ATTRIBUTES):
         '''Run an LDAP search.
 
         Parameters
@@ -51,22 +51,23 @@ class LDAPConn:
         search_parameters = {
             'search_base': search_base,
             'search_filter': search_filter,
-            'attributes': ALL_ATTRIBUTES,
+            'attributes': attributes,
         }
         self.conn.search(**search_parameters)
         return self.conn.entries
 
 
-    def search_users(self, attr_search_dict, search_type='exact'):
+    def search_users(self, attr_search_dict, search_type='exact', attributes=ALL_ATTRIBUTES):
         '''search for users.
         '''
         user_entries = self.search( attr_search_dict,
                                     self.LDAP_USER_SEARCH_BASE,
-                                    search_type=search_type)
+                                    search_type=search_type,
+                                    attributes=attributes)
         return user_entries
 
 
-    def search_groups(self, attr_search_dict, search_type='exact'):
+    def search_groups(self, attr_search_dict, search_type='exact', attributes=ALL_ATTRIBUTES):
         '''search for groups.
         Parameters
         ----------
@@ -91,16 +92,26 @@ class LDAPConn:
         '''return user entries that are members of the specified group.
         '''
         logger.debug('return_group_members_manager for Project %s', samaccountname)
-        group_entries = self.search_groups({'sAMAccountName': samaccountname})
+        group_entries = self.search_groups(
+                    {'sAMAccountName': samaccountname},
+                    attributes=['managedBy', 'distinguishedName', 'sAMAccountName', 'member']
+                    )
         if len(group_entries) > 1:
             return 'multiple groups with same sAMAccountName'
         if not group_entries:
             return 'no matching groups found'
         group_entry = group_entries[0]
-        group_members = self.return_group_members(group_entry)
+        group_dn = group_entry['distinguishedName'].value
+        group_members = self.search_users(
+                    {'memberOf': group_dn},
+                    attributes=['sAMAccountName', 'cn', 'name', 'title',
+                                'distinguishedName', 'accountExpires', 'info',
+                                'memberOf',
+                                ])
         logger.debug('group_members:\n%s', group_members)
-        group_manager_dn = group_entry['managedBy'].value
-        if not group_manager_dn:
+        try:
+            group_manager_dn = group_entry['managedBy'].value
+        except Exception as e:
             return 'no manager specified'
         group_manager = self.search_users({'distinguishedName': group_manager_dn})[0]
         logger.debug('group_manager:\n%s', group_manager)
