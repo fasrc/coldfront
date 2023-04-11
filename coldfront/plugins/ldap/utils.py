@@ -28,7 +28,6 @@ class LDAPConn:
         self.LDAP_CONNECT_TIMEOUT = import_from_settings('LDAP_CONNECT_TIMEOUT', 20)
         self.LDAP_USE_SSL = import_from_settings('AUTH_LDAP_USE_SSL', False)
         self.server = Server(self.LDAP_SERVER_URI, use_ssl=self.LDAP_USE_SSL, connect_timeout=self.LDAP_CONNECT_TIMEOUT)
-        print(self.LDAP_SERVER_URI)
         self.conn = Connection(self.server, self.LDAP_BIND_DN, self.LDAP_BIND_PASSWORD, auto_bind=True)
 
     def search(self, attr_search_dict, search_base, search_type='exact', attributes=ALL_ATTRIBUTES):
@@ -109,7 +108,7 @@ class LDAPConn:
         group_members = self.search_users(
                     {'memberOf': group_dn},
                     attributes=['sAMAccountName', 'cn', 'name', 'title',
-                 'distinguishedName', 'accountExpires', 'info', 'memberOf',
+                 'distinguishedName', 'accountExpires', 'info'
                                      ])
         logger.debug('group_members:\n%s', group_members)
         try:
@@ -119,11 +118,11 @@ class LDAPConn:
         group_manager = self.search_users({'distinguishedName': group_manager_dn},
                 attributes=['sAMAccountName', 'cn', 'name', 'title',
                     'distinguishedName', 'accountExpires', 'info', 'memberOf',
-                                 ])[0]
+                                 ])
         logger.debug('group_manager:\n%s', group_manager)
         if not group_manager:
             return 'no manager found'
-        return (group_members, group_manager)
+        return (group_members, group_manager[0])
 
 
     def create_user(self, fullname, additional_orgs=None, object_class=None, attributes=None):
@@ -168,7 +167,6 @@ def format_template_assertions(attr_search_dict, search_type='exact', search_ope
 
 def projectuser_from_manager_uname(project, manager_name):
     '''return project user from an AD Group's manager sAMAccountName'''
-    print(project, manager_name)
     manager_projectuser = project.projectuser_set.get(user__username=manager_name)
     return manager_projectuser
 
@@ -237,7 +235,7 @@ def collect_update_group_membership():
             [(pi.project.title, pi.user.username) for pi in pis_mislabeled])
 
         ProjectUser.objects.bulk_update([
-            ProjectUser(id=pi.get('id'), role=projectuser_role_manager)
+            ProjectUser(id=pi.id, role=projectuser_role_manager)
             for pi in pis_mislabeled
         ])
 
@@ -295,7 +293,7 @@ def collect_update_group_membership():
     # change ProjectUser status to Removed
     projectuserstatus_removed = ProjectUserStatusChoice.objects.get(name='Removed')
     ProjectUser.objects.bulk_update([
-        ProjectUser(id=pu.get('id'), status=projectuserstatus_removed)
+        ProjectUser(id=pu.id, status=projectuserstatus_removed)
         for pu in projectusers_to_remove
     ])
     logger.info('changing status of these ProjectUsers to "Removed":%s',
