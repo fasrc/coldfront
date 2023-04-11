@@ -57,7 +57,8 @@ class LDAPConn:
         return self.conn.entries
 
 
-    def search_users(self, attr_search_dict, search_type='exact', attributes=ALL_ATTRIBUTES):
+    def search_users(self, attr_search_dict, search_type='exact',
+        attributes=ALL_ATTRIBUTES):
         '''search for users.
         '''
         user_entries = self.search( attr_search_dict,
@@ -67,7 +68,8 @@ class LDAPConn:
         return user_entries
 
 
-    def search_groups(self, attr_search_dict, search_type='exact', attributes=ALL_ATTRIBUTES):
+    def search_groups(self, attr_search_dict, search_type='exact',
+        attributes=ALL_ATTRIBUTES):
         '''search for groups.
         Parameters
         ----------
@@ -78,7 +80,8 @@ class LDAPConn:
         '''
         group_entries = self.search(attr_search_dict,
                                     self.LDAP_GROUP_SEARCH_BASE,
-                                    search_type=search_type)
+                                    search_type=search_type,
+                                    attributes=attributes)
         return group_entries
 
     def return_group_members(self, group_entry):
@@ -94,8 +97,9 @@ class LDAPConn:
         logger.debug('return_group_members_manager for Project %s', samaccountname)
         group_entries = self.search_groups(
                     {'sAMAccountName': samaccountname},
-                    attributes=['managedBy', 'distinguishedName', 'sAMAccountName', 'member']
-                    )
+                    attributes=['managedBy', 'distinguishedName',
+                                'sAMAccountName', 'member']
+                                )
         if len(group_entries) > 1:
             return 'multiple groups with same sAMAccountName'
         if not group_entries:
@@ -105,15 +109,17 @@ class LDAPConn:
         group_members = self.search_users(
                     {'memberOf': group_dn},
                     attributes=['sAMAccountName', 'cn', 'name', 'title',
-                                'distinguishedName', 'accountExpires', 'info',
-                                'memberOf',
-                                ])
+                 'distinguishedName', 'accountExpires', 'info', 'memberOf',
+                                     ])
         logger.debug('group_members:\n%s', group_members)
         try:
             group_manager_dn = group_entry['managedBy'].value
         except Exception as e:
             return 'no manager specified'
-        group_manager = self.search_users({'distinguishedName': group_manager_dn})[0]
+        group_manager = self.search_users({'distinguishedName': group_manager_dn},
+                attributes=['sAMAccountName', 'cn', 'name', 'title',
+                    'distinguishedName', 'accountExpires', 'info', 'memberOf',
+                                 ])[0]
         logger.debug('group_manager:\n%s', group_manager)
         if not group_manager:
             return 'no manager found'
@@ -160,6 +166,40 @@ def format_template_assertions(attr_search_dict, search_type='exact', search_ope
         search_filter = f'({match_operator[search_operator]}'+search_filter+')'
     return search_filter
 
+def projectuser_from_manager_uname(project, manager_name):
+    '''return project user from an AD Group's manager sAMAccountName'''
+    print(project, manager_name)
+    manager_projectuser = project.projectuser_set.get(user__username=manager_name)
+    return manager_projectuser
+
+def uniques_and_intersection(list1, list2):
+    intersection = list(set(list1) & set(list2))
+    list1_unique = list(set(list1) ^ set(intersection))
+    list2_unique = list(set(list2) ^ set(intersection))
+    return (list1_unique, intersection, list2_unique)
+
+
+def account_expired_condition(entry):
+    return entry['accountExpires'].value < timezone.now()
+
+def is_string(value):
+    return isinstance(value, str)
+
+def sort_by_conditional(list1, condition):
+    is_true, is_false = [], []
+    for x in list1:
+        (is_false, is_true)[condition(x)].append(x)
+    return is_true, is_false
+
+def sort_dict_on_conditional(dict1, condition):
+    '''split one dictionary into two, divided by each value's ability to meet a
+    condition
+    '''
+    is_true, is_false = {}, {}
+    for k, v in dict1.items():
+        (is_false, is_true)[condition(v)][k] = v
+    return is_true, is_false
+
 
 def collect_update_group_membership():
     '''
@@ -167,70 +207,73 @@ def collect_update_group_membership():
     ADGroup data.
     '''
 
-    errors = { 'no_users': [], 'no_managers': [] }
-
     # collect commonly used db objects
     projectuser_role_user = ProjectUserRoleChoice.objects.get(name='User')
     projectuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
-    projectuserstatus_removed = ProjectUserStatusChoice.objects.get(name='Removed')
-    projectuser_role_manager = ProjectUserRoleChoice.objects.get(name='Manager')
+    projectusers_to_remove = []
 
     ad_conn = LDAPConn()
 
-    projectuser_status_updates = []
-    projectuser_role_updates = []
+    active_projects = Project.objects.filter(status__name__in=['Active', 'New']).prefetch_related('projectuser_set')
+    proj_membs_mans = {
+        proj: ad_conn.return_group_members_manager(proj.title) for proj in active_projects}
+    search_errors, proj_membs_mans = sort_dict_on_conditional(proj_membs_mans, is_string)
+    if search_errors:
+        logger.error('could not return members and manager for some groups:\n%s',
+                        search_errors)
 
-    for project in Project.objects.filter(status__name__in=['Active', 'New']).prefetch_related('projectuser_set'):
-        # pull membership data for the given project
-        proj_name = project.title
-        logger.debug('updating group membership for %s', proj_name)
-        all_members, pi = ad_conn.return_group_members(proj_name)
-        logger.debug('raw AD group data:\n%s', all_members)
+    ### identify PIs with incorrect roles and change their status ###
+    projects_pis = {group: membs_mans[1] for group, membs_mans in proj_membs_mans.items()}
+    expired_pis, projects_pis = sort_dict_on_conditional(projects_pis, account_expired_condition)
+    if expired_pis:
+        logger.error("LDAP query returns Projects with expired PIs: %s", expired_pis)
 
+    projectuser_role_manager = ProjectUserRoleChoice.objects.get(name='Manager')
+    pis = [ projectuser_from_manager_uname(project, pi['sAMAccountName'].value)
+                            for project, pi in projects_pis.items()]
+    pis_mislabeled = [pi for pi in pis if pi.role != projectuser_role_manager]
+    if pis_mislabeled:
+        logger.info("Project PIs with incorrect labeling: %s",
+            [(pi.project.title, pi.user.username) for pi in pis_mislabeled])
 
-        ### check PI ###
-        if not pi:
-            logger.warning('no active managers for project %s', proj_name)
-            print(f'WARNING: no active managers for project {proj_name}')
-            errors['no_managers'].append(proj_name)
-            continue
-        pi_name = [p['sAMAccountName'].value for p in pi][0]
+        ProjectUser.objects.bulk_update([
+            ProjectUser(id=pi.get('id'), role=projectuser_role_manager)
+            for pi in pis_mislabeled
+        ])
 
-        # ensure that role is set to manager
-        project_manager = project.projectuser_set.get(user__username=pi_name)
-        project_manager.role = projectuser_role_manager
-        projectuser_role_updates.append(project_manager)
+    projects_users = {project: users_pi[0] for project, users_pi in proj_membs_mans.items()}
+    for project, all_members in projects_users.items():
+        logger.debug('updating group membership for %s\nraw AD group data for %s users:\n%s',
+                project.title, len(all_members), all_members)
 
         ### limit returned members to those without an expired account ###
         members = [mem for mem in all_members if mem['accountExpires'].value > timezone.now()]
-
-        ### check presence of ADGroup members in Coldfront  ###
-        proj_usernames = [pu.user.username for pu in project.projectuser_set.filter(
-                    (~Q(status__name='Removed'))
-                            )]
-        logger.debug('projectusernames: %s', proj_usernames)
 
         if members:
             ad_users = [u['sAMAccountName'].value for u in members]
         else:
             logger.warning('WARNING: NO USERS LISTED FOR %s', project.title)
-            errors['no_users'].append(proj_name)
             ad_users = []
 
-        # check for users not in Coldfront
-        not_added = [uname for uname in ad_users if uname not in proj_usernames]
-        logger.debug('AD users not in ProjectUsers:\n%s', not_added)
+        ### check presence of ADGroup members in Coldfront  ###
+        proj_usernames = [pu.user.username for pu in project.projectuser_set.filter(
+                    (~Q(status__name='Removed')))]
+        logger.debug('projectusernames: %s', proj_usernames)
 
-        if not_added:
+        ad_users_not_added, _, remove_projuser_names = uniques_and_intersection(ad_users, proj_usernames)
+
+        # handle any AD users not in Coldfront
+        if ad_users_not_added:
+            logger.debug('AD users not in ProjectUsers:\n%s', ad_users_not_added)
             # find accompanying ifxusers in the system and add as ProjectUsers
-            ifxusers, missing_users = id_present_missing_users(not_added)
-            # log missing IFXusers
-            # log_missing('users', missing_users)
+            ifxusers, missing_users = id_present_missing_users(ad_users_not_added)
+            # log_missing('users', missing_users) # log missing IFXusers
 
             # If user is missing because status was changed to "removed", update status
             present_users = project.projectuser_set.filter(user__in=ifxusers)
-            present_users.update(   role=projectuser_role_user,
-                                    status=projectuserstatus_active)
+            if present_users:
+                logger.warning('found deactivated project_users for project %s: %s',
+                    project.title, [user.user.username for user in present_users])
             presentusers_ids = present_users.values_list('user__id', flat=True)
             # create new entries for all new ProjectUsers
             missing_projectusers = ifxusers.exclude(id__in=presentusers_ids)
@@ -243,18 +286,17 @@ def collect_update_group_membership():
                                             for user in missing_projectusers
                                 ])
 
-        ### change statuses of inactive ProjectUsers to 'Removed' ###
-        projusers_to_remove = [uname for uname in proj_usernames if uname not in ad_users]
-        if projusers_to_remove:
-            # log removed users
-            logger.debug('users to remove: %s', projusers_to_remove)
+        ### identify inactive ProjectUsers, slate for status change ###
+        projusers_to_remove = project.projectuser_set.filter(
+                                user__username__in=remove_projuser_names)
+        projectusers_to_remove.extend(list(projusers_to_remove))
 
-            # change ProjectUser status to Removed
-            for username in projusers_to_remove:
-                project_user = project.projectuser_set.get(user__username=username)
-                project_user.status = projectuserstatus_removed
-                projectuser_status_updates.append(project_user)
-                logger.debug('removed User %s from Project %s', username, project.title)
-    ProjectUser.objects.bulk_update(projectuser_status_updates, ['status'])
-    ProjectUser.objects.bulk_update(projectuser_role_updates, ['role'])
-    logger.warning('errorlist: %s', errors)
+    ### update status of projectUsers slated for removal ###
+    # change ProjectUser status to Removed
+    projectuserstatus_removed = ProjectUserStatusChoice.objects.get(name='Removed')
+    ProjectUser.objects.bulk_update([
+        ProjectUser(id=pu.get('id'), status=projectuserstatus_removed)
+        for pu in projectusers_to_remove
+    ])
+    logger.info('changing status of these ProjectUsers to "Removed":%s',
+            [(pu.user.username, pu.project.title) for pu in projectusers_to_remove])
