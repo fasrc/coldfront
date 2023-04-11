@@ -80,18 +80,32 @@ class LDAPConn:
                                     search_type=search_type)
         return group_entries
 
-
-    def return_group_members(self, samaccountname):
+    def return_group_members(self, group_entry):
         '''return user entries that are members of the specified group.
         '''
+        group_dn = group_entry['distinguishedName'].value
+        group_members = self.search_users({'memberOf': group_dn})
+        return group_members
+
+    def return_group_members_manager(self, samaccountname):
+        '''return user entries that are members of the specified group.
+        '''
+        logger.debug('return_group_members_manager for Project %s', samaccountname)
         group_entries = self.search_groups({'sAMAccountName': samaccountname})
         if len(group_entries) > 1:
-            raise Exception('multiple groups with same sAMAccountName')
+            return 'multiple groups with same sAMAccountName'
+        if not group_entries:
+            return 'no matching groups found'
         group_entry = group_entries[0]
-        group_dn = group_entry['distinguishedName'].value
+        group_members = self.return_group_members(group_entry)
+        logger.debug('group_members:\n%s', group_members)
         group_manager_dn = group_entry['managedBy'].value
-        group_members = self.search_users({'memberOf': group_dn})
-        group_manager = self.search_users({'distinguishedName': group_manager_dn})
+        if not group_manager_dn:
+            return 'no manager specified'
+        group_manager = self.search_users({'distinguishedName': group_manager_dn})[0]
+        logger.debug('group_manager:\n%s', group_manager)
+        if not group_manager:
+            return 'no manager found'
         return (group_members, group_manager)
 
 
