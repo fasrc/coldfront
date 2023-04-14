@@ -1,7 +1,11 @@
+from datetime import datetime
+
+from ldap3 import OffsetTzInfo
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
-from coldfront.plugins.ldap.utils import format_template_assertions, LDAPConn
+from coldfront.plugins.ldap.utils import (format_template_assertions,
+                                        LDAPConn, GroupUserCollection)
 
 class UtilFunctionTests(TestCase):
 
@@ -20,7 +24,6 @@ class UtilFunctionTests(TestCase):
         desired_output = '(&(cn=Bob Smith)(company=FAS))'
         output = format_template_assertions(test_data)
         self.assertEqual(output, desired_output)
-
 
 
 class LDAPConnTest(TestCase):
@@ -55,3 +58,35 @@ class LDAPConnTest(TestCase):
         samaccountname = 'rc_test_lab'
         members = self.ldap_conn.return_group_members(samaccountname)
         self.assertEqual(len(members), 5)
+
+class GroupUserCollectionTests(TestCase):
+    '''Tests for GroupUserCollection class'''
+
+    def setUp(self):
+        group_name = 'poisson_lab'
+        currentuser_accountExpires = [datetime(9999, 12, 31, 23, 59, 59, 999999, tzinfo=OffsetTzInfo(offset=0, name='UTC'))]
+        ad_users = [
+            {
+                'sAMAccountName': ['ljbortkiewicz'],
+                'accountExpires': currentuser_accountExpires,
+            },
+            {
+                'sAMAccountName': ['sdpoisson'],
+                'accountExpires': currentuser_accountExpires,
+            },
+            {
+                'sAMAccountName': ['snewcomb'],
+                'accountExpires': currentuser_accountExpires,
+            },
+        ]
+        pi = {
+            'sAMAccountName': ['sdpoisson'],
+            'accountExpires': currentuser_accountExpires,
+        }
+        self.guc = (GroupUserCollection(group_name, ad_users, pi))
+
+    def test_pi_is_active(self):
+        self.assertEqual(self.guc.pi_is_active, True)
+
+    def test_current_ad_users(self):
+        self.assertEqual(len(self.guc.current_ad_users), 3)
