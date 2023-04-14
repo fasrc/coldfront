@@ -1,11 +1,24 @@
 from datetime import datetime
 
-from ldap3 import OffsetTzInfo
+from ldap3.core.timezone import OffsetTzInfo
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
+from coldfront.core.project.models import Project
 from coldfront.plugins.ldap.utils import (format_template_assertions,
-                                        LDAPConn, GroupUserCollection)
+                                        LDAPConn,
+                                        GroupUserCollection,
+                                        add_new_projects)
+
+
+FIXTURES = [
+        "coldfront/core/test_helpers/test_data/test_fixtures/resources.json",
+        "coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json",
+        "coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json",
+        "coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json",
+        "coldfront/core/test_helpers/test_data/test_fixtures/field_of_science.json",
+        "coldfront/core/test_helpers/test_data/test_fixtures/project_choices.json",
+        ]
 
 class UtilFunctionTests(TestCase):
 
@@ -61,32 +74,49 @@ class LDAPConnTest(TestCase):
 
 class GroupUserCollectionTests(TestCase):
     '''Tests for GroupUserCollection class'''
+    fixtures = FIXTURES
 
     def setUp(self):
-        group_name = 'poisson_lab'
-        currentuser_accountExpires = [datetime(9999, 12, 31, 23, 59, 59, 999999, tzinfo=OffsetTzInfo(offset=0, name='UTC'))]
+        group_name = 'bortkiewicz_lab'
+        self.currentuser_accountExpires = [datetime(9999, 12, 31, 23, 59, 59, 999999, tzinfo=OffsetTzInfo(offset=0, name='UTC'))]
+        self.expireduser_accountExpires = [datetime(1601, 12, 31, 23, 59, 59, 999999, tzinfo=OffsetTzInfo(offset=0, name='UTC'))]
         ad_users = [
             {
                 'sAMAccountName': ['ljbortkiewicz'],
-                'accountExpires': currentuser_accountExpires,
+                'department': ['Statistics and Probability'],
+                'accountExpires': self.expireduser_accountExpires,
             },
             {
                 'sAMAccountName': ['sdpoisson'],
-                'accountExpires': currentuser_accountExpires,
+                'department': ['Statistics and Probability'],
+                'accountExpires': self.currentuser_accountExpires,
             },
             {
                 'sAMAccountName': ['snewcomb'],
-                'accountExpires': currentuser_accountExpires,
+                'department': ['Statistics and Probability'],
+                'accountExpires': self.currentuser_accountExpires,
             },
         ]
         pi = {
-            'sAMAccountName': ['sdpoisson'],
-            'accountExpires': currentuser_accountExpires,
+            'sAMAccountName': ['ljbortkiewicz'],
+            'department': ['Statistics and Probability'],
+            'accountExpires': self.expireduser_accountExpires,
         }
         self.guc = (GroupUserCollection(group_name, ad_users, pi))
 
     def test_pi_is_active(self):
-        self.assertEqual(self.guc.pi_is_active, True)
+        self.assertEqual(self.guc.pi_is_active, False)
 
     def test_current_ad_users(self):
-        self.assertEqual(len(self.guc.current_ad_users), 3)
+        self.assertEqual(len(self.guc.current_ad_users), 2)
+
+    def test_add_new_projects(self):
+        # ensure that project with expired pi doesn't get added
+        added_projects, errortracker = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
+        self.assertEqual(errortracker['no_pi'], ['bortkiewicz_lab'])
+
+        # ensure that rest of operation works
+        self.guc.pi['accountExpires'] = self.currentuser_accountExpires
+        self.guc.members[0]['accountExpires'] = self.currentuser_accountExpires
+        added_projects, errortracker = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
+        self.assertEqual(len(added_projects), 1)

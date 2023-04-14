@@ -371,13 +371,13 @@ def add_new_projects(groupusercollections, errortracker):
     active_pi_groups = prep_clean_pi_projects(groupusercollections)
 
     # identify all users not in ifx
-    user_entries = flatten([[group.members, group.pi] for group in active_pi_groups])
+    user_entries = flatten([group.members + [group.pi] for group in active_pi_groups])
     user_names = {u['sAMAccountName'][0] for u in user_entries}
     _, missing_users = id_present_missing_users(user_names)
     log_missing('user', missing_users)
-    missing_usernames = [d['username'] for d in missing_users]
+    missing_usernames = {d['username'] for d in missing_users}
 
-    active_present_pi_groups = [group.name for group in active_pi_groups
+    active_present_pi_groups = [group for group in active_pi_groups
         if group.pi['sAMAccountName'][0] not in missing_usernames]
     # record and remove projects where pis aren't available
     errortracker['no_pi'] = [group.name for group in groupusercollections
@@ -386,11 +386,11 @@ def add_new_projects(groupusercollections, errortracker):
     for group in active_present_pi_groups:
         logger.debug('source: %s\n%s\n%s', group.name, group.members, group.pi)
         # collect group membership entries
-        ad_member_usernames = [
-            user['sAMAccountName'][0] for user in group.current_ad_users] - missing_usernames
+        ad_member_usernames = {
+            user['sAMAccountName'][0] for user in group.current_ad_users} - missing_usernames
 
         # locate field_of_science
-        if 'department' in group.pi.keys() and group.pi['department'][0] is not None:
+        if 'department' in group.pi.keys() and group.pi['department'][0]:
             field_of_science_name=group.pi['department'][0]
             logger.debug('field_of_science_name %s', field_of_science_name)
             field_of_science_obj, created = FieldOfScience.objects.get_or_create(
@@ -420,9 +420,8 @@ def add_new_projects(groupusercollections, errortracker):
             requires_review=False,
             status=ProjectStatusChoice.objects.get(name='New')
         )
+
         ### add projectusers ###
-        # use set comprehension to avoid duplicate entries when MemberOf/ManagedBy
-        # relationships both exist
         users_to_add = get_user_model().objects.filter(username__in=ad_member_usernames)
         added_projectusers = ProjectUser.objects.bulk_create([
                 ProjectUser(
