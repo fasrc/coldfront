@@ -72,6 +72,10 @@ class LDAPConnTest(TestCase):
         result = self.ldap_conn.return_group_members_manager(samaccountname)
         self.assertEqual(result, 'no ADUser manager found')
 
+        samaccountname = 'cepr_test_group'
+        members, manager = self.ldap_conn.return_group_members_manager(samaccountname)
+        self.assertEqual(len(members), 1)
+
 class GroupUserCollectionTests(TestCase):
     '''Tests for GroupUserCollection class'''
     fixtures = FIXTURES

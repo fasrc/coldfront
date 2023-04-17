@@ -123,7 +123,7 @@ class LDAPConn:
             return 'no matching groups found'
         group_entry = group_entries[0]
         group_dn = group_entry['distinguishedName'][0]
-        user_attr_list = ['sAMAccountName', 'cn', 'name', 'title', 'memberOf',
+        user_attr_list = ['sAMAccountName', 'cn', 'name', 'title',
             'distinguishedName', 'accountExpires', 'info', 'userAccountControl'
                                      ]
         group_members = self.search_users({'memberOf': group_dn}, attributes=user_attr_list)
