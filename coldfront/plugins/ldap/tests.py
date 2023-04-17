@@ -67,10 +67,10 @@ class LDAPConnTest(TestCase):
         results = self.ldap_conn.search_users(attr_search_dict)
         self.assertEqual(len(results), 5)
 
-    def test_return_group_members(self):
+    def test_return_group_members_manager(self):
         samaccountname = 'rc_test_lab'
-        members = self.ldap_conn.return_group_members(samaccountname)
-        self.assertEqual(len(members), 5)
+        result = self.ldap_conn.return_group_members_manager(samaccountname)
+        self.assertEqual(result, 'no ADUser manager found')
 
 class GroupUserCollectionTests(TestCase):
     '''Tests for GroupUserCollection class'''
@@ -84,22 +84,26 @@ class GroupUserCollectionTests(TestCase):
             {
                 'sAMAccountName': ['ljbortkiewicz'],
                 'department': ['Statistics and Probability'],
+                'userAccountControl': [512],
                 'accountExpires': self.expireduser_accountExpires,
             },
             {
                 'sAMAccountName': ['sdpoisson'],
                 'department': ['Statistics and Probability'],
+                'userAccountControl': [512],
                 'accountExpires': self.currentuser_accountExpires,
             },
             {
                 'sAMAccountName': ['snewcomb'],
                 'department': ['Statistics and Probability'],
+                'userAccountControl': [512],
                 'accountExpires': self.currentuser_accountExpires,
             },
         ]
         pi = {
             'sAMAccountName': ['ljbortkiewicz'],
             'department': ['Statistics and Probability'],
+            'userAccountControl': [512],
             'accountExpires': self.expireduser_accountExpires,
         }
         self.guc = (GroupUserCollection(group_name, ad_users, pi))

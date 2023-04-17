@@ -37,23 +37,21 @@ class LDAPConn:
         self.server = Server(self.LDAP_SERVER_URI, use_ssl=self.LDAP_USE_SSL, connect_timeout=self.LDAP_CONNECT_TIMEOUT)
         self.conn = Connection(self.server, self.LDAP_BIND_DN, self.LDAP_BIND_PASSWORD, auto_bind=True)
 
-    def search(self, attr_search_dict, search_base, search_type='exact', attributes=ALL_ATTRIBUTES):
+    def search(self, attr_search_dict, search_base, attributes=ALL_ATTRIBUTES):
         '''Run an LDAP search.
 
         Parameters
         ----------
         attr_search_dict : dict
-            format should be {'cn': 'Bob Smith', 'company': 'FAS'}
+            keys are attribute names, values are the values to search for.
+            Values can include asterisks for wildcard searches.
+            example: {'cn': 'Bob Smith', 'company': 'FAS'}
         search_base : string
             should appear similar to 'ou=Domain Users,dc=mydc,dc=domain'
-        search_type : string
-            options are 'exact' or 'partial'
-
-        Returns
-        -------
-
+        attributes : list or ALL_ATTRIBUTES object
+            attributes to return or ldap search objects (e.g., ALL_ATTRIBUTES)
         '''
-        search_filter = format_template_assertions(attr_search_dict, search_type=search_type)
+        search_filter = format_template_assertions(attr_search_dict)
         search_parameters = {
             'search_base': search_base,
             'search_filter': search_filter,
@@ -63,47 +61,55 @@ class LDAPConn:
         return self.conn.entries
 
 
-    def search_users(self, attr_search_dict, search_type='exact',
-        attributes=ALL_ATTRIBUTES, return_as='dict'):
+    def search_users(self, attr_search_dict, attributes=ALL_ATTRIBUTES, return_as='dict'):
         '''search for users.
+        Parameters
+        ----------
+        attr_search_dict : dict
+            keys are attribute names, values are the values to search for.
+            Values can include asterisks for wildcard searches.
+            example: {'cn': 'Bob Smith', 'company': 'FAS'}
+        attributes : list or ALL_ATTRIBUTES object
+            attributes to return or ldap search objects (e.g., ALL_ATTRIBUTES)
+        return_as : string
+            if 'dict', return entry_attributes_as_dict. Otherwise, return ldap3 entries.
+
         '''
         user_entries = self.search( attr_search_dict,
                                     self.LDAP_USER_SEARCH_BASE,
-                                    search_type=search_type,
                                     attributes=attributes)
         if return_as == 'dict':
             user_entries = [e.entry_attributes_as_dict for e in user_entries]
         return user_entries
 
 
-    def search_groups(self, attr_search_dict, search_type='exact',
-        attributes=ALL_ATTRIBUTES, return_as='dict'):
+    def search_groups(self, attr_search_dict, attributes=ALL_ATTRIBUTES, return_as='dict'):
         '''search for groups.
         Parameters
         ----------
         attr_search_dict : dict
-            format should be {'cn': 'Bob Smith', 'company': 'FAS'}
-        search_type : string
-            options are 'exact' or 'partial'
+            keys are attribute names, values are the values to search for.
+            Values can include asterisks for wildcard searches.
+            example: {'cn': 'Bob Smith', 'company': 'FAS'}
+        attributes : list or ALL_ATTRIBUTES object
+            attributes to return or ldap search objects (e.g., ALL_ATTRIBUTES)
+        return_as : string
+            if 'dict', return entry_attributes_as_dict. Otherwise, return ldap3 entries.
         '''
         group_entries = self.search(attr_search_dict,
                                     self.LDAP_GROUP_SEARCH_BASE,
-                                    search_type=search_type,
                                     attributes=attributes)
         if return_as == 'dict':
             group_entries = [e.entry_attributes_as_dict for e in group_entries]
         return group_entries
 
-    def return_group_members(self, group_entry):
-        '''return user entries that are members of the specified group.
-        '''
-        group_dn = group_entry['distinguishedName']
-        group_members = self.search_users({'memberOf': group_dn})
-        return group_members
-
-
     def return_group_members_manager(self, samaccountname):
         '''return user entries that are members of the specified group.
+
+        Parameters
+        ----------
+        samaccountname : string
+            sAMAccountName of the group to search for
         '''
         logger.debug('return_group_members_manager for Project %s', samaccountname)
         group_entries = self.search_groups(
@@ -117,20 +123,17 @@ class LDAPConn:
             return 'no matching groups found'
         group_entry = group_entries[0]
         group_dn = group_entry['distinguishedName'][0]
-        group_members = self.search_users(
-                    {'memberOf': group_dn},
-                    attributes=['sAMAccountName', 'cn', 'name', 'title',
-                 'distinguishedName', 'accountExpires', 'info'
-                                     ])
+        user_attr_list = ['sAMAccountName', 'cn', 'name', 'title', 'memberOf',
+            'distinguishedName', 'accountExpires', 'info', 'userAccountControl'
+                                     ]
+        group_members = self.search_users({'memberOf': group_dn}, attributes=user_attr_list)
         logger.debug('group_members:\n%s', group_members)
         try:
             group_manager_dn = group_entry['managedBy'][0]
         except Exception as e:
             return 'no manager specified'
         group_manager = self.search_users({'distinguishedName': group_manager_dn},
-                attributes=['sAMAccountName', 'cn', 'name', 'title',
-                    'distinguishedName', 'accountExpires', 'info', 'memberOf',
-                                 ])
+                attributes= user_attr_list)
         logger.debug('group_manager:\n%s', group_manager)
         if not group_manager:
             return 'no ADUser manager found'
@@ -146,7 +149,7 @@ class GroupUserCollection:
         self.members = ad_users
         self.pi = pi
         self.project = project
-        # self.project, self.new =
+
 
     @property
     def current_ad_users(self):
@@ -154,9 +157,19 @@ class GroupUserCollection:
 
     @property
     def pi_is_active(self):
-        return  self.pi['accountExpires'][0] > timezone.now()
+        '''Return true if PI's account is both unexpired and not disabled.'''
+        return self.pi['accountExpires'][0] > timezone.now() and self.pi['userAccountControl'][0] == 512
 
     def compare_active_members_projectusers(self):
+        '''
+        Compare ADGroup members to ProjectUsers.
+        Returns
+        -------
+        members_only : list
+            users present in the members list and not as Coldfront ProjectUsers.
+        projuser_only : list
+            Coldfront ProjectUsers missing from the members list.
+        '''
         ### check presence of ADGroup members in Coldfront  ###
         logger.debug('membership data collected for %s\nraw ADUser data for %s users',
         self.name, len(self.members))
@@ -170,18 +183,16 @@ class GroupUserCollection:
                     (~Q(status__name='Removed')))]
         logger.debug('projectusernames: %s', proj_usernames)
 
-        ad_users_not_added, _, remove_projuser_names = uniques_and_intersection(ad_users, proj_usernames)
-        return (ad_users_not_added, remove_projuser_names)
+        members_only, _, projuser_only = uniques_and_intersection(ad_users, proj_usernames)
+        return (members_only, projuser_only)
 
 
-def format_template_assertions(attr_search_dict, search_type='exact', search_operator='and'):
+def format_template_assertions(attr_search_dict, search_operator='and'):
     '''Format attr_search_string_dict into correct filter_template
     Parameters
     ----------
     attr_search_dict : dict
         format should be {'cn': 'Bob Smith', 'company': 'FAS'}
-    search_type : str
-        options are 'exact' or 'partial'
     search_operator : str
         options are 'and' or 'or'
 
@@ -190,11 +201,8 @@ def format_template_assertions(attr_search_dict, search_type='exact', search_ope
     output should be string formatted like '(|(cn=Bob Smith)(company=FAS))'
 
     '''
-    match_type = {'exact':'', 'partial': '*'}
     match_operator = {'and':'&', 'or':'|'}
-    filter_template_vars = [
-                f'({k}={match_type[search_type]}{v}{match_type[search_type]})'
-                for k, v in attr_search_dict.items()]
+    filter_template_vars = [f'({k}={v})' for k, v in attr_search_dict.items()]
     search_filter = ''.join(filter_template_vars)
     if len(filter_template_vars) > 1:
         search_filter = f'({match_operator[search_operator]}'+search_filter+')'
@@ -210,11 +218,17 @@ def uniques_and_intersection(list1, list2):
 def is_string(value):
     return isinstance(value, str)
 
-def is_dict(value):
-    return isinstance(value, dict)
-
-
 def sort_by(list1, sorter, how='attr'):
+    '''split one list into two on basis of each item's ability to meet a condition
+    Parameters
+    ----------
+    list1 : list
+        list of objects to be sorted
+    sorter : attribute or function
+        attribute or function to be used to sort the list
+    how : str
+        type of sorter ('attr' or 'condition')
+    '''
     is_true, is_false = [], []
     for x in list1:
         if how == 'attr':
@@ -226,8 +240,7 @@ def sort_by(list1, sorter, how='attr'):
     return is_true, is_false
 
 def sort_dict_on_conditional(dict1, condition):
-    '''split one dictionary into two, divided by each value's ability to meet a
-    condition
+    '''split one dictionary into two on basis of value's ability to meet a condition
     '''
     is_true, is_false = {}, {}
     for k, v in dict1.items():
@@ -235,16 +248,14 @@ def sort_dict_on_conditional(dict1, condition):
     return is_true, is_false
 
 def cleaned_membership_query(proj_membs_mans):
-    '''Remove
-    '''
     search_errors, proj_membs_mans = sort_dict_on_conditional(proj_membs_mans, is_string)
     if search_errors:
         logger.error('could not return members and manager for some groups:\n%s',
                         search_errors)
     return proj_membs_mans, search_errors
 
-def prep_clean_pi_projects(groupusercollections):
-    '''Remove projects that have inactive pis'''
+def remove_inactive_disabled_managers(groupusercollections):
+    '''Remove groupusercollections with inactive managers'''
     active_pi_groups, inactive_pi_groups = sort_by(groupusercollections, 'pi_is_active', how='attr')
     if len(active_pi_groups) < len(groupusercollections):
         logger.error('LDAP query returns Active Projects with expired PIs: %s',
@@ -257,8 +268,8 @@ def flatten(l):
 
 def collect_update_group_membership():
     '''
-    Update Coldfront ProjectUser entries for existing Coldfront Projects using
-    ADGroup data.
+    Update ProjectUser entries for existing Coldfront Projects using
+    ADGroup and ADUser data.
     '''
 
     # collect commonly used db objects
@@ -274,7 +285,7 @@ def collect_update_group_membership():
     proj_membs_mans, search_errors = cleaned_membership_query(proj_membs_mans)
     groupusercollections = [GroupUserCollection(k.title, v[0], v[1], project=k) for k, v in proj_membs_mans.items()]
 
-    active_pi_groups = prep_clean_pi_projects(groupusercollections)
+    active_pi_groups = remove_inactive_disabled_managers(groupusercollections)
 
     ### identify PIs with incorrect roles and change their status ###
     projectuser_role_manager = ProjectUserRoleChoice.objects.get(name='Manager')
@@ -328,9 +339,9 @@ def collect_update_group_membership():
                                 ])
 
         ### identify inactive ProjectUsers, slate for status change ###
-        projusers_to_remove = group.project.projectuser_set.filter(
-                                user__username__in=remove_projuser_names)
-        projectusers_to_remove.extend(list(projusers_to_remove))
+        remove_projusers = group.project.projectuser_set.filter(
+                        user__username__in=remove_projuser_names)
+        projectusers_to_remove.extend(list(remove_projusers))
 
     ### update status of projectUsers slated for removal ###
     # change ProjectUser status to Removed
@@ -368,7 +379,7 @@ def add_new_projects(groupusercollections, errortracker):
     already collected from ATT.
     '''
     # if PI is inactive, don't add project
-    active_pi_groups = prep_clean_pi_projects(groupusercollections)
+    active_pi_groups = remove_inactive_disabled_managers(groupusercollections)
 
     # identify all users not in ifx
     user_entries = flatten([group.members + [group.pi] for group in active_pi_groups])
@@ -383,11 +394,11 @@ def add_new_projects(groupusercollections, errortracker):
     errortracker['no_pi'] = [group.name for group in groupusercollections
         if group not in active_present_pi_groups]
 
+
     for group in active_present_pi_groups:
         logger.debug('source: %s\n%s\n%s', group.name, group.members, group.pi)
         # collect group membership entries
-        ad_member_usernames = {
-            user['sAMAccountName'][0] for user in group.current_ad_users} - missing_usernames
+        member_usernames = {u['sAMAccountName'][0] for u in group.current_ad_users} - missing_usernames
 
         # locate field_of_science
         if 'department' in group.pi.keys() and group.pi['department'][0]:
@@ -407,12 +418,11 @@ def add_new_projects(groupusercollections, errortracker):
 
         ### CREATE PROJECT ###
         project_pi = get_user_model().objects.get(username=group.pi['sAMAccountName'][0])
-        current_dt = timezone.now()
         description = f'Allocations for {group.name}'
 
         group.project = Project.objects.create(
-            created=current_dt,
-            modified=current_dt,
+            created=timezone.now(),
+            modified=timezone.now(),
             title=group.name,
             pi=project_pi,
             description=description.strip(),
@@ -422,7 +432,7 @@ def add_new_projects(groupusercollections, errortracker):
         )
 
         ### add projectusers ###
-        users_to_add = get_user_model().objects.filter(username__in=ad_member_usernames)
+        users_to_add = get_user_model().objects.filter(username__in=member_usernames)
         added_projectusers = ProjectUser.objects.bulk_create([
                 ProjectUser(
                         project=group.project,
