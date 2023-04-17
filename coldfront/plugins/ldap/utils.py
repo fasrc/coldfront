@@ -123,7 +123,7 @@ class LDAPConn:
             return 'no matching groups found'
         group_entry = group_entries[0]
         group_dn = group_entry['distinguishedName'][0]
-        user_attr_list = ['sAMAccountName', 'cn', 'name', 'title',
+        user_attr_list = ['sAMAccountName', 'cn', 'name', 'title', 'department',
             'distinguishedName', 'accountExpires', 'info', 'userAccountControl'
                                      ]
         group_members = self.search_users({'memberOf': group_dn}, attributes=user_attr_list)
@@ -192,17 +192,21 @@ def format_template_assertions(attr_search_dict, search_operator='and'):
     Parameters
     ----------
     attr_search_dict : dict
-        format should be {'cn': 'Bob Smith', 'company': 'FAS'}
+        keys are attribute names, values are the values to search for.
+        Values can include asterisks for wildcard searches.
+        Values can also be lists of values to search for.
+        example: {'cn': 'Bob*', 'company': ['FAS', 'HKS']}
     search_operator : str
         options are 'and' or 'or'
 
     Returns
     -------
     output should be string formatted like '(|(cn=Bob Smith)(company=FAS))'
-
     '''
+
     match_operator = {'and':'&', 'or':'|'}
-    filter_template_vars = [f'({k}={v})' for k, v in attr_search_dict.items()]
+    val_string = lambda k, v: f'({k}={v})' if is_string(v) else '(|'+ ''.join(f'({k}={i})' for i in v) + ')'
+    filter_template_vars = [val_string(k, v) for k, v in attr_search_dict.items()]
     search_filter = ''.join(filter_template_vars)
     if len(filter_template_vars) > 1:
         search_filter = f'({match_operator[search_operator]}'+search_filter+')'
@@ -357,7 +361,7 @@ def import_projects_projectusers(projects_list):
     '''Use AD user and group information to automatically create new
     Coldfront Projects from projects_list.
     '''
-    errortracker = { 'no_pi': [], 'not_found': [] }
+    errortracker = { 'no_pi': [], 'not_found': [], 'no_fos': [], 'pi_not_projectuser': [] }
     # if project already exists, end here
     existing_projects = Project.objects.filter(title__in=projects_list)
     if existing_projects:
@@ -394,14 +398,14 @@ def add_new_projects(groupusercollections, errortracker):
     errortracker['no_pi'] = [group.name for group in groupusercollections
         if group not in active_present_pi_groups]
 
-
+    added_projects = []
     for group in active_present_pi_groups:
         logger.debug('source: %s\n%s\n%s', group.name, group.members, group.pi)
         # collect group membership entries
         member_usernames = {u['sAMAccountName'][0] for u in group.current_ad_users} - missing_usernames
 
         # locate field_of_science
-        if 'department' in group.pi.keys() and group.pi['department'][0]:
+        if 'department' in group.pi.keys() and group.pi['department']:
             field_of_science_name=group.pi['department'][0]
             logger.debug('field_of_science_name %s', field_of_science_name)
             field_of_science_obj, created = FieldOfScience.objects.get_or_create(
@@ -411,9 +415,11 @@ def add_new_projects(groupusercollections, errortracker):
             if created:
                 logger.info('added new field_of_science: %s', field_of_science_name)
         else:
+            errortracker['no_fos'].append(group.name)
             logger.warning('no department for PI of project %s', group.name)
-            print(f'WARNING: no field of science for PI of project {group.name}')
-            field_of_science_obj = None
+            print(f'HALTING: no field of science for PI of project {group.name}')
+            print(group.pi)
+            continue
 
 
         ### CREATE PROJECT ###
@@ -446,11 +452,17 @@ def add_new_projects(groupusercollections, errortracker):
         # add permissions to PI/manager-status ProjectUsers
         logger.debug('adding manager status to ProjectUser %s for Project %s',
                     group.pi['sAMAccountName'][0], group.name)
-        manager = group.project.projectuser_set.get(user__username=group.pi['sAMAccountName'][0])
+        try:
+            manager = group.project.projectuser_set.get(user__username=group.pi['sAMAccountName'][0])
+        except ProjectUser.DoesNotExist:
+            logger.warning('PI %s not found in ProjectUser for Project %s',
+                        group.pi['sAMAccountName'][0], group.name)
+            errortracker['pi_not_projectuser'].append(group.name)
+            continue
         manager.role = ProjectUserRoleChoice.objects.get(name='Manager')
         manager.save()
+        added_projects.append([group.name, group.project])
 
-    added_projects = [group.project for group in active_present_pi_groups]
     for errortype in errortracker:
         logger.warning('AD groups with %s: %s', errortype, errortracker[errortype])
     return added_projects, errortracker

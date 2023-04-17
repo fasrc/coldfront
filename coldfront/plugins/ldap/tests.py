@@ -38,6 +38,13 @@ class UtilFunctionTests(TestCase):
         output = format_template_assertions(test_data)
         self.assertEqual(output, desired_output)
 
+    def test_format_template_assertions_list_value(self):
+        '''Format attr_search_dict with list value into correct filter_template input
+        '''
+        test_data = {'cn': ['Bob Smith', 'Jane Doe'], 'company': 'FAS'}
+        desired_output = '(&(|(cn=Bob Smith)(cn=Jane Doe))(company=FAS))'
+        output = format_template_assertions(test_data)
+        self.assertEqual(output, desired_output)
 
 class LDAPConnTest(TestCase):
     '''tests for LDAPConn class'''

@@ -30,8 +30,10 @@ LOGGING['formatters']['ldap_fasrc'] = {
         }
 
 LOGGING['handlers']['ldap_fasrc'] = {
-            'class': 'logging.FileHandler',
+            'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': 'logs/ldap_fasrc.log',
+            'backupCount': 10,
+            'when': 'midnight',
             'formatter': 'ldap_fasrc',
         }
 
