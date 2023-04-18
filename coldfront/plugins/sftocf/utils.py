@@ -70,12 +70,17 @@ class StarFishServer:
     # 2A. Generate list of volumes to search, along with top-level paths
     @record_process
     def get_volume_names(self):
-        ''' Generate a list of the volumes available on the server.
+        '''Generate a list of the volumes available on the server.
         '''
         url = self.api_url + 'storage/'
         response = return_get_json(url, self.headers)
         volnames = [i['name'] for i in response['items']]
         return volnames
+
+    def get_volumes_in_coldfront(self):
+        resource_volume_list = [r.name.split('/')[0] for r in Resource.objects.all()]
+        return [v for v in self.volumes if v in resource_volume_list]
+
 
     def get_volume_attributes(self):
         url = self.api_url + 'volume/'
@@ -91,9 +96,32 @@ class StarFishServer:
         # get list of existing tags
         tags = self.get_tags()
 
-    def get_scan_date(self, volume):
-        '''See the date of the last completed scan of a given volume
+    def get_scans(self):
+        '''Collect scans of all volumes in Coldfront
         '''
+        volumes = '&'.join([f'volume={volume}' for volume in self.get_volumes_in_coldfront()])
+        url = self.api_url + 'scan/?' + volumes
+        r = requests.get(url, headers=self.headers)
+        response = r.json()
+        return response
+
+    def get_most_recent_scans(self):
+        '''Narrow scan data to the most recent and last successful scan for each
+        Coldfront volume.
+        '''
+        scans_narrowed = []
+        scans = self.get_scans()
+        volumes = self.get_volumes_in_coldfront()
+        for volume in volumes:
+            latest_time = max([s['creation_time'] for s in scans['scans'] if s['volume'] == volume])
+            latest_scan = next(s for s in scans['scans'] if s['creation_time'] == latest_time and s['volume'] == volume)
+            scans_narrowed.append(latest_scan)
+            if latest_scan['state']['is_running'] or latest_scan['state']['is_successful']:
+                last_completed_time = max([s['creation_time'] for s in scans['scans'] if not s['state']['is_running'] and s['state']['is_successful'] and s['volume'] == volume])
+                last_completed = next(s for s in scans['scans'] if s['creation_time'] == last_completed_time and s['volume'] == volume)
+                scans_narrowed.append(last_completed)
+        return scans_narrowed
+
 
     @record_process
     def get_subpaths(self, volpath):
@@ -127,7 +155,7 @@ class StarFishServer:
         -------
         query : Query class object
         '''
-        query = StarFishQuery(
+        query = AsyncQuery(
             self.headers, self.api_url, query, group_by, volpath, sec=sec
         )
         return query
@@ -207,7 +235,7 @@ class StarFishRedash:
         return data
 
 
-class StarFishQuery:
+class AsyncQuery:
     def __init__(self, headers, api_url, query, group_by, volpath, sec=3):
         self.api_url = api_url
         self.headers = headers
@@ -504,17 +532,13 @@ def zero_out_absent_allocationusers(redash_usernames, allocation):
         logger.info('users no longer in allocation %s: %s', allocation.pk, [user.user.username for user in allocationusers_not_in_redash])
         allocationusers_not_in_redash.update(usage=0, usage_bytes=0)
 
-def compare_cf_sf_volumes():
-    '''
-    cross-reference CF Resources and SF volumes to produce list of all
-    volumes to be collected
-    '''
-    resource_names = [re.sub(r'\/.+','',n) for n in Resource.objects.values_list('name', flat=True)]
-    # limit volumes to be collected to those ones present in the Starfish database
-    volume_names = StarFishServer(STARFISH_SERVER).volumes
-    vols_to_collect = [vol for vol in volume_names for res in resource_names if vol == res]
-    return vols_to_collect
 
+def update_usage_value(allocation, usage_attribute_type, usage_value):
+    usage_attribute, _ = allocation.allocationattribute_set.get_or_create(
+            allocation_attribute_type=usage_attribute_type
+        )
+    usage_attribute.allocationattributeusage.value = usage_value
+    usage_attribute.allocationattributeusage.save()
 
 def pull_sf_push_cf_redash():
     '''
@@ -522,7 +546,8 @@ def pull_sf_push_cf_redash():
 
     Only Allocations for Projects that are already in Coldfront will be updated.
     '''
-    vols_to_collect = compare_cf_sf_volumes()
+    starfish_server = StarFishServer(STARFISH_SERVER)
+    vols_to_collect = starfish_server.get_volumes_in_coldfront()
     # 2. grab data from redash
     redash_api = StarFishRedash(STARFISH_SERVER)
     user_usage = redash_api.get_usage_stats(volumes=vols_to_collect)
@@ -539,6 +564,7 @@ def pull_sf_push_cf_redash():
     allocations = Allocation.objects.filter(resources__in=searched_resources,
         status__name__in=['Active', 'New', 'Updated', 'Ready for Review']
         ).prefetch_related('project','allocationattribute_set', 'allocationuser_set')
+    # allocations.update(is_changeable=True)
     # 3. iterate across allocations
     for allocation in allocations:
         project = allocation.project
@@ -566,19 +592,14 @@ def pull_sf_push_cf_redash():
             issues['no_total'].append((allocation.pk, project, volume))
         else:
             lab_usage_entries = lab_usage_entries[0]
-            bytes_attribute, _ = allocation.allocationattribute_set.get_or_create(
-                    allocation_attribute_type=quota_bytes_attributetype
-                )
-            bytes_attribute.allocationattributeusage.value = lab_usage_entries['total_size']
-            bytes_attribute.allocationattributeusage.save()
+            update_usage_value(allocation, quota_bytes_attributetype,
+                                            lab_usage_entries['total_size'])
 
             tbs = round((lab_usage_entries['total_size']/1099511627776), 5)
             logger.info('allocation usage for allocation %s: %s bytes, %s terabytes',
                         allocation.pk, lab_usage_entries['total_size'], tbs)
-            tbs_attribute, _ = allocation.allocationattribute_set.update_or_create(
-                    allocation_attribute_type=quota_tbs_attributetype)
-            tbs_attribute.allocationattributeusage.value = tbs
-            tbs_attribute.allocationattributeusage.save()
+            update_usage_value(allocation, quota_tbs_attributetype, tbs)
+
         if not user_usage_entries:
             logger.warning('WARNING: No starfish user usage result for allocation %s %s %s',
                                                 allocation.pk, lab, resource)

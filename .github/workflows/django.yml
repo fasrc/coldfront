@@ -47,7 +47,7 @@ jobs:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
           SSH_KEY: ${{ secrets.ACTION_SSH }}
     - name: Create .env file
-      run: echo -e "NEO4JP=${{ secrets.NEO4JP }}\nSFUSER=${{ secrets.SFUSER }}\nSFPASS=${{ secrets.SFPASS }} > .env"
+      run: echo -e "NEO4JP=${{ secrets.NEO4JP }}\nSFUSER=${{ secrets.SFUSER }}\nSFPASS=${{ secrets.SFPASS }}\nPLUGIN_FASRC=True" > .env
     - name: Build the images and start the containers
       run: |
         export GITHUB_WORKFLOW=True

@@ -31,6 +31,7 @@ plugin_configs = {
     'PLUGIN_SFTOCF': 'plugins/sftocf.py',
     'PLUGIN_FASRC': 'plugins/fasrc.py',
     'PLUGIN_IFX': 'plugins/ifx.py',
+    'PLUGIN_FASRC_MONITORING': 'plugins/fasrc_monitoring.py'
 }
 
 # This allows plugins to be enabled via environment variables. Can alternatively
