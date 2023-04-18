@@ -12,6 +12,7 @@ from django.conf import settings
 from ifxbilling.calculator import BasicBillingCalculator, NewBillingCalculator
 from ifxbilling.models import Account, Product, ProductUsage, Rate, BillingRecord
 from coldfront.core.allocation.models import Allocation, AllocationStatusChoice
+from coldfront.plugins.ifx import adjust
 from .models import AllocationUserProductUsage
 
 
@@ -186,6 +187,7 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
                     'rate': rate_desc,
                 }
             ]
+            billing_data_dict = {}
             if self.verbosity > 0:
                 logger.info('Setting up offer letter charge of %s against %s', str(charge), str(offer_letter_acct))
             offer_letter_br = self.create_billing_record(
@@ -195,10 +197,9 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
                 offer_letter_acct,
                 100,
                 storage_product_rate,
+                offer_letter_tb,
                 transactions_data,
-                {
-                    'rate_desc': rate_desc
-                },
+                billing_data_dict
             )
 
             remaining_tb = allocation_tb - offer_letter_tb
@@ -441,13 +442,14 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
         total = 0
         count = 0
         for row in cursor.fetchall():
-            allocation_user_fractions[row[0]] = {
-                'quantity': row[1]
-            }
             if row[1] is None:
                 raise Exception(f'ProductUsage quantity is None for allocation {allocation}')
-            total += row[1]
-            count += 1
+            if row[1] > Decimal('0'):
+                allocation_user_fractions[row[0]] = {
+                    'quantity': row[1]
+                }
+                total += row[1]
+                count += 1
 
         if total == 0 and count == 0:
             # If there are no users, set count to 1 and add PI user id
@@ -463,6 +465,8 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
             # For the situation where there is an allocation, and the PI is an allocation user, but no data is used
             # set fraction to 1.
             if total == 0:
+                if count > 1:
+                    logger.error(f'Allocation {allocation} from {allocation.project} has {count} 0 byte users')
                 allocation_user_fractions[uid]['fraction'] = Decimal(1)
             else:
                 allocation_user_fractions[uid]['fraction'] = Decimal(allocation_user_fractions[uid]['quantity']) / Decimal(total)
@@ -638,6 +642,18 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
             raise Exception(f'More than one AllocationUserProductUsage found for allocation {allocation}, user {user} with organization {organization}')
 
         return aupu.product_usage
+
+    def calculate_billing_month(self, year, month, organizations=None, recalculate=False, verbosity=0):
+        '''
+        Adjust march 2023 due to bad DR issues
+        '''
+        results = super().calculate_billing_month(year, month, organizations, recalculate, verbosity)
+        if year == 2023 and month == 3:
+            adjust.march_2023_dr()
+
+        return results
+
+
 
 class Resultinator():
     '''
