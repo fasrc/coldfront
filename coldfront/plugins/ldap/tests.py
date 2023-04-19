@@ -119,6 +119,7 @@ class GroupUserCollectionTests(TestCase):
             'sAMAccountName': ['ljbortkiewicz'],
             'department': ['Statistics and Probability'],
             'userAccountControl': [512],
+            'memberOf': ['CD=non_faculty_pi'],
             'accountExpires': self.expireduser_accountExpires,
         }
         self.guc = (GroupUserCollection(group_name, ad_users, pi))
