@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 
-from coldfront.plugins.ldap.utils import collect_update_group_membership
+from coldfront.plugins.ldap.utils import collect_update_project_status_membership
 
 class Command(BaseCommand):
     '''
@@ -8,4 +8,4 @@ class Command(BaseCommand):
     '''
 
     def handle(self, *args, **kwargs):
-        collect_update_group_membership()
+        collect_update_project_status_membership()

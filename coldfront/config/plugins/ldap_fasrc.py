@@ -1,3 +1,6 @@
+'''
+FASRC-specific LDAP plugin settings
+'''
 from django.core.exceptions import ImproperlyConfigured
 
 from coldfront.config.env import ENV
@@ -9,10 +12,6 @@ try:
     from django_auth_ldap.config import GroupOfNamesType, LDAPSearch
 except ImportError as exc:
     raise ImproperlyConfigured('Please run: pip install ldap3') from exc
-
-#------------------------------------------------------------------------------
-# This enables searching for users via LDAP
-#------------------------------------------------------------------------------
 
 INSTALLED_APPS += [ 'coldfront.plugins.ldap' ]
 

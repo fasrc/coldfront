@@ -132,13 +132,16 @@ class LDAPConn:
             group_manager_dn = group_entry['managedBy'][0]
         except Exception as e:
             return 'no manager specified'
+        manager_attr_list = user_attr_list + ['memberOf']
         group_manager = self.search_users({'distinguishedName': group_manager_dn},
-                attributes= user_attr_list)
+                attributes=manager_attr_list)
         logger.debug('group_manager:\n%s', group_manager)
         if not group_manager:
             return 'no ADUser manager found'
         return (group_members, group_manager[0])
 
+def user_valid(user):
+    return user['accountExpires'][0] > timezone.now() and user['userAccountControl'][0] in [512, 66048]
 
 class GroupUserCollection:
     '''
@@ -150,19 +153,19 @@ class GroupUserCollection:
         self.pi = pi
         self.project = project
 
-
     @property
     def current_ad_users(self):
-        return [u for u in self.members if u['accountExpires'][0] > timezone.now()]
+        return [u for u in self.members if user_valid(u)]
 
     @property
     def pi_is_active(self):
         '''Return true if PI's account is both unexpired and not disabled.'''
-        return self.pi['accountExpires'][0] > timezone.now() and self.pi['userAccountControl'][0] == 512
+        return user_valid(self.pi)
+
 
     def compare_active_members_projectusers(self):
-        '''
-        Compare ADGroup members to ProjectUsers.
+        '''Compare ADGroup members to ProjectUsers.
+
         Returns
         -------
         members_only : list
@@ -261,21 +264,20 @@ def cleaned_membership_query(proj_membs_mans):
 def remove_inactive_disabled_managers(groupusercollections):
     '''Remove groupusercollections with inactive managers'''
     active_pi_groups, inactive_pi_groups = sort_by(groupusercollections, 'pi_is_active', how='attr')
-    if len(active_pi_groups) < len(groupusercollections):
+    if inactive_pi_groups:
         logger.error('LDAP query returns Active Projects with expired PIs: %s',
         {group.name: group.pi['sAMAccountName'][0] for group in inactive_pi_groups})
-    return active_pi_groups
+    return active_pi_groups, inactive_pi_groups
 
 def flatten(l):
     return [item for sublist in l for item in sublist]
 
 
-def collect_update_group_membership():
+def collect_update_project_status_membership():
     '''
-    Update ProjectUser entries for existing Coldfront Projects using
+    Update Project and ProjectUser entries for existing Coldfront Projects using
     ADGroup and ADUser data.
     '''
-
     # collect commonly used db objects
     projectuser_role_user = ProjectUserRoleChoice.objects.get(name='User')
     projectuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
@@ -286,10 +288,15 @@ def collect_update_group_membership():
     ad_conn = LDAPConn()
 
     proj_membs_mans = { proj: ad_conn.return_group_members_manager(proj.title) for proj in active_projects}
-    proj_membs_mans, search_errors = cleaned_membership_query(proj_membs_mans)
+    proj_membs_mans, _ = cleaned_membership_query(proj_membs_mans)
     groupusercollections = [GroupUserCollection(k.title, v[0], v[1], project=k) for k, v in proj_membs_mans.items()]
 
-    active_pi_groups = remove_inactive_disabled_managers(groupusercollections)
+    active_pi_groups, inactive_pi_groups = remove_inactive_disabled_managers(groupusercollections)
+    projects_to_deactivate = [g.project for g in inactive_pi_groups]
+    projects_to_deactivate.update(status=ProjectStatusChoice.objects.get(name='Inactive'))
+    pis_to_deactivate = [ProjectUser.objects.get(project=project, user=project.pi)
+                                        for project in projects_to_deactivate]
+    pis_to_deactivate.update(status=ProjectUserStatusChoice.objects.get(name='Removed'))
 
     ### identify PIs with incorrect roles and change their status ###
     projectuser_role_manager = ProjectUserRoleChoice.objects.get(name='Manager')
@@ -306,7 +313,6 @@ def collect_update_group_membership():
     if pis_mislabeled:
         logger.info('Project PIs with incorrect labeling: %s',
             [(pi.project.title, pi.user.username) for pi in pis_mislabeled])
-
         ProjectUser.objects.bulk_update([
             ProjectUser(id=pi.id, role=projectuser_role_manager)
             for pi in pis_mislabeled
@@ -321,7 +327,7 @@ def collect_update_group_membership():
             logger.debug('ADUsers not in ProjectUsers:\n%s', ad_users_not_added)
             # find accompanying ifxusers in the system and add as ProjectUsers
             ifxusers, missing_users = id_present_missing_users(ad_users_not_added)
-            # log_missing('users', missing_users) # log missing IFXusers
+            log_missing('users', missing_users) # log missing IFXusers
 
             # If user is missing because status was changed to 'removed', update status
             present_users = group.project.projectuser_set.filter(user__in=ifxusers)
@@ -361,7 +367,7 @@ def import_projects_projectusers(projects_list):
     '''Use AD user and group information to automatically create new
     Coldfront Projects from projects_list.
     '''
-    errortracker = { 'no_pi': [], 'not_found': [], 'no_fos': [], 'pi_not_projectuser': [] }
+    errortracker = { 'no_pi': [], 'not_found': [], 'no_fos': [], 'pi_not_projectuser': [], 'pi_active_invalid': [] }
     # if project already exists, end here
     existing_projects = Project.objects.filter(title__in=projects_list)
     if existing_projects:
@@ -383,16 +389,23 @@ def add_new_projects(groupusercollections, errortracker):
     already collected from ATT.
     '''
     # if PI is inactive, don't add project
-    active_pi_groups = remove_inactive_disabled_managers(groupusercollections)
+    active_pi_groups, _ = remove_inactive_disabled_managers(groupusercollections)
+    logger.debug('active_pi_groups: %s', active_pi_groups)
+    # if PI lacks 'harvard_faculty' or 'non_faculty_pi' Affiliation, don't add
+    pi_groups = ['harvard_faculty', 'non_faculty_pi']
+    active_valid_pi_groups = [g for g in active_pi_groups if any(any(string in m for string in pi_groups) for m in g.pi['memberOf'])]
+    logger.debug('active_invalid_pi_groups: %s', set(active_valid_pi_groups) - set(active_pi_groups))
 
+    errortracker['pi_active_invalid'] = [group.name for group in active_pi_groups
+        if group not in active_valid_pi_groups]
     # identify all users not in ifx
-    user_entries = flatten([group.members + [group.pi] for group in active_pi_groups])
+    user_entries = flatten([group.members + [group.pi] for group in active_valid_pi_groups])
     user_names = {u['sAMAccountName'][0] for u in user_entries}
     _, missing_users = id_present_missing_users(user_names)
     log_missing('user', missing_users)
     missing_usernames = {d['username'] for d in missing_users}
 
-    active_present_pi_groups = [group for group in active_pi_groups
+    active_present_pi_groups = [group for group in active_valid_pi_groups
         if group.pi['sAMAccountName'][0] not in missing_usernames]
     # record and remove projects where pis aren't available
     errortracker['no_pi'] = [group.name for group in groupusercollections
@@ -420,7 +433,6 @@ def add_new_projects(groupusercollections, errortracker):
             print(f'HALTING: no field of science for PI of project {group.name}')
             print(group.pi)
             continue
-
 
         ### CREATE PROJECT ###
         project_pi = get_user_model().objects.get(username=group.pi['sAMAccountName'][0])
