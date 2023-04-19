@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from ldap3.core.timezone import OffsetTzInfo
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.contrib.auth import get_user_model
 
 from coldfront.core.project.models import Project
@@ -49,9 +49,11 @@ class UtilFunctionTests(TestCase):
 class LDAPConnTest(TestCase):
     '''tests for LDAPConn class'''
 
+    @tag('net')
     def setUp(self):
         self.ldap_conn = LDAPConn()
 
+    @tag('net')
     def test_search_group_one_kv(self):
         '''Be able to return correct group with the variables given
         '''
@@ -59,7 +61,7 @@ class LDAPConnTest(TestCase):
         results = self.ldap_conn.search_groups(attr_search_dict)
         self.assertEqual(len(results), 1)
 
-
+    @tag('net')
     def test_search_user_one_kv(self):
         '''Be able to return correct user with the variables given
         '''
@@ -67,6 +69,7 @@ class LDAPConnTest(TestCase):
         results = self.ldap_conn.search_users(attr_search_dict)
         self.assertEqual(len(results), 1)
 
+    @tag('net')
     def test_search_user_membership(self):
         '''Be able to return correct user with the variables given
         '''
@@ -74,6 +77,7 @@ class LDAPConnTest(TestCase):
         results = self.ldap_conn.search_users(attr_search_dict)
         self.assertEqual(len(results), 5)
 
+    @tag('net')
     def test_return_group_members_manager(self):
         samaccountname = 'rc_test_lab'
         result = self.ldap_conn.return_group_members_manager(samaccountname)

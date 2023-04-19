@@ -60,9 +60,9 @@ jobs:
         SSH_AUTH_SOCK: /tmp/ssh_agent.sock
     - name: Run Tests
       run: |
-        docker exec coldfront ./manage.py test
-    - name: change env variables
-      run: docker exec coldfront export
-    - name: Run Tests
-      run: |
-        docker exec coldfront ./manage.py test
+        docker exec coldfront ./manage.py test --exclude-tag=net
+    # - name: change env variables
+    #   run: docker exec coldfront export
+    # - name: Run Tests
+    #   run: |
+    #     docker exec coldfront ./manage.py test

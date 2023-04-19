@@ -14,7 +14,6 @@ except ImportError as exc:
 # This enables searching for users via LDAP
 #------------------------------------------------------------------------------
 
-
 INSTALLED_APPS += [ 'coldfront.plugins.ldap' ]
 
 AUTH_LDAP_SERVER_URI = ENV.str('AUTH_LDAP_SERVER_URI')
