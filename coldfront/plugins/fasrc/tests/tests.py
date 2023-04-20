@@ -4,8 +4,8 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 import pandas as pd
 
-
-from coldfront.plugins.fasrc.utils import AllTheThingsConn, add_new_projects
+from coldfront.plugins.fasrc.utils import (AllTheThingsConn,
+                                        add_new_projects, push_quota_data)
 
 class UploadTests(TestCase):
     '''Catch issues that may cause database not to upload properly.'''
@@ -24,7 +24,7 @@ class UploadTests(TestCase):
         self.testusers = self.pref + 'att_users_dummy.json'
 
     def test_push_quota_data(self):
-        self.attconn.push_quota_data(self.testfiles)
+        push_quota_data(self.testfiles)
         # assert AllocationAttribute.
 
     # def test_add_new_projects(self):
