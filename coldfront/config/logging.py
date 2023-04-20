@@ -29,6 +29,7 @@ LOGGING = {
         #     'filename': '/tmp/debug.log',
         # },
     },
+    'formatters': {},
     'loggers': {
         'django_auth_ldap': {
             'level': 'INFO',
