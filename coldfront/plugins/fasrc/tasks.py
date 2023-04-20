@@ -1,4 +1,5 @@
-from coldfront.plugins.fasrc.utils import AllTheThingsConn
+from coldfront.plugins.fasrc.utils import pull_push_quota_data
+import logging
 
 def import_quotas(volumes=None):
     '''
@@ -9,8 +10,7 @@ def import_quotas(volumes=None):
     ----------
     volumes : string of volume names separated by commas. Optional, default None
     '''
+    logger = logging.getLogger('import_quotas')
     if volumes:
         volumes = volumes.split(",")
-    attconn = AllTheThingsConn()
-    result_file = attconn.pull_quota_data(volumes=volumes)
-    attconn.push_quota_data(result_file)
+    pull_push_quota_data()

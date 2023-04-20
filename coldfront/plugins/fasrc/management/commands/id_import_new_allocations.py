@@ -26,8 +26,7 @@ from coldfront.plugins.fasrc.utils import (pull_sf_push_cf_redash,
                                             AllTheThingsConn,
                                             read_json)
 
-logger = logging.getLogger()
-
+logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
 
