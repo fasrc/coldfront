@@ -448,7 +448,7 @@ def create_new_projects(projects_list: list):
     Use ATT user, group, and relationship information to automatically create new
     Coldfront Projects from projects_list.
     '''
-    # logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
 
     # if project already exists, end here
     existing_projects = Project.objects.filter(title__in=projects_list)
@@ -469,7 +469,7 @@ def update_group_membership():
     list up-to-date for existing Coldfront Projects.
     '''
 
-    # logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
     errors = { 'no_members': [], 'no_users': [], 'no_managers': [] }
 
     # collect commonly used db objects

@@ -13,6 +13,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError, MultipleObjectsReturned
 from django.core.management.base import BaseCommand
 
+from coldfront.core.project.models import ProjectStatusChoice
 from coldfront.core.allocation.models import (Allocation,
                                             AllocationUser,
                                             AllocationAttribute,
@@ -50,6 +51,8 @@ class Command(BaseCommand):
 
         for lab, allocations in result_json_cleaned.items():
             project = proj_models.get(title=lab)
+            if project.status.name == 'New':
+                project.status = ProjectStatusChoice.objects.get(name='Active')
             for entry in allocations:
                 lab_name = entry['lab']
                 lab_server = entry['server']
