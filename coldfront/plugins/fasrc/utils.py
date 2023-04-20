@@ -92,6 +92,7 @@ class ATTAllocationQuery:
                 replace(e.{d['server']}, '{d['server_replace']}', '') as server"}
         self.queries['statements'].append(statement)
 
+
 class QuotaDataPuller:
     '''pull and standardize quota data'''
 
@@ -151,57 +152,49 @@ class AllTheThingsConn:
         return [dict(zip(rdict['columns'],entrydict['row'])) \
                 for rdict in result_dicts for entrydict in rdict['data'] ]
 
-    def collect_group_membership(self, groupname):
-        '''
-        Collect user, and relationship information for a lab or labs from ATT.
-        '''
+    def stage_user_member_query(self, groupname, pi=False):
+        match_statement = f'MATCH (u:User)-[r:MemberOf|ManagedBy]-(g:Group) \
+        WHERE (g.ADSamAccountName =~ \'{groupname}\')'
+        return_statement = 'type(r) AS relationship,\
+                            g.ADManaged_By AS group_manager'
+        if pi:
+            match_statement = f"MATCH (g:Group) WITH g\
+                    MATCH (u:User)\
+                    WHERE (g.ADSamAccountName =~ \'({groupnamesearch})\') \
+                    AND u.ADSamAccountName = g.ADManaged_By"
+            return_statement = 'u.ADParentCanonicalName AS path, \
+                                u.ADDepartment AS department, '
         query = {'statements': [{
-                    'statement': f'MATCH (u:User)-[r:MemberOf|ManagedBy]-(g:Group) \
-                    WHERE (g.ADSamAccountName =~ \'{groupname}\') \
+                    'statement': f'{match_statement} \
                     RETURN \
                     u.ADgivenName AS first_name, \
                     u.ADsurname AS last_name, \
                     u.ADSamAccountName AS user_name, \
                     u.ADenabled AS user_enabled, \
                     g.ADSamAccountName AS group_name,\
-                    type(r) AS relationship,\
+                    {return_statement} \
                     g.ADManaged_By AS group_manager, \
                     u.ADgidNumber AS user_gid_number, \
+                    u.ADTitle AS title, \
+                    u.ADCompany AS company, \
                     g.ADgidNumber AS group_gid_number'
                 }]}
         resp_json = self.post_query(query)
         resp_json_formatted = self.format_query_results(resp_json)
         return resp_json_formatted
 
+    def collect_group_membership(self, groupname):
+        '''
+        Collect user, and relationship information for a lab or labs from ATT.
+        '''
+        resp_json_formatted = self.stage_user_member_query(groupname)
+        return resp_json_formatted
+
 
     def collect_pi_data(self, grouplist):
         '''collect information on pis for a given list of groups
         '''
-        groupnamesearch = '|'.join(grouplist)
-        query = {'statements': [{
-                    'statement': f'MATCH (g:Group)\
-                    WITH g\
-                    MATCH (u:User)\
-                    WHERE (g.ADSamAccountName =~ \'({groupnamesearch})\') \
-                    AND u.ADSamAccountName = g.ADManaged_By\
-                    RETURN\
-                    g.ADSamAccountName AS group_name,\
-                    u.ADSamAccountName AS user_name, \
-                    u.ADgivenName AS first_name, \
-                    u.ADsurname AS last_name, \
-                    u.ADmail AS email, \
-                    u.ADDepartment AS department, \
-                    u.ADTitle AS title, \
-                    u.ADCompany AS company, \
-                    u.ADParentCanonicalName AS path, \
-                    u.DotsPTLUpdateDate, \
-                    u.DotsADUpdateDate, \
-                    u.ADenabled AS user_enabled, \
-                    u.NANInNanites AS in_nanites, \
-                    u.ADgidNumber AS user_gid_number'
-                }]}
-        resp_json = self.post_query(query)
-        resp_json_formatted = self.format_query_results(resp_json)
+        resp_json_formatted = self.stage_user_member_query(groupname, pi=True)
         return resp_json_formatted
 
     def pull_quota_data(self, volumes=None):
@@ -223,7 +216,7 @@ class AllTheThingsConn:
         return resp_json
 
 def push_quota_data(result_file):
-    '''Use JSON of collected ATT data to update group quota & usage values in Coldfront.
+    '''update group quota & usage values in Coldfront from a JSON of quota data.
     '''
     logger = logging.getLogger('import_quotas')
     errored_allocations = {}
@@ -303,9 +296,7 @@ def push_quota_data(result_file):
 
 
 def match_entries_with_projects(result_json):
-    '''
-    Remove and report allocations for projects not in Coldfront
-    '''
+    '''Remove and report allocations for projects not in Coldfront'''
     # produce lists of present labs & labs w/o projects
     lablist = list(set(k for k in result_json))
     proj_models, missing_projs = id_present_missing_projects(lablist)
