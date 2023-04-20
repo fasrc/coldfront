@@ -551,7 +551,6 @@ def pull_sf_push_cf_redash():
     # 2. grab data from redash
     redash_api = StarFishRedash(STARFISH_SERVER)
     user_usage = redash_api.get_usage_stats(volumes=vols_to_collect)
-    user_usage_by_group = redash_api.get_usage_stats(query='usage_query', volumes=vols_to_collect)
     allocation_usages = redash_api.get_usage_stats(query='subdirectory', volumes=vols_to_collect)
     queryset = []
     issues = {'no_users':[], 'no_total':[], 'no_path':[]}
@@ -575,30 +574,22 @@ def pull_sf_push_cf_redash():
 
         # select query rows that match allocation volume and lab
         # confirm that only one allocation is represented by checking the path
-        if allocation.path:
-            user_usage_entries = [i for i in user_usage if i['vol_name'] == volume and allocation.path == i['lab_path']]
-            lab_usage_entries = [i for i in allocation_usages if i['vol_name'] == volume and allocation.path == i['path']]
-        else:
-            logger.info('no allocation path for allocation %s / %s; defaulting to membership-based usage reporting.', project, volume)
-            issues['no_path'].append((allocation.pk, project, volume))
-            user_usage_entries = [i for i in user_usage_by_group if i['vol_name'] == volume and i['group_name'] == lab]
-            print(f'no allocation path for allocation {allocation.pk} {project} / {volume}; defaulting to membership-based usage reporting.', allocation.allocationattribute_set.all())
-            lab_usage_entries = [i for i in allocation_usages if i['vol_name'] == volume and i['group_name'] == lab]
-
+        user_usage_entries = [i for i in user_usage if i['vol_name'] == volume and allocation.path == i['lab_path'] and i['group_name'] == lab]
+        lab_usage_entries = [i for i in allocation_usages if i['vol_name'] == volume and allocation.path == i['path'] and i['group_name'] == lab]
         if not lab_usage_entries:
-            print('WARNING: No starfish allocation usage for', allocation.pk, lab, resource)
-            logger.warning('WARNING: No starfish allocation usage result for allocation %s %s %s',
-                allocation.pk, lab, resource)
+            print('WARNING: No starfish allocation usage found for', allocation.pk, lab, resource)
+            logger.warning('WARNING: No starfish allocation usage result for allocation %s %s %s - check path, groupname',
+            allocation.pk, lab, resource)
             issues['no_total'].append((allocation.pk, project, volume))
-        else:
-            lab_usage_entries = lab_usage_entries[0]
-            update_usage_value(allocation, quota_bytes_attributetype,
-                                            lab_usage_entries['total_size'])
+            continue
+        lab_usage_entries = lab_usage_entries[0]
+        update_usage_value(allocation, quota_bytes_attributetype,
+                                        lab_usage_entries['total_size'])
 
-            tbs = round((lab_usage_entries['total_size']/1099511627776), 5)
-            logger.info('allocation usage for allocation %s: %s bytes, %s terabytes',
-                        allocation.pk, lab_usage_entries['total_size'], tbs)
-            update_usage_value(allocation, quota_tbs_attributetype, tbs)
+        tbs = round((lab_usage_entries['total_size']/1099511627776), 5)
+        logger.info('allocation usage for allocation %s: %s bytes, %s terabytes',
+                    allocation.pk, lab_usage_entries['total_size'], tbs)
+        update_usage_value(allocation, quota_tbs_attributetype, tbs)
 
         if not user_usage_entries:
             logger.warning('WARNING: No starfish user usage result for allocation %s %s %s',

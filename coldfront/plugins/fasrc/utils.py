@@ -152,15 +152,15 @@ class AllTheThingsConn:
         return [dict(zip(rdict['columns'],entrydict['row'])) \
                 for rdict in result_dicts for entrydict in rdict['data'] ]
 
-    def stage_user_member_query(self, groupname, pi=False):
+    def stage_user_member_query(self, groupsearch, pi=False):
         match_statement = f'MATCH (u:User)-[r:MemberOf|ManagedBy]-(g:Group) \
-        WHERE (g.ADSamAccountName =~ \'{groupname}\')'
+        WHERE (g.ADSamAccountName =~ \'{groupsearch}\')'
         return_statement = 'type(r) AS relationship,\
                             g.ADManaged_By AS group_manager'
         if pi:
             match_statement = f"MATCH (g:Group) WITH g\
                     MATCH (u:User)\
-                    WHERE (g.ADSamAccountName =~ \'({groupnamesearch})\') \
+                    WHERE (g.ADSamAccountName =~ \'({groupsearch})\') \
                     AND u.ADSamAccountName = g.ADManaged_By"
             return_statement = 'u.ADParentCanonicalName AS path, \
                                 u.ADDepartment AS department, '
@@ -183,18 +183,18 @@ class AllTheThingsConn:
         resp_json_formatted = self.format_query_results(resp_json)
         return resp_json_formatted
 
-    def collect_group_membership(self, groupname):
+    def collect_group_membership(self, groupsearch):
         '''
         Collect user, and relationship information for a lab or labs from ATT.
         '''
-        resp_json_formatted = self.stage_user_member_query(groupname)
+        resp_json_formatted = self.stage_user_member_query(groupsearch)
         return resp_json_formatted
 
 
     def collect_pi_data(self, grouplist):
         '''collect information on pis for a given list of groups
         '''
-        resp_json_formatted = self.stage_user_member_query(groupname, pi=True)
+        resp_json_formatted = self.stage_user_member_query(grouplist, pi=True)
         return resp_json_formatted
 
     def pull_quota_data(self, volumes=None):

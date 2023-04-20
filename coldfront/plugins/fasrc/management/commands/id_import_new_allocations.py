@@ -20,12 +20,12 @@ from coldfront.core.allocation.models import (Allocation,
                                             AllocationAttributeType,
                                             AllocationStatusChoice,
                                             AllocationUserStatusChoice)
-from coldfront.core.utils.fasrc import update_csv, select_one_project_allocation
+from coldfront.core.utils.fasrc import update_csv, select_one_project_allocation, save_json
 from coldfront.core.resource.models import Resource
-from coldfront.plugins.sftocf.utils import StarFishRedash, STARFISH_SERVER
-from coldfront.plugins.fasrc.utils import (pull_sf_push_cf_redash,
-                                            AllTheThingsConn,
-                                            read_json)
+from coldfront.plugins.sftocf.utils import (StarFishRedash,
+                                            STARFISH_SERVER,
+                                            pull_sf_push_cf_redash)
+from coldfront.plugins.fasrc.utils import AllTheThingsConn, read_json, match_entries_with_projects, push_quota_data
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,12 @@ class Command(BaseCommand):
                 'missing_projects': [],
                 }
         attconn = AllTheThingsConn()
-        result_file = attconn.pull_quota_data()
-        result_json = read_json(result_file)
-        result_json_cleaned, proj_models = attconn.match_entries_with_projects(result_json)
+        result_json = attconn.pull_quota_data()
+        resp_json_by_lab = {entry['lab']:[] for entry in result_json}
+        [resp_json_by_lab[e['lab']].append(e) for e in result_json]
+        result_file = 'local_data/att_quota_data.json'
+        save_json(result_file, resp_json_by_lab)
+        result_json_cleaned, proj_models = match_entries_with_projects(resp_json_by_lab)
 
         redash_api = StarFishRedash(STARFISH_SERVER)
         allocation_usages = redash_api.get_usage_stats(query='subdirectory')
@@ -111,7 +114,7 @@ class Command(BaseCommand):
                     print('PI added: ' + project.pi.username)
         if not added_allocations_df.empty:
             added_allocations_df['billing_code'] = None
-            update_csv(added_allocations_df, './local_data/', 'added_allocations.csv')
-        attconn.push_quota_data(result_file)
+            update_csv(added_allocations_df.to_json(orient='records'), './local_data/', 'added_allocations.csv')
+        push_quota_data(result_file)
         pull_sf_push_cf_redash()
         return json.dumps(command_report, indent=2)
