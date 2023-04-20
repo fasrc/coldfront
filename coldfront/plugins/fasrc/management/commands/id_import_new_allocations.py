@@ -42,6 +42,7 @@ class Command(BaseCommand):
                 }
         attconn = AllTheThingsConn()
         result_json = attconn.pull_quota_data()
+        result_json = attconn.format_query_results(result_json)
         resp_json_by_lab = {entry['lab']:[] for entry in result_json}
         [resp_json_by_lab[e['lab']].append(e) for e in result_json]
         result_file = 'local_data/att_quota_data.json'
