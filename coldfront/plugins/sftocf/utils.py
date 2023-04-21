@@ -570,15 +570,15 @@ def pull_sf_push_cf_redash():
         lab = project.title
         resource = allocation.get_parent_resource
         volume = resource.name.split('/')[0]
-        logger.debug('adding resource for %s %s (path %s)', lab, resource, allocation.path)
+        logger.debug('adding allocation for %s %s (path %s)', lab, resource, allocation.path)
 
         # select query rows that match allocation volume and lab
         # confirm that only one allocation is represented by checking the path
-        user_usage_entries = [i for i in user_usage if i['vol_name'] == volume and allocation.path == i['lab_path'] and i['group_name'] == lab]
-        lab_usage_entries = [i for i in allocation_usages if i['vol_name'] == volume and allocation.path == i['path'] and i['group_name'] == lab]
+        user_usage_entries = [i for i in user_usage if i['vol_name'] == volume and allocation.path == i['lab_path']]
+        lab_usage_entries = [i for i in allocation_usages if i['vol_name'] == volume and allocation.path == i['path']]
         if not lab_usage_entries:
             print('WARNING: No starfish allocation usage found for', allocation.pk, lab, resource)
-            logger.warning('WARNING: No starfish allocation usage result for allocation %s %s %s - check path, groupname',
+            logger.warning('WARNING: No starfish allocation usage result for allocation %s %s %s - check path',
             allocation.pk, lab, resource)
             issues['no_total'].append((allocation.pk, project, volume))
             continue
@@ -605,22 +605,12 @@ def pull_sf_push_cf_redash():
         # identify and record users that aren't in Coldfront
         user_models, missing_usernames = id_present_missing_users(usernames)
         missing_user_list = [d['username'] for d in missing_usernames]
-        try:
-            missing_unames_metadata = [{
-                    'username': d['user_name'],
-                    'volume': d['vol_name'],
-                    'path': d['lab_path'],
-                    'group': ''
-                }
-            for d in user_usage_entries if d['user_name'] in missing_user_list]
-        except KeyError:
-            missing_unames_metadata = [{
-                    'username': d['user_name'],
-                    'volume': d['vol_name'],
-                    'path': '',
-                    'group': d['group_name']
-                }
-            for d in user_usage_entries if d['user_name'] in missing_user_list]
+        missing_unames_metadata = [{
+                'username': d['user_name'],
+                'volume': d['vol_name'],
+                'path': d['lab_path'],
+            }
+        for d in user_usage_entries if d['user_name'] in missing_user_list]
 
         log_missing('user', missing_unames_metadata)
         logger.debug('%d / %d users are present.\nColdfront users: %s',

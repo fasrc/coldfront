@@ -54,7 +54,8 @@ class ATTAllocationQuery:
                 'match': '[r:Owns]-(e:IsilonPath) MATCH (d:ConfigValue {Name: \'IsilonPath.Invocation\'})',
                 'validation_query':"r.DotsUpdateDate = d.DotsUpdateDate \
                                     AND NOT (e.Path =~ '.*/rc_admin/.*')\
-                                    AND (e.Path =~ '.*labs.*')",
+                                    AND (e.Path =~ '.*labs.*')\
+                                    AND NOT (e.SizeGB = 0)",
                 'r_updated': 'DotsUpdateDate',
                 'storage_type':'\'Isilon\'',
                 'fs_path':'Path',

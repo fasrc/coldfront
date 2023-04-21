@@ -8,7 +8,6 @@ AD groups to be added are identified by the following criteria:
 - AD group name has a suffix of _lab or _l3
 '''
 import logging
-from datetime import datetime
 
 from django.core.management.base import BaseCommand
 
@@ -33,9 +32,10 @@ class Command(BaseCommand):
                         'managedBy': '*'
                         }, attributes=['sAMAccountName'])
         ad_group_names = [group['sAMAccountName'][0] for group in ad_groups] # get all AD group names
-
-        ad_only = list(set(ad_group_names) - set(project_titles)) # print AD groups that do not have a corresponding ColdFront project
+        # remove AD groups that already have a corresponding ColdFront project
+        ad_only = list(set(ad_group_names) - set(project_titles))
         errortracker = { 'no_pi': [], 'not_found': [], 'no_fos': [], 'pi_not_projectuser': [], 'pi_active_invalid': [] }
+        # get pi and member entries
         proj_membs_mans = {name: ldap_conn.return_group_members_manager(name) for name in ad_only}
         proj_membs_mans, search_errors = cleaned_membership_query(proj_membs_mans)
         for k, v in search_errors.items():
