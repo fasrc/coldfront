@@ -92,10 +92,6 @@ class StarFishServer:
         response = return_get_json(url, self.headers)
         return response
 
-    def make_tags(self):
-        # get list of existing tags
-        tags = self.get_tags()
-
     def get_scans(self):
         '''Collect scans of all volumes in Coldfront
         '''
@@ -187,24 +183,9 @@ class StarFishRedash:
         self.queries = import_from_settings('REDASH_API_KEYS')
 
 
-    def return_present_absent_allocations(self):
-        '''Divide Starfish redash subdirectory query results by presence of
-        allocation in Coldfront.
-        Only counts allocations that also have projects in
-        '''
-        data = self.return_cleaned_allocation_results()
-        allocations = [(a.project.title, a.resources.first().name.split('/')[0], a.path)
-                        for a in Allocation.objects.all()]
-        starfish_allocations = [(a['group_name'],a['vol_name'], a['path'])
-                        for a in data]
-
-        present_by_path = [a for a in starfish_allocations if any(a[1]==b[1] and a[2]==b[2] for b in allocations)]
-        absent_by_path = [a for a in starfish_allocations if not any(a[1]==b[1] and a[2]==b[2] for b in allocations)]
-        absent_by_path_or_group = [a for a in absent_by_path if not any(a[1]==b[1] and a[0]==b[0] for b in allocations)]
-        absent_clustered = []
-
-
     def submit_query(self, queryname):
+        '''submit a query and return a json of the results.
+        '''
         query = self.queries[queryname]
         query_url = f'{self.base_url}queries/{query[0]}/results?api_key={query[1]}'
         result = return_get_json(query_url, headers={})
@@ -396,7 +377,7 @@ def push_cf(filepaths, clean):
             userdict = next(d for d in content['contents'] if d['username'] == user.username)
             model = user_models.get(username=userdict['username'])
             try:
-                update_usage(model, userdict, allocation)
+                update_user_usage(model, userdict, allocation)
             except Exception as e:
                 logger.warning('EXCEPTION FOR ENTRY: %s', e, exc_info=True)
                 errors = True
@@ -405,7 +386,7 @@ def push_cf(filepaths, clean):
     logger.debug('push_cf complete')
 
 
-def update_usage(user, userdict, allocation):
+def update_user_usage(user, userdict, allocation):
     usage, unit = split_num_string(userdict['size_sum_hum'])
     logger.debug('entering for user: %s', user.username)
     allocationuser, created = allocation.allocationuser_set.get_or_create(
@@ -533,7 +514,7 @@ def zero_out_absent_allocationusers(redash_usernames, allocation):
         allocationusers_not_in_redash.update(usage=0, usage_bytes=0)
 
 
-def update_usage_value(allocation, usage_attribute_type, usage_value):
+def update_total_usage(allocation, usage_attribute_type, usage_value):
     usage_attribute, _ = allocation.allocationattribute_set.get_or_create(
             allocation_attribute_type=usage_attribute_type
         )
@@ -546,12 +527,12 @@ def pull_sf_push_cf_redash():
 
     Only Allocations for Projects that are already in Coldfront will be updated.
     '''
+    # 1. grab data from redash
     starfish_server = StarFishServer(STARFISH_SERVER)
     vols_to_collect = starfish_server.get_volumes_in_coldfront()
-    # 2. grab data from redash
     redash_api = StarFishRedash(STARFISH_SERVER)
-    user_usage = redash_api.get_usage_stats(volumes=vols_to_collect)
-    allocation_usages = redash_api.get_usage_stats(query='subdirectory', volumes=vols_to_collect)
+    user_usage = redash_api.get_usage_stats(query='path_usage_query', volumes=vols_to_collect)
+    allocation_usage = redash_api.get_usage_stats(query='subdirectory', volumes=vols_to_collect)
     queryset = []
     issues = {'no_users':[], 'no_total':[], 'no_path':[]}
 
@@ -575,7 +556,7 @@ def pull_sf_push_cf_redash():
         # select query rows that match allocation volume and lab
         # confirm that only one allocation is represented by checking the path
         user_usage_entries = [i for i in user_usage if i['vol_name'] == volume and allocation.path == i['lab_path']]
-        lab_usage_entries = [i for i in allocation_usages if i['vol_name'] == volume and allocation.path == i['path']]
+        lab_usage_entries = [i for i in allocation_usage if i['vol_name'] == volume and allocation.path == i['path']]
         if not lab_usage_entries:
             print('WARNING: No starfish allocation usage found for', allocation.pk, lab, resource)
             logger.warning('WARNING: No starfish allocation usage result for allocation %s %s %s - check path',
@@ -583,13 +564,13 @@ def pull_sf_push_cf_redash():
             issues['no_total'].append((allocation.pk, project, volume))
             continue
         lab_usage_entries = lab_usage_entries[0]
-        update_usage_value(allocation, quota_bytes_attributetype,
+        update_total_usage(allocation, quota_bytes_attributetype,
                                         lab_usage_entries['total_size'])
 
         tbs = round((lab_usage_entries['total_size']/1099511627776), 5)
         logger.info('allocation usage for allocation %s: %s bytes, %s terabytes',
                     allocation.pk, lab_usage_entries['total_size'], tbs)
-        update_usage_value(allocation, quota_tbs_attributetype, tbs)
+        update_total_usage(allocation, quota_tbs_attributetype, tbs)
 
         if not user_usage_entries:
             logger.warning('WARNING: No starfish user usage result for allocation %s %s %s',

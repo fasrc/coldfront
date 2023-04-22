@@ -402,11 +402,13 @@ def add_new_projects(groupusercollections, errortracker):
     user_entries = flatten([group.members + [group.pi] for group in active_valid_pi_groups])
     user_names = {u['sAMAccountName'][0] for u in user_entries}
     _, missing_users = id_present_missing_users(user_names)
-    log_missing('user', missing_users)
     missing_usernames = {d['username'] for d in missing_users}
 
     active_present_pi_groups = [group for group in active_valid_pi_groups
         if group.pi['sAMAccountName'][0] not in missing_usernames]
+    missing_pi_groups = [group for group in groupusercollections if group not in active_present_pi_groups]
+    missing_pis = [{'username': g.pi['sAMAccountName'][0], 'group': g.name} for g in missing_pi_groups]
+    log_missing('user', missing_pis)
     # record and remove projects where pis aren't available
     errortracker['no_pi'] = [group.name for group in groupusercollections
         if group not in active_present_pi_groups]
@@ -416,6 +418,8 @@ def add_new_projects(groupusercollections, errortracker):
         logger.debug('source: %s\n%s\n%s', group.name, group.members, group.pi)
         # collect group membership entries
         member_usernames = {u['sAMAccountName'][0] for u in group.current_ad_users} - missing_usernames
+        missing_members = [{'username': m['sAMAccountName'][0], 'group': group.name} for m in group.members]
+        log_missing('user', missing_members)
 
         # locate field_of_science
         if 'department' in group.pi.keys() and group.pi['department']:

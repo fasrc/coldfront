@@ -1,10 +1,10 @@
 from datetime import datetime
+import pandas as pd
 
 from ldap3.core.timezone import OffsetTzInfo
 from django.test import TestCase, tag
 from django.contrib.auth import get_user_model
 
-from coldfront.core.project.models import Project
 from coldfront.plugins.ldap.utils import (format_template_assertions,
                                         LDAPConn,
                                         GroupUserCollection,
@@ -12,12 +12,12 @@ from coldfront.plugins.ldap.utils import (format_template_assertions,
 
 
 FIXTURES = [
-        "coldfront/core/test_helpers/test_data/test_fixtures/resources.json",
-        "coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json",
-        "coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json",
-        "coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json",
-        "coldfront/core/test_helpers/test_data/test_fixtures/field_of_science.json",
-        "coldfront/core/test_helpers/test_data/test_fixtures/project_choices.json",
+        'coldfront/core/test_helpers/test_data/test_fixtures/resources.json',
+        'coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json',
+        'coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json',
+        'coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json',
+        'coldfront/core/test_helpers/test_data/test_fixtures/field_of_science.json',
+        'coldfront/core/test_helpers/test_data/test_fixtures/project_choices.json',
         ]
 
 class UtilFunctionTests(TestCase):
@@ -45,6 +45,7 @@ class UtilFunctionTests(TestCase):
         desired_output = '(&(|(cn=Bob Smith)(cn=Jane Doe))(company=FAS))'
         output = format_template_assertions(test_data)
         self.assertEqual(output, desired_output)
+
 
 class LDAPConnTest(TestCase):
     '''tests for LDAPConn class'''
@@ -100,7 +101,7 @@ class GroupUserCollectionTests(TestCase):
                 'sAMAccountName': ['ljbortkiewicz'],
                 'department': ['Statistics and Probability'],
                 'userAccountControl': [512],
-                'accountExpires': self.expireduser_accountExpires,
+                'accountExpires': self.currentuser_accountExpires,
             },
             {
                 'sAMAccountName': ['sdpoisson'],
@@ -120,23 +121,63 @@ class GroupUserCollectionTests(TestCase):
             'department': ['Statistics and Probability'],
             'userAccountControl': [512],
             'memberOf': ['CD=non_faculty_pi'],
-            'accountExpires': self.expireduser_accountExpires,
+            'accountExpires': self.currentuser_accountExpires,
         }
         self.guc = (GroupUserCollection(group_name, ad_users, pi))
 
+    def deactivate_pi(self):
+        self.guc.pi['accountExpires'] = self.expireduser_accountExpires
+        self.guc.members[0]['accountExpires'] = self.expireduser_accountExpires
+
+    def disable_pi(self):
+        self.guc.pi['userAccountControl'] = [514]
+        self.guc.members[0]['userAccountControl'] = [514]
+
     def test_pi_is_active(self):
-        self.assertEqual(self.guc.pi_is_active, False)
+        self.assertEqual(self.guc.pi_is_active, True)
 
     def test_current_ad_users(self):
-        self.assertEqual(len(self.guc.current_ad_users), 2)
+        self.assertEqual(len(self.guc.current_ad_users), 3)
+
+    def test_pi_not_active(self):
+        self.deactivate_pi()
+        self.assertEqual(self.guc.pi_is_active, False)
+
+    def test_pi_disabled(self):
+        self.disable_pi()
+        self.assertEqual(self.guc.pi_is_active, False)
 
     def test_add_new_projects(self):
-        # ensure that project with expired pi doesn't get added
+        '''unexpired pi group is added'''
+        added_projects, _ = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
+        self.assertEqual(len(added_projects), 1)
+
+    def test_add_new_projects_pi_disabled(self):
+        '''group with disabled pi is not added'''
+        self.disable_pi()
         added_projects, errortracker = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
+        self.assertEqual(len(added_projects), 0)
         self.assertEqual(errortracker['no_pi'], ['bortkiewicz_lab'])
 
-        # ensure that rest of operation works
-        self.guc.pi['accountExpires'] = self.currentuser_accountExpires
-        self.guc.members[0]['accountExpires'] = self.currentuser_accountExpires
+    def test_add_new_projects_pi_expired(self):
+        '''group with expired pi is not added'''
+        self.deactivate_pi()
         added_projects, errortracker = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
-        self.assertEqual(len(added_projects), 1)
+        self.assertEqual(len(added_projects), 0)
+        self.assertEqual(errortracker['no_pi'], ['bortkiewicz_lab'])
+
+    def test_add_new_projects_pi_not_ifxuser(self):
+        '''project with a non-ifxuser pi is not added, and pi is added to the missing_users list'''
+        get_user_model().objects.get(username='ljbortkiewicz').delete()
+        new_projs, errortracker = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
+        # no project added
+        self.assertEqual(errortracker['no_pi'], ['bortkiewicz_lab'])
+        self.assertEqual(len(new_projs), 0)
+        # missing pi recorded
+        missing_users_csv = './local_data/missing/missing_users.csv'
+        missing_df = pd.read_csv(missing_users_csv, parse_dates=['date'])
+        test_users = missing_df.loc[missing_df.username == 'ljbortkiewicz']
+        self.assertEqual(len(test_users), 1)
+        # remove test user from csv
+        missing_df = missing_df.loc[~(missing_df.group == 'bortkiewicz_lab')]
+        missing_df.to_csv(missing_users_csv, index=False)
