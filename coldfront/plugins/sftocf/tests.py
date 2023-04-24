@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 
 from coldfront.core.utils.fasrc import read_json
-from coldfront.plugins.sftocf.utils import push_cf
+from coldfront.plugins.sftocf.utils import push_cf, update_user_usage
 from coldfront.core.allocation.models import Allocation
 
 
@@ -13,6 +13,7 @@ class UploadTests(TestCase):
             'coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json',
             'coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json',
             'coldfront/core/test_helpers/test_data/test_fixtures/project_choices.json',
+            'coldfront/core/test_helpers/test_data/test_fixtures/resources.json',
             ]
     pref = './coldfront/plugins/sftocf/tests/testdata/'
 
@@ -24,14 +25,11 @@ class UploadTests(TestCase):
         content = read_json(f'{self.pref}poisson_lab_holysfdb10.json')
         statdicts = content['contents']
         errors = False
-        unames = [d['username'] for d in content['contents']]
-        models = get_user_model().objects.only('id','username')\
-                .filter(username__in=unames)
         allocation = Allocation.objects.get(project_id=1)
         for statdict in statdicts:
             try:
-                server_tier = content['server'] + '/' + content['tier']
-                self.update_user_usage(models, statdict, allocation)
+                user = get_user_model().objects.get(username=statdict['username'])
+                update_user_usage(user, statdict, allocation)
             except Exception as e:
                 print('ERROR:', e)
                 errors = True

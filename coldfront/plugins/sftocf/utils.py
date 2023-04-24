@@ -369,7 +369,8 @@ def push_cf(filepaths, clean):
 
         project = Project.objects.get(title=content['project'])
         # find project allocation
-        allocation = select_one_project_allocation(project, resource)
+        resource_obj = Resource.objects.get(name__contains=resource)
+        allocation = select_one_project_allocation(project, resource_obj)
         logger.debug('%s\n usernames: %s\n user_models: %s',
                 project.title, usernames, [u.username for u in user_models])
 
@@ -398,9 +399,10 @@ def update_user_usage(user, userdict, allocation):
             )
     if created:
         logger.info('allocation user %s created', allocationuser)
-    allocationuser.update(  usage_bytes = userdict['size_sum'],
-                            usage = usage,
-                            unit = unit)
+    allocationuser.usage_bytes = userdict['size_sum']
+    allocationuser.usage = usage
+    allocationuser.unit = unit
+    allocationuser.save()
 
 
 def split_num_string(x):
