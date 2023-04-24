@@ -6,6 +6,7 @@ import requests
 
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.fasrc import (log_missing,
+                                        read_json,
                                         select_one_project_allocation,
                                         save_json,
                                         id_present_missing_projects)
@@ -317,9 +318,3 @@ def generate_headers(token):
         'Authorization': f'Bearer {token}',
     }
     return headers
-
-def read_json(filepath):
-    logger.debug('read_json for %s', filepath)
-    with open(filepath, 'r') as myfile:
-        data = json.loads(myfile.read())
-    return data

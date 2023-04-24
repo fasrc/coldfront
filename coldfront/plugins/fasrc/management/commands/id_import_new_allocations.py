@@ -1,6 +1,4 @@
 '''
-Add allocations specified in local_data/ready_to_add/add_allocations.csv.
-
 Check allocations against ATT and SF data both to validate and to automatically
 add quota, usage, and users.
 '''
