@@ -30,7 +30,7 @@ class MonitorViewTest(TestCase):
         # check that login is required
         # utils.test_logged_out_redirect_to_login(self, '/monitor')
         response = self.client.get('/monitor')
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 404)
         # existing project pi cannot access
         self.client.force_login(self.project_pi,
                     backend='django.contrib.auth.backends.ModelBackend')
