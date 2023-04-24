@@ -35,17 +35,18 @@ class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         scan_data_processed = None
         if ENV.bool('PLUGIN_SFTOCF', default=False):
-
-            sf = StarFishServer(STARFISH_SERVER)
-            scan_data = sf.get_most_recent_scans()
-            scan_data_processed = [
-                        {'volume': s['volume'],
-                         'state': s['state']['name'],
-                         'creation_time_hum': s['creation_time_hum'],
-                         'end_hum': s['end_hum'],
-                         'duration_hum': s['duration_hum'],
-                } for s in scan_data]
-
+            try:
+                sf = StarFishServer(STARFISH_SERVER)
+                scan_data = sf.get_most_recent_scans()
+                scan_data_processed = [
+                            {'volume': s['volume'],
+                             'state': s['state']['name'],
+                             'creation_time_hum': s['creation_time_hum'],
+                             'end_hum': s['end_hum'],
+                             'duration_hum': s['duration_hum'],
+                    } for s in scan_data]
+            except:
+                scan_data_processed = []
         # database checks
         projects = Project.objects.all()
         pi_not_projectuser = [p for p in projects if p.pi_id not in  p.projectuser_set.values_list('user_id', flat=True)]
