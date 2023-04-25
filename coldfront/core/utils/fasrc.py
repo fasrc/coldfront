@@ -12,6 +12,9 @@ from django.contrib.auth import get_user_model
 
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
+from coldfront.config.env import ENV
+
+from ifxbilling.models import Product
 
 from ifxbilling.models import Product
 
