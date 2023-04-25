@@ -12,7 +12,8 @@ from ldap3 import Connection, Server, ALL_ATTRIBUTES
 
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.field_of_science.models import FieldOfScience
-from coldfront.core.utils.fasrc import id_present_missing_users, log_missing
+from coldfront.core.utils.fasrc import (id_present_missing_users,
+                                        log_missing, sort_by)
 from coldfront.core.project.models import ( Project,
                                             ProjectStatusChoice,
                                             ProjectUserRoleChoice,
@@ -224,27 +225,6 @@ def uniques_and_intersection(list1, list2):
 
 def is_string(value):
     return isinstance(value, str)
-
-def sort_by(list1, sorter, how='attr'):
-    '''split one list into two on basis of each item's ability to meet a condition
-    Parameters
-    ----------
-    list1 : list
-        list of objects to be sorted
-    sorter : attribute or function
-        attribute or function to be used to sort the list
-    how : str
-        type of sorter ('attr' or 'condition')
-    '''
-    is_true, is_false = [], []
-    for x in list1:
-        if how == 'attr':
-            (is_false, is_true)[getattr(x, sorter)].append(x)
-        elif how == 'condition':
-            (is_false, is_true)[sorter(x)].append(x)
-        else:
-            raise Exception('unclear sorting method')
-    return is_true, is_false
 
 def sort_dict_on_conditional(dict1, condition):
     '''split one dictionary into two on basis of value's ability to meet a condition

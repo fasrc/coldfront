@@ -58,6 +58,7 @@ class Command(BaseCommand):
             project = proj_models.get(title=lab)
             if project.status.name == 'New':
                 project.status = ProjectStatusChoice.objects.get(name='Active')
+                project.save()
             for entry in allocations:
                 lab_name = entry['lab']
                 lab_server = entry['server']
