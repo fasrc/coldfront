@@ -118,7 +118,7 @@ class Command(BaseCommand):
                     print('PI added: ' + project.pi.username)
         if not added_allocations_df.empty:
             added_allocations_df['billing_code'] = None
-            update_csv(added_allocations_df.to_json(orient='records'), './local_data/', 'added_allocations.csv')
+            update_csv(added_allocations_df.to_dict(orient='records'), './local_data/', 'added_allocations.csv')
         push_quota_data(result_file)
         pull_sf_push_cf_redash()
         return json.dumps(command_report, indent=2)
