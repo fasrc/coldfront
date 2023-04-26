@@ -51,7 +51,7 @@ class Command(BaseCommand):
         result_json_cleaned, proj_models = match_entries_with_projects(resp_json_by_lab)
 
         redash_api = StarFishRedash(STARFISH_SERVER)
-        allocation_usages = redash_api.get_usage_stats(query='subdirectory')
+        allocation_usages = redash_api.return_query_results(query='subdirectory')
         subdir_type = AllocationAttributeType.objects.get(name="Subdirectory")
 
         for lab, allocations in result_json_cleaned.items():
@@ -68,7 +68,8 @@ class Command(BaseCommand):
                 alloc_obj = select_one_project_allocation(project, resource, dirpath=entry['fs_path'])
                 if alloc_obj is not None:
                     continue
-                lab_usage_entries = [i for i in allocation_usages if i['vol_name'] == lab_server and lab_path in i['path'] and i['group_name'] == lab_name]
+                lab_usage_entries = [i for i in allocation_usages if i['vol_name'] == lab_server
+                            and lab_path in i['path'] and i['group_name'] == lab_name]
                 if not lab_usage_entries:
                     continue
 

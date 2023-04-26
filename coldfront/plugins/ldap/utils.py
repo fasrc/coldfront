@@ -13,7 +13,7 @@ from ldap3 import Connection, Server, ALL_ATTRIBUTES
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.field_of_science.models import FieldOfScience
 from coldfront.core.utils.fasrc import (id_present_missing_users,
-                                        log_missing, sort_by)
+                                        log_missing, slate_for_check, sort_by)
 from coldfront.core.project.models import ( Project,
                                             ProjectStatusChoice,
                                             ProjectUserRoleChoice,
@@ -413,8 +413,14 @@ def add_new_projects(groupusercollections, errortracker):
                 logger.info('added new field_of_science: %s', field_of_science_name)
         else:
             errortracker['no_fos'].append(group.name)
-            logger.warning('no department for PI of project %s', group.name)
-            print(f'HALTING: no field of science for PI of project {group.name}')
+            message = f'no department for AD group {group.name}, will not add unless fixed'
+            logger.warning(message)
+            print(f'HALTING: {message}')
+            issue = {'error': message,
+                     'program': 'ldap.utils.add_new_projects',
+                     'url': 'NA; AD issue'
+                    }
+            slate_for_check([issue])
             print(group.pi)
             continue
 
