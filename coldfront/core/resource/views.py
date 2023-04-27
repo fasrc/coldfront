@@ -3,6 +3,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db.models import Q
+from django.db.models.functions import Lower
 from django.forms import formset_factory
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -10,7 +11,7 @@ from django.urls import reverse
 from django.views.generic import TemplateView, ListView
 from django.views.generic.edit import CreateView
 
-from coldfront.core.resource.forms import ResourceSearchForm, ResourceAttributeDeleteForm
+from coldfront.core.resource.forms import ResourceAttributeCreateForm, ResourceSearchForm, ResourceAttributeDeleteForm
 from coldfront.core.resource.models import Resource, ResourceAttribute
 
 
@@ -59,7 +60,8 @@ class ResourceDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
 
 class ResourceAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
     model = ResourceAttribute
-    fields = '__all__'
+    form_class = ResourceAttributeCreateForm
+    # fields = '__all__'
     template_name = 'resource_resourceattribute_create.html'
 
     def test_func(self):
@@ -179,19 +181,29 @@ class ResourceListView(LoginRequiredMixin, ListView):
 
     def get_queryset(self):
 
-        order_by = self.request.GET.get('order_by')
-        if order_by:
-            direction = self.request.GET.get('direction')
-            direction = '-' if direction == 'des' else ''
+        order_by = self.request.GET.get('order_by', 'id')
+        direction = self.request.GET.get('direction', 'asc')
+        if order_by != "name":
+            if direction == 'asc':
+                direction = ''
+            if direction == 'des':
+                direction = '-'
             order_by = direction + order_by
-        else:
-            order_by = 'id'
 
         resource_search_form = ResourceSearchForm(self.request.GET)
 
         if resource_search_form.is_valid():
             data = resource_search_form.cleaned_data
-            resources = Resource.objects.all().order_by(order_by)
+            if order_by == "name":
+                direction = self.request.GET.get('direction')
+                if direction == "asc":
+                    resources = Resource.objects.all().order_by(Lower("name"))
+                elif direction == "des":
+                    resources = (Resource.objects.all().order_by(Lower("name")).reverse())
+                else:
+                    resources = Resource.objects.all().order_by(order_by)
+            else:
+                resources = Resource.objects.all().order_by(order_by)
 
             if data.get('show_allocatable_resources'):
                 resources = resources.filter(is_allocatable=True)
@@ -231,7 +243,16 @@ class ResourceListView(LoginRequiredMixin, ListView):
                     Q(resourceattribute__value=data.get('vendor'))
                 )
         else:
-            resources = Resource.objects.all().order_by(order_by)
+            if order_by == "name":
+                direction = self.request.GET.get('direction')
+                if direction == "asc":
+                    resources = Resource.objects.all().order_by(Lower("name"))
+                elif direction == "des":
+                    resources = Resource.objects.all().order_by(Lower("name").reverse())
+                else:
+                    resources = Resource.objects.all().order_by(order_by)
+            else:
+                resources = Resource.objects.all().order_by(order_by)
         return resources.distinct()
 
     def get_context_data(self, **kwargs):
