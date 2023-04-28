@@ -538,6 +538,12 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                     if attr_name == 'eula':
                         resources_with_eula[resource.id] = value
 
+        # create list of resources for which the project already has an allocation
+        project_allocations = project_obj.allocation_set.all()
+        resources_with_allocations = {str(allocation.get_parent_resource.id):allocation.pk
+                                      for allocation in project_allocations}
+
+        context['resources_with_allocations'] = resources_with_allocations
         context['resources_form_default_quantities'] = resources_form_default_quantities
         context['resources_form_label_texts'] = resources_form_label_texts
         context['resources_with_eula'] = resources_with_eula
