@@ -8,7 +8,11 @@ from factory.django import DjangoModelFactory
 from coldfront.core.field_of_science.models import FieldOfScience
 from coldfront.core.resource.models import ResourceType
 # from coldfront.core.department.models import Department
-from coldfront.core.project.models import Project, ProjectStatusChoice
+from coldfront.core.project.models import (Project,
+                                            ProjectUser,
+                                            ProjectUserRoleChoice,
+                                            ProjectUserStatusChoice,
+                                            ProjectStatusChoice)
 from coldfront.core.allocation.models import Allocation
 from coldfront.core.grant.models import GrantFundingAgency, GrantStatusChoice
 from coldfront.core.publication.models import PublicationSource
@@ -59,6 +63,22 @@ class ProjectFactory(DjangoModelFactory):
     force_review = False
     requires_review = False
 
+class ProjectUserRoleChoiceFactory(DjangoModelFactory):
+    class Meta:
+        model = ProjectUserRoleChoice
+
+class ProjectUserStatusChoiceFactory(DjangoModelFactory):
+    class Meta:
+        model = ProjectUserStatusChoice
+
+class ProjectUserFactory(DjangoModelFactory):
+    class Meta:
+        model = ProjectUser
+
+    project = SubFactory(ProjectFactory)
+    user = SubFactory(UserFactory)
+    role = SubFactory(ProjectUserRoleChoiceFactory)
+    status = SubFactory(ProjectUserStatusChoiceFactory)
 
 class PublicationSourceFactory(DjangoModelFactory):
     class Meta:

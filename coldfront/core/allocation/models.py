@@ -79,7 +79,7 @@ class Allocation(TimeStampedModel):
     """
 
     class Meta:
-        ordering = ['name', ]
+        ordering = ['project', ]
 
         permissions = (
             ('can_view_all_allocations', 'Can view all allocations'),

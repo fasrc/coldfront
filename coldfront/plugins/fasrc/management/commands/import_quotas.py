@@ -1,4 +1,4 @@
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 
 from coldfront.plugins.fasrc.utils import pull_push_quota_data
 import logging
