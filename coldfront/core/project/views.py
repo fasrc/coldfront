@@ -160,7 +160,7 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         allocation_total = {"allocation_user_count": 0, "size": 0, "cost": 0}
         for allocation in allocations:
             allocation_total['cost'] += allocation.cost
-            allocation_total['allocation_user_count'] += int(allocation.allocation_users.count())
+            allocation_total['allocation_user_count'] += int(allocation.allocationuser_set.count())
             allocation_total['size'] += float(allocation.size)
 
         try:

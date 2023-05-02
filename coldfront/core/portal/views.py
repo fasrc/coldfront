@@ -102,7 +102,7 @@ def center_summary(request):
 
             project_ids = set(resource_allocations.values_list('project'))
             volume['lab_count'] = len(project_ids)
-            user_ids = {user.pk for allocation in resource_allocations for user in allocation.allocation_users}
+            user_ids = {user.pk for allocation in resource_allocations for user in allocation.allocationuser_set.all()}
             volume['user_count'] = len(user_ids)
 
         context['volumes'] = volumes
