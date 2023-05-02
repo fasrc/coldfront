@@ -4,8 +4,8 @@ from coldfront.core.resource.models import ResourceAttribute
 
 from django.db.models.functions import Lower
 class ResourceSearchForm(forms.Form):
-    """ Search form for the Resource list page.
-    """
+    ''' Search form for the Resource list page.
+    '''
     model = forms.CharField(
         label='Model', max_length=100, required=False)
     serialNumber = forms.CharField(
@@ -21,11 +21,11 @@ class ResourceSearchForm(forms.Form):
         widget=forms.DateInput(attrs={'class': 'datepicker'}),
         required=False)
     serviceEnd =  forms.DateField(
-        label='Service End', 
-        widget=forms.DateInput(attrs={'class': 'datepicker'}), 
+        label='Service End',
+        widget=forms.DateInput(attrs={'class': 'datepicker'}),
         required=False)
     warrantyExpirationDate = forms.DateField(
-        label='Warranty Expiration Date', 
+        label='Warranty Expiration Date',
         widget=forms.DateInput(attrs={'class': 'datepicker'}),
         required=False)
     show_allocatable_resources = forms.BooleanField(initial=False, required=False)
@@ -47,5 +47,5 @@ class ResourceAttributeCreateForm(forms.ModelForm):
         model = ResourceAttribute
         fields = '__all__'
     def __init__(self, *args, **kwargs):
-        super(ResourceAttributeCreateForm, self).__init__(*args, **kwargs) 
+        super(ResourceAttributeCreateForm, self).__init__(*args, **kwargs)
         self.fields['resource_attribute_type'].queryset = self.fields['resource_attribute_type'].queryset.order_by(Lower('name'))

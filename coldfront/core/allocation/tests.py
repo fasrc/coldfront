@@ -40,8 +40,8 @@ class AllocationListViewTest(TestCase):
         self.client = Client()
 
     def test_allocation_list_access(self):
-        """Confirm that allocation-list renders correctly
-        """
+        '''Confirm that allocation-list renders correctly
+        '''
         # no login means redirect
         utils.test_logged_out_redirect_to_login(self, "/allocation/")
 
@@ -68,8 +68,8 @@ class AllocationChangeDetailViewTest(TestCase):
     fixtures = FIXTURES
 
     def setUp(self):
-        """create an AllocationChangeRequest to test
-        """
+        '''create an AllocationChangeRequest to test
+        '''
         self.test_user1 = get_user_model().objects.get(username='gvanrossum')
         self.test_user2 = get_user_model().objects.get(username='sdpoisson')
         self.client = Client()
@@ -113,8 +113,8 @@ class AllocationChangeViewTest(TestCase):
                 backend="django.contrib.auth.backends.ModelBackend")
 
     def test_allocationchangeview_access(self):
-        """
-        """
+        '''
+        '''
         kwargs={'pk':1, }
         response = self.client.get('/allocation/1/change-request', kwargs=kwargs)
         # print(response.__dict__)
@@ -151,9 +151,9 @@ class AllocationDetailViewTest(TestCase):
 
 
     def test_allocation_detail_template_value_render(self):
-        """Confirm that quota_tb and usage_tb are correctly rendered in the
+        '''Confirm that quota_tb and usage_tb are correctly rendered in the
         generated AllocationDetailView
-        """
+        '''
         self.client.force_login(self.admin_user,
                 backend="django.contrib.auth.backends.ModelBackend")
         response = self.client.get('/allocation/1/')

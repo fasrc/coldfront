@@ -7,11 +7,11 @@ from simple_history.models import HistoricalRecords
 from coldfront.core.project.models import Project
 
 class GrantFundingAgency(TimeStampedModel):
-    """ A grant funding agency is an agency that funds projects. Examples include Department of Defense (DoD) and National Aeronautics and Space Administration (NASA).
-    
+    ''' A grant funding agency is an agency that funds projects. Examples include Department of Defense (DoD) and National Aeronautics and Space Administration (NASA).
+
     Attributes:
         name (str): agency name
-    """
+    '''
 
     class GrantFundingAgencyManager(models.Manager):
         def get_by_natural_key(self, name):
@@ -27,11 +27,11 @@ class GrantFundingAgency(TimeStampedModel):
         return [self.name]
 
 class GrantStatusChoice(TimeStampedModel):
-    """ A grant status choice is an option a user has when setting the status of a grant. Examples include Active, Archived, and Pending.
-    
+    ''' A grant status choice is an option a user has when setting the status of a grant. Examples include Active, Archived, and Pending.
+
     Attributes:
         name (str): status name
-    """
+    '''
     class Meta:
         ordering = ('name',)
 
@@ -49,8 +49,8 @@ class GrantStatusChoice(TimeStampedModel):
         return [self.name]
 
 class Grant(TimeStampedModel):
-    """ A grant is funding that a PI receives for their project.
-    
+    ''' A grant is funding that a PI receives for their project.
+
     Attributes:
         project (Project): links the project to the grant
         title (str): grant title
@@ -66,8 +66,8 @@ class Grant(TimeStampedModel):
         direct_funding (float): indicates how much of the grant is directly funded
         total_amount_awarded (float): indicates the total amount awarded
         status (GrantStatusChoice): represents the status of the grant
-    """
-    
+    '''
+
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
     title = models.CharField(
         validators=[MinLengthValidator(3), MaxLengthValidator(255)],
@@ -101,10 +101,10 @@ class Grant(TimeStampedModel):
 
     @property
     def grant_pi(self):
-        """ 
+        '''
         Returns:
             str: the grant's PI's full name
-        """
+        '''
 
         if self.role == 'PI':
             return '{} {}'.format(self.project.pi.first_name, self.project.pi.last_name)

@@ -7,10 +7,10 @@ from coldfront.plugins.ifx.models import ProjectOrganization
 
 class DepartmentSelector(models.Manager):
     def get_queryset(self):
-        """
+        '''
         collect non-lab Organization objects that are directly or indirectly linked
         to labs that are Coldfront projects.
-        """
+        '''
         # get organization ids for all projects
         child_id_search_list = set(ProjectOrganization.objects.all().values_list('organization_id'))
         child_parent_ids = {}
@@ -30,10 +30,10 @@ class DepartmentSelector(models.Manager):
 
 
 class Department(Organization):
-    """
+    '''
     All entities in nanites_organization where rank != lab and entity connects to
     a Project object.
-    """
+    '''
     objects = DepartmentSelector()
 
 
@@ -42,8 +42,8 @@ class Department(Organization):
 
 
     def get_projects(self):
-        """Get all projects related to the Department, either directly or indirectly.
-        """
+        '''Get all projects related to the Department, either directly or indirectly.
+        '''
         parent_search_ids = OrgRelation.objects.filter(parent=self).values_list(
                                                             'child_id', flat=True)
         lab_search_ids = list(parent_search_ids)
@@ -79,7 +79,7 @@ class Department(Organization):
 
 class DepartmentProjectManager(models.Manager):
     def get_queryset(self):
-        """collect department members using Department and UserAffiliation"""
+        '''collect department members using Department and UserAffiliation'''
         project_org_links = []
         for department in Department.objects.all():
             parent_search_ids = OrgRelation.objects.filter(parent=department).values_list(
@@ -111,14 +111,14 @@ class DepartmentProject(ProjectOrganization):
 
 class DepartmentMemberManager(models.Manager):
     def get_queryset(self):
-        """collect department members using Department and UserAffiliation"""
+        '''collect department members using Department and UserAffiliation'''
         departments = Department.objects.all()
         return super().get_queryset().filter(organization__in=departments)
 
 
 class DepartmentMember(UserAffiliation):
-    """subset of UserAffiliation records that are related to Department records.
-    """
+    '''subset of UserAffiliation records that are related to Department records.
+    '''
     objects = DepartmentMemberManager()
 
     class Meta:

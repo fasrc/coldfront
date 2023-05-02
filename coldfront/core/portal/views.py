@@ -96,7 +96,7 @@ def center_summary(request):
 
             resource_allocations = resource.allocation_set.filter(status__name='Active')
 
-            allocation_sizes = [float(allocation.size) for allocation in resource_allocations]
+            allocation_sizes = [float(allocation.size) for allocation in resource_allocations if allocation.size]
             # volume['avgsize'] = allocation_sizes
             volume['avgsize'] = round(sum(allocation_sizes)/len(allocation_sizes), 2)
 

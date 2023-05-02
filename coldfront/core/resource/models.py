@@ -9,11 +9,11 @@ from simple_history.models import HistoricalRecords
 from coldfront.core import attribute_expansion
 
 class AttributeType(TimeStampedModel):
-    """ An attribute type indicates the data type of the attribute. Examples include Date, Float, Int, Text, and Yes/No.
+    ''' An attribute type indicates the data type of the attribute. Examples include Date, Float, Int, Text, and Yes/No.
 
     Attributes:
         name (str): name of attribute data type
-    """
+    '''
 
     name = models.CharField(max_length=128, unique=True)
 
@@ -24,12 +24,12 @@ class AttributeType(TimeStampedModel):
         ordering = ['name', ]
 
 class ResourceType(TimeStampedModel):
-    """ A resource type class links a resource and its value.
+    ''' A resource type class links a resource and its value.
 
     Attributes:
         name (str): name of resource type
         description (str): description of resource type
-    """
+    '''
     class Meta:
         ordering = ['name', ]
 
@@ -44,20 +44,20 @@ class ResourceType(TimeStampedModel):
 
     @property
     def active_count(self):
-        """
+        '''
         Returns:
             int: the number of active resources of that type
-        """
+        '''
 
         return ResourceAttribute.objects.filter(
             resource__resource_type__name=self.name, value="Active").count()
 
     @property
     def inactive_count(self):
-        """
+        '''
         Returns:
             int: the number of inactive resources of that type
-        """
+        '''
 
         return ResourceAttribute.objects.filter(
             resource__resource_type__name=self.name, value="Inactive").count()
@@ -69,7 +69,7 @@ class ResourceType(TimeStampedModel):
         return [self.name]
 
 class ResourceAttributeType(TimeStampedModel):
-    """ A resource attribute type indicates the type of the attribute. Examples include slurm_specs and slurm_cluster.
+    ''' A resource attribute type indicates the type of the attribute. Examples include slurm_specs and slurm_cluster.
 
     Attributes:
         attribute_type (AttributeType): indicates the AttributeType of the attribute
@@ -78,7 +78,7 @@ class ResourceAttributeType(TimeStampedModel):
         is_value_unique (bool): indicates whether or not the value is unique
 
     Note: the is_unique_per_resource field is rarely used, hence documentation does not exist.
-    """
+    '''
 
     attribute_type = models.ForeignKey(AttributeType, on_delete=models.CASCADE)
     name = models.CharField(max_length=128)
@@ -94,7 +94,7 @@ class ResourceAttributeType(TimeStampedModel):
         ordering = ['name', ]
 
 class Resource(TimeStampedModel):
-    """ A resource is something a center maintains and provides access to for the community. Examples include Budgetstorage, Server, and Software License.
+    ''' A resource is something a center maintains and provides access to for the community. Examples include Budgetstorage, Server, and Software License.
 
     Attributes:
         parent_resource (Resource): used for the Cluster Partition resource type as these partitions fall under a main cluster
@@ -106,7 +106,7 @@ class Resource(TimeStampedModel):
         requires_payment (bool): indicates whether or not users have to pay to use this resource
         allowed_groups (Group): uses the Django Group model to allow certain user groups to request the resource
         allowed_users (User): links Django Users that are allowed to request the resource to the resource
-    """
+    '''
     class Meta:
         ordering = ['name', ]
 
@@ -130,13 +130,13 @@ class Resource(TimeStampedModel):
     objects = ResourceManager()
 
     def get_missing_resource_attributes(self, required=False):
-        """
+        '''
         Params:
             required (bool): indicates whether or not to get only the missing resource attributes that are required (if True, get only required missing attributes; else, get required and non-required missing attributes)
 
         Returns:
             list[ResourceAttribute]: a list of resource attributes that do not already exist for this resource
-        """
+        '''
 
         if required:
             resource_attributes = ResourceAttributeType.objects.filter(
@@ -154,10 +154,10 @@ class Resource(TimeStampedModel):
 
     @property
     def status(self):
-        """
+        '''
         Returns:
             str: the status of the resource
-        """
+        '''
 
         return ResourceAttribute.objects.get(resource=self, resource_attribute_type__attribute="Status").value
 
@@ -172,7 +172,7 @@ class Resource(TimeStampedModel):
 
     def get_attribute(self, name, expand=True, typed=True,
         extra_allocations=[]):
-        """
+        '''
         Params:
             name (str): name of the resource attribute type
             expand (bool): indicates whether or not to return the expanded value with attributes/parameters for attributes with a base type of 'Attribute Expanded Text'
@@ -181,7 +181,7 @@ class Resource(TimeStampedModel):
 
         Returns:
             str: the value of the first attribute found for this resource with the specified name
-        """
+        '''
 
         attr = self.resourceattribute_set.filter(
             resource_attribute_type__name=name).first()
@@ -196,7 +196,7 @@ class Resource(TimeStampedModel):
 
     def get_attribute_list(self, name, expand=True, typed=True,
         extra_allocations=[]):
-        """
+        '''
         Params:
             name (str): name of the resource
             expand (bool): indicates whether or not to return the expanded value with attributes/parameters for attributes with a base type of 'Attribute Expanded Text'
@@ -205,7 +205,7 @@ class Resource(TimeStampedModel):
 
         Returns:
             list: the list of values of the attributes found with specified name
-        """
+        '''
 
         attr = self.resourceattribute_set.filter(
             resource_attribute_type__name=name).all()
@@ -217,10 +217,10 @@ class Resource(TimeStampedModel):
         return [a.value for a in attr]
 
     def get_ondemand_status(self):
-        """
+        '''
         Returns:
             str: If the resource has OnDemand status or not
-        """
+        '''
 
         ondemand = self.resourceattribute_set.filter(
             resource_attribute_type__name='OnDemand').first()
@@ -235,13 +235,13 @@ class Resource(TimeStampedModel):
         return [self.name]
 
 class ResourceAttribute(TimeStampedModel):
-    """ A resource attribute class links a resource attribute type and a resource.
+    ''' A resource attribute class links a resource attribute type and a resource.
 
     Attributes:
         resource_attribute_type (ResourceAttributeType): resource attribute type to link
         resource (Resource): resource to link
         value (str): value of the resource attribute
-    """
+    '''
 
     resource_attribute_type = models.ForeignKey(
         ResourceAttributeType, on_delete=models.CASCADE)
@@ -250,7 +250,7 @@ class ResourceAttribute(TimeStampedModel):
     history = HistoricalRecords()
 
     def clean(self):
-        """ Validates the resource and raises errors if the resource is invalid. """
+        ''' Validates the resource and raises errors if the resource is invalid. '''
         expected_value_type = self.resource_attribute_type.attribute_type.name.strip()
 
         if expected_value_type == "Int" and not self.value.isdigit():
@@ -273,10 +273,10 @@ class ResourceAttribute(TimeStampedModel):
         return '%s: %s (%s)' % (self.resource_attribute_type, self.value, self.resource)
 
     def typed_value(self):
-        """
+        '''
         Returns:
             int, float, str: the value of the attribute with proper type and is used for computing expanded_value() (coerced into int or float for attributes with Int or Float types; if it fails or the attribute is of any other type, it is coerced into a str)
-        """
+        '''
 
         raw_value = self.value
         atype_name = self.resource_attribute_type.attribute_type.name
@@ -284,7 +284,7 @@ class ResourceAttribute(TimeStampedModel):
             value=raw_value, type_name=atype_name)
 
     def expanded_value(self, typed=True, extra_allocations=[]):
-        """
+        '''
         Params:
             typed (bool): indicates whether or not to convert the attribute value to an int/ float/ str based on the base AttributeType name (unrecognized values not converted, so will return str)
             extra_allocations (list[Allocation]): allocations which are available to reference in the attribute list in addition to those associated with this ResourceAttribute
@@ -295,7 +295,7 @@ class ResourceAttribute(TimeStampedModel):
         For attributes with attribute type of 'Attribute Expanded Text' we look for an attribute with same name suffixed with '_attriblist' (this should be ResourceAttribute of the Resource associated with the attribute). If the attriblist attribute is found, we use it to generate a dictionary to use to expand the attribute value, and the expanded value is returned.
 
         If the expansion fails, or if no attriblist attribute is found, or if the attribute type is not 'Attribute Expanded Text', we just return the raw value.
-        """
+        '''
 
         raw_value = self.value
         if typed:

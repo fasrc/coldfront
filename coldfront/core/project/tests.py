@@ -22,7 +22,7 @@ FIXTURES = [
             ]
 
 class ProjectListViewTest(TestCase):
-    """tests for projectlist view"""
+    '''tests for projectlist view'''
     fixtures = FIXTURES
 
     def setUp(self):
@@ -31,7 +31,7 @@ class ProjectListViewTest(TestCase):
 
 
     def test_project_list_access(self):
-        """Test project list access controls."""
+        '''Test project list access controls.'''
         # If not logged in, can't see page; redirect to login page.
         utils.test_logged_out_redirect_to_login(self, "/project/")
 
@@ -40,14 +40,14 @@ class ProjectListViewTest(TestCase):
 
 
     def test_project_list_search_pagination(self):
-        """confirm that navigation to next page of search works as expected"""
+        '''confirm that navigation to next page of search works as expected'''
         self.client.force_login(self.admin_user, backend="django.contrib.auth.backends.ModelBackend")
         response = self.client.get("/project/?last_name=&username=&field_of_science=SEAS&show_all_projects=on")
         # print(response.context)
 
 
 class ProjectDetailViewTest(TestCase):
-    """tests for projectdetail view"""
+    '''tests for projectdetail view'''
     fixtures = FIXTURES
 
     def setUp(self):
@@ -59,8 +59,8 @@ class ProjectDetailViewTest(TestCase):
         self.client = Client()
 
     def test_project_detail_access(self):
-        """Test project detail page access
-        """
+        '''Test project detail page access
+        '''
         url = f"/project/{self.project.pk}/"
         # If not logged in, can't see page; redirect to login page.
         utils.test_logged_out_redirect_to_login(self, url)
@@ -78,8 +78,8 @@ class ProjectDetailViewTest(TestCase):
 
 
     def test_project_detail_permissions(self):
-        """Test project detail permissions
-        """
+        '''Test project detail permissions
+        '''
         url = f"/project/{self.project.pk}/"
 
         # admin has is_allowed_to_update_project set to True
@@ -98,7 +98,7 @@ class ProjectDetailViewTest(TestCase):
 
 class TestProject(TestCase):
     class Data:
-        """Collection of test data, separated for readability"""
+        '''Collection of test data, separated for readability'''
 
         def __init__(self):
             user = UserFactory(username='cgray')

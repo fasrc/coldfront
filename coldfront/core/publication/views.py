@@ -36,7 +36,7 @@ class PublicationSearchView(LoginRequiredMixin, UserPassesTestMixin, TemplateVie
     template_name = 'publication/publication_add_publication_search.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         if self.request.user.is_superuser:
             return True
 
@@ -71,7 +71,7 @@ class PublicationSearchResultView(LoginRequiredMixin, UserPassesTestMixin, Templ
     template_name = 'publication/publication_add_publication_search_result.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         if self.request.user.is_superuser:
             return True
 
@@ -179,7 +179,7 @@ class PublicationSearchResultView(LoginRequiredMixin, UserPassesTestMixin, Templ
 class PublicationAddView(LoginRequiredMixin, UserPassesTestMixin, View):
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         if self.request.user.is_superuser:
             return True
 
@@ -215,7 +215,7 @@ class PublicationAddView(LoginRequiredMixin, UserPassesTestMixin, View):
         if formset.is_valid():
             for form in formset:
                 form_data = form.cleaned_data
-                
+
                 if form_data['selected']:
                     source_obj = PublicationSource.objects.get(
                         pk=form_data.get('source_pk'))
@@ -229,8 +229,8 @@ class PublicationAddView(LoginRequiredMixin, UserPassesTestMixin, View):
                             'author':author,
                             'year':form_data.get('year'),
                             'journal':form_data.get('journal'),
-                            'source':source_obj                            
-                        }                        
+                            'source':source_obj
+                        }
                     )
                     if created:
                         publications_added += 1
@@ -257,7 +257,7 @@ class PublicationAddManuallyView(LoginRequiredMixin, UserPassesTestMixin, FormVi
     template_name = 'publication/publication_add_publication_manually.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         if self.request.user.is_superuser:
             return True
 
@@ -313,7 +313,7 @@ class PublicationDeletePublicationsView(LoginRequiredMixin, UserPassesTestMixin,
     template_name = 'publication/publication_delete_publications.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         if self.request.user.is_superuser:
             return True
 
@@ -399,7 +399,7 @@ class PublicationExportPublicationsView(LoginRequiredMixin, UserPassesTestMixin,
     template_name = 'publication/publication_export_publications.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         if self.request.user.is_superuser:
             return True
 

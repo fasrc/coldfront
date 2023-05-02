@@ -150,7 +150,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
     context_object_name = 'allocation'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         pk = self.kwargs.get('pk')
         allocation_obj = get_object_or_404(Allocation, pk=pk)
 
@@ -497,7 +497,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
     template_name = 'allocation/allocation_create.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('project_pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
@@ -553,7 +553,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         return context
 
     def get_form(self, form_class=None):
-        """Return an instance of the form to be used in this view."""
+        '''Return an instance of the form to be used in this view.'''
         if form_class is None:
             form_class = self.get_form_class()
         return form_class(self.request.user, self.kwargs.get('project_pk'), **self.get_form_kwargs())
@@ -637,7 +637,7 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
     template_name = 'allocation/allocation_add_users.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         allocation_obj = get_object_or_404(Allocation, pk=self.kwargs.get('pk'))
         if allocation_obj.has_perm(self.request.user, AllocationPermission.MANAGER):
             return True
@@ -749,7 +749,7 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
     template_name = 'allocation/allocation_remove_users.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         allocation_obj = get_object_or_404(Allocation, pk=self.kwargs.get('pk'))
         if allocation_obj.has_perm(self.request.user, AllocationPermission.MANAGER):
             return True
@@ -853,7 +853,7 @@ class AllocationAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, Cre
     template_name = 'allocation/allocation_allocationattribute_create.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
 
         if self.request.user.is_superuser:
             return True
@@ -876,7 +876,7 @@ class AllocationAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, Cre
         return initial
 
     def get_form(self, form_class=None):
-        """Return an instance of the form to be used in this view."""
+        '''Return an instance of the form to be used in this view.'''
         form = super().get_form(form_class)
         form.fields['allocation'].widget = forms.HiddenInput()
         return form
@@ -889,7 +889,7 @@ class AllocationAttributeDeleteView(LoginRequiredMixin, UserPassesTestMixin, Tem
     template_name = 'allocation/allocation_allocationattribute_delete.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         if self.request.user.is_superuser:
             return True
         messages.error(self.request,
@@ -968,7 +968,7 @@ class AllocationNoteCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateVi
     template_name = 'allocation/allocation_note_create.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
 
         if self.request.user.is_superuser:
             return True
@@ -993,7 +993,7 @@ class AllocationNoteCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateVi
         return initial
 
     def get_form(self, form_class=None):
-        """Return an instance of the form to be used in this view."""
+        '''Return an instance of the form to be used in this view.'''
         form = super().get_form(form_class)
         form.fields['allocation'].widget = forms.HiddenInput()
         form.fields['author'].widget = forms.HiddenInput()
@@ -1009,7 +1009,7 @@ class AllocationRequestListView(LoginRequiredMixin, UserPassesTestMixin, Templat
     login_url = '/'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
 
         review_perm = self.request.user.has_perm('allocation.can_review_allocation_requests')
         if self.request.user.is_superuser or review_perm:
@@ -1034,7 +1034,7 @@ class AllocationRenewView(LoginRequiredMixin, UserPassesTestMixin, TemplateView)
     template_name = 'allocation/allocation_renew.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         allocation_obj = get_object_or_404(Allocation, pk=self.kwargs.get('pk'))
         if allocation_obj.has_perm(self.request.user, AllocationPermission.MANAGER):
             return True
@@ -1175,7 +1175,7 @@ class AllocationInvoiceListView(LoginRequiredMixin, UserPassesTestMixin, ListVie
     context_object_name = 'allocation_list'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         invoice_perm = self.request.user.has_perm('allocation.can_manage_invoice')
         if self.request.user.is_superuser or invoice_perm:
             return True
@@ -1197,7 +1197,7 @@ class AllocationInvoicePaidView(LoginRequiredMixin, UserPassesTestMixin, ListVie
     context_object_name = 'allocation_list'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         invoice_perm = self.request.user.has_perm('allocation.can_manage_invoice')
         if self.request.user.is_superuser or invoice_perm:
             return True
@@ -1219,7 +1219,7 @@ class AllocationInvoiceDetailView(LoginRequiredMixin, UserPassesTestMixin, Templ
     context_object_name = 'allocation'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         invoice_perm = self.request.user.has_perm('allocation.can_manage_invoice')
         if self.request.user.is_superuser or invoice_perm:
             return True
@@ -1227,8 +1227,8 @@ class AllocationInvoiceDetailView(LoginRequiredMixin, UserPassesTestMixin, Templ
         return False
 
     def get_context_data(self, **kwargs):
-        """Create all the variables for allocation_invoice_detail.html
-        """
+        '''Create all the variables for allocation_invoice_detail.html
+        '''
         context = super().get_context_data(**kwargs)
         pk = self.kwargs.get('pk')
         allocation_obj = get_object_or_404(Allocation, pk=pk)
@@ -1331,7 +1331,7 @@ class AllocationAddInvoiceNoteView(LoginRequiredMixin, UserPassesTestMixin, Crea
     fields = ('is_private', 'note',)
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         invoice_perm = self.request.user.has_perm('allocation.can_manage_invoice')
         if self.request.user.is_superuser or invoice_perm:
             return True
@@ -1367,7 +1367,7 @@ class AllocationUpdateInvoiceNoteView(LoginRequiredMixin, UserPassesTestMixin, U
     fields = ('is_private', 'note',)
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         invoice_perm = self.request.user.has_perm('allocation.can_manage_invoice')
         if self.request.user.is_superuser or invoice_perm:
             return True
@@ -1385,7 +1385,7 @@ class AllocationDeleteInvoiceNoteView(LoginRequiredMixin, UserPassesTestMixin, T
     template_name = 'allocation/allocation_delete_invoice_note.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         invoice_perm = self.request.user.has_perm('allocation.can_manage_invoice')
         if self.request.user.is_superuser or invoice_perm:
             return True
@@ -1460,7 +1460,7 @@ class AllocationAccountCreateView(LoginRequiredMixin, UserPassesTestMixin, Creat
     form_class = AllocationAccountForm
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
 
         if not ALLOCATION_ACCOUNT_ENABLED:
             return False
@@ -1542,7 +1542,7 @@ class AllocationAccountListView(LoginRequiredMixin, UserPassesTestMixin, ListVie
     context_object_name = 'allocationaccount_list'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
 
         if not ALLOCATION_ACCOUNT_ENABLED:
             return False
@@ -1563,7 +1563,7 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
     template_name = 'allocation/allocation_change_detail.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         if self.request.user.has_perm('allocation.can_view_all_allocations'):
             return True
 
@@ -1783,7 +1783,7 @@ class AllocationChangeListView(LoginRequiredMixin, UserPassesTestMixin, Template
     login_url = '/'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         review_perm = self.request.user.has_perm('allocation.can_review_allocation_requests')
         if self.request.user.is_superuser or review_perm:
             return True
@@ -1805,7 +1805,7 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
     template_name = 'allocation/allocation_change.html'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         allocation_obj = get_object_or_404(Allocation, pk=self.kwargs.get('pk'))
         if allocation_obj.has_perm(self.request.user, AllocationPermission.MANAGER):
             return True
@@ -1966,7 +1966,7 @@ class AllocationChangeDeleteAttributeView(LoginRequiredMixin, UserPassesTestMixi
     login_url = '/'
 
     def test_func(self):
-        """ UserPassesTestMixin Tests"""
+        ''' UserPassesTestMixin Tests'''
         review_perm = self.request.user.has_perm('allocation.can_review_allocation_requests')
         if self.request.user.is_superuser or review_perm:
             return True

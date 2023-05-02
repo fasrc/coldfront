@@ -16,8 +16,6 @@ from coldfront.config.env import ENV
 
 from ifxbilling.models import Product
 
-from ifxbilling.models import Product
-
 MISSING_DATA_DIR = './local_data/missing/'
 
 

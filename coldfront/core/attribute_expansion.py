@@ -1,7 +1,7 @@
 #Collection of functions related to attribute expansion.
 #
 #This is a collection common functions related to the expansion
-#of parameters (typically related to other attributes) inside of 
+#of parameters (typically related to other attributes) inside of
 #attributes.  Used in the expanded_value() method of AllocationAttribute
 #and ResourceAttribute.
 
@@ -19,26 +19,26 @@ ATTRIBUTE_EXPANSION_ATTRIBLIST_SUFFIX = '_attriblist'
 
 
 def is_expandable_type(attribute_type):
-    """Returns True if attribute_type is expandable.
+    '''Returns True if attribute_type is expandable.
 
     Takes an AttributeType (from either Resource or Allocation, but
     wants AttributeType, not ResourceAttributeType or
-    AllocationAttributeType) and checks if type name matches 
+    AllocationAttributeType) and checks if type name matches
     ATTRIBUTE_EXPANSION_TYPE_PREFIX
-    """
+    '''
 
     atype_name = attribute_type.name;
     return atype_name.startswith(ATTRIBUTE_EXPANSION_TYPE_PREFIX)
 
 def get_attriblist_str(attribute_name, resources=[], allocations=[]):
-    """This finds the attriblist string for the named expandable attribute.
+    '''This finds the attriblist string for the named expandable attribute.
 
     We append the ATTRIBUTE_EXPANSION_ATTRIBLIST_SUFFIX to the given
     attribute_name, and then search for attributes with that name in
     all resources and allocations given.  The values of any such attriblist
     attributes found are concatenated together and returned.  If no
     attriblist attributes are found, we return None.
-    """
+    '''
 
     attriblist_name = "{aname}{suffix}".format(
         aname=attribute_name, suffix=ATTRIBUTE_EXPANSION_ATTRIBLIST_SUFFIX)
@@ -66,7 +66,7 @@ def get_attriblist_str(attribute_name, resources=[], allocations=[]):
 def get_attribute_parameter_value(
     argument, attribute_parameter_dict, error_text,
     resources=[], allocations=[]):
-    """Evaluates the argument for a attribute parameter statement.
+    '''Evaluates the argument for a attribute parameter statement.
 
     This is called by process_attribute_parameter_string and handles
     evaluating/dereferencing the argument portion of the statement.
@@ -75,7 +75,7 @@ def get_attribute_parameter_value(
     APDICT:pname - expands to the value of a parameter named pname already
         in the attribute_parameter_dict (or None if not present)
     RESOURCE:aname - expands to the value of the first attribute of type
-        named aname found in the resources list of resources. 
+        named aname found in the resources list of resources.
         NOTE: 'RESOURCE:' is a literal.  Or None if not found.
     ALLOCATION:aname - expands to the value of the first attribute of type
         named aname found in the allocations list of allocations.
@@ -88,17 +88,17 @@ def get_attribute_parameter_value(
     'single line of text' - expands to a string literal contained between
         the two single quotes.  Very simplistic, nothing is allowed after
         the last single quote, and we just remove the leading and trailing
-        single quote --- everything in between is treated literally 
+        single quote --- everything in between is treated literally
         (including any contained single quotes).
     digits (optionally with decimal): expands to a numeric literal
 
     error_text is used to give context in diagnostic messages.
 
-    This method returns the expanded value, or None if unable to 
+    This method returns the expanded value, or None if unable to
     evaluate
-    """
+    '''
     value = None
-    
+
     # Check for string constant
     if argument.startswith("'"):
         # Looks like a string literal
@@ -132,7 +132,7 @@ def get_attribute_parameter_value(
     # Try expanding as a parameter/attribute
     # We do attribute_parameter_dict first, then allocations, then
     # resources to try to get value most specific to use case
-    if ( attribute_parameter_dict is not None and 
+    if ( attribute_parameter_dict is not None and
         (attrib_source == ':' or attrib_source == 'APDICT:')):
         if argument in attribute_parameter_dict:
             return attribute_parameter_dict[argument]
@@ -154,7 +154,7 @@ def get_attribute_parameter_value(
         # find it.  Just return None
         return None
 
-    # If reach here, argument is not a string literal, or a 
+    # If reach here, argument is not a string literal, or a
     # parameter or attribute name, so try numeric constant
     try:
         value = int(argument)
@@ -171,10 +171,10 @@ def get_attribute_parameter_value(
 
     # Should not reach here
     return None
-    
+
 def process_attribute_parameter_operation(
     opcode, oldvalue, argument, error_text):
-    """Process the specified operation for attribute_parameter_dict.
+    '''Process the specified operation for attribute_parameter_dict.
 
     This is called by process_attribute_parameter_string and handles
     performing the specifed operation on the parameter.  Oldvalue is
@@ -206,7 +206,7 @@ def process_attribute_parameter_operation(
     On success, returns the new value that should be used for the
     parameter.  Generally returns None on errors (e.g. undefined
     required values, or bad types, etc)
-    """
+    '''
     # Argument should never be None
     if argument is None:
         logger.warn("Operator {}= acting on None argument in {}, "
@@ -272,7 +272,7 @@ def process_attribute_parameter_operation(
 def process_attribute_parameter_string(
     parameter_string, attribute_name, attribute_parameter_dict = {},
     resources = [], allocations = []):
-    """Processes a single attribute parameter definition/statement.
+    '''Processes a single attribute parameter definition/statement.
 
     This is called by make_attribute_parameter_dictionary, and handles
     the processing of a single attribute parameter definition/statement
@@ -295,10 +295,10 @@ def process_attribute_parameter_string(
     AllocationAttribute or ResourceAttribute (which is then replaced by
     its (expanded if expandable) value).
 
-    See the methods get_attribute_parameter_value() and 
+    See the methods get_attribute_parameter_value() and
     process_attribute_parameter_operation() for more information about
     the operations and argument values.
-    """
+    '''
 
     # Strip leading/trailing white space
     parmstr = parameter_string.strip()
@@ -337,7 +337,7 @@ def process_attribute_parameter_string(
         value = get_attribute_parameter_value(
             argument = argument,
             attribute_parameter_dict = attribute_parameter_dict,
-            resources = resources, 
+            resources = resources,
             allocations = allocations,
             error_text = error_text)
 
@@ -358,24 +358,24 @@ def process_attribute_parameter_string(
 
 def make_attribute_parameter_dictionary(attribute_name,
         attribute_parameter_string, resources=[], allocations=[]):
-    """Create the attribute parameter dictionary.  Used by expand_attribute.
+    '''Create the attribute parameter dictionary.  Used by expand_attribute.
 
     This processes the given attribute parameter string to generate a
-    dictionary that will (in expand_attribute()) be passed as the argument 
-    to the standard python format() method acting on the raw value of the 
+    dictionary that will (in expand_attribute()) be passed as the argument
+    to the standard python format() method acting on the raw value of the
     attribute to expand it.
 
     The attribute parameter string is a string consisting of one or more
     attribute parameter definitions, one per line, with the following
     general format:
     '<parameter_name> <op>= <argument>'
-    
+
     This routine processes the attribute_parameter_string line by line, in
     order top to bottom, to generate the dictionary that is returned.
 
     See process_attribute_parameter_string for details on the processing
     of each line.
-    """
+    '''
 
     # Initialize our dictionary
     apdict = dict()
@@ -394,15 +394,15 @@ def make_attribute_parameter_dictionary(attribute_name,
     return apdict
 
 
-def expand_attribute(raw_value, attribute_name, attriblist_string, 
+def expand_attribute(raw_value, attribute_name, attriblist_string,
     resources = [], allocations = []):
-    """Main method to expand parameters in an attribute.
+    '''Main method to expand parameters in an attribute.
 
-    This takes the (raw) value raw_value of either an AllocationAttribute 
-    or ResourceAttribute, which should be in a python formatted string 
-    (f-string) format; i.e. a string with places where parameter 
-    replacement is desired to have the name of the desired replacement 
-    parameter enclosed in curly braces ('{' and '}').  The parameter name 
+    This takes the (raw) value raw_value of either an AllocationAttribute
+    or ResourceAttribute, which should be in a python formatted string
+    (f-string) format; i.e. a string with places where parameter
+    replacement is desired to have the name of the desired replacement
+    parameter enclosed in curly braces ('{' and '}').  The parameter name
     can be followed by standard format() format specifiers, as per
     standard format() rules.  The argument attribute_name should have
     the name of this attribute, for use in diagnostic messages.
@@ -437,7 +437,7 @@ def expand_attribute(raw_value, attribute_name, attriblist_string,
     of this is successful, we return the expanded string.
 
     On errors, we just return the raw_value
-    """
+    '''
 
     # We wrap everything in a try block so we can return raw_value on error
     try:
@@ -462,11 +462,11 @@ def expand_attribute(raw_value, attribute_name, attriblist_string,
 
 
 def convert_type(value, type_name, error_text='unknown'):
-    """This returns value with a python type corresponding to type_name.
+    '''This returns value with a python type corresponding to type_name.
 
     Value is the value to operate on.
     Type_name is the name of the underlying attribute type (AttributeType),
-    e.g. Text, Float, Int, Date, etc.  
+    e.g. Text, Float, Int, Date, etc.
 
     If type_name ends in Int, we try to return value as a python int.
     If type_name ends in Float, we try to return value as a python float.
@@ -477,7 +477,7 @@ def convert_type(value, type_name, error_text='unknown'):
 
     We compare the end of the type name, to allow for possible
     future "Attribute Expanded ..." types.
-    """
+    '''
     if type_name is None:
         logger.error('No AttributeType found for {}'.format(error_text))
         return value
@@ -511,6 +511,3 @@ def convert_type(value, type_name, error_text='unknown'):
 
     #If not any of the above, just return the value (probably a string)
     return value
-
-
-

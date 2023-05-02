@@ -19,8 +19,8 @@ EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings(
 
 
 class ProjectSearchForm(forms.Form):
-    """ Search form for the Project list page.
-    """
+    ''' Search form for the Project list page.
+    '''
     LAST_NAME = 'Last Name'
     USERNAME = 'Username'
     FIELD_OF_SCIENCE = 'Field of Science'
@@ -130,7 +130,7 @@ class ProjectReviewEmailForm(forms.Form):
         self.fields['cc'].initial = ', '.join(
             [EMAIL_DIRECTOR_EMAIL_ADDRESS] + EMAIL_ADMIN_LIST)
 
-class ProjectAttributeAddForm(forms.ModelForm):    
+class ProjectAttributeAddForm(forms.ModelForm):
     class Meta:
         fields = '__all__'
         model = ProjectAttribute
@@ -139,7 +139,7 @@ class ProjectAttributeAddForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        super(ProjectAttributeAddForm, self).__init__(*args, **kwargs) 
+        super(ProjectAttributeAddForm, self).__init__(*args, **kwargs)
         user =(kwargs.get('initial')).get('user')
         self.fields['proj_attr_type'].queryset = self.fields['proj_attr_type'].queryset.order_by(Lower('name'))
         if not user.is_superuser:
