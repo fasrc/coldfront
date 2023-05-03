@@ -10,9 +10,7 @@ from django import forms
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db.models import Q
-from django.db.models.query import QuerySet
 from django.forms import formset_factory
 from django.http import (HttpResponseRedirect,
                         JsonResponse, HttpResponse,
@@ -25,6 +23,7 @@ from django.views import View
 from django.views.generic import ListView, TemplateView
 from django.views.generic.edit import CreateView, FormView, UpdateView
 
+from coldfront.core.utils.views import ColdfrontListView
 from coldfront.core.utils.fasrc import get_resource_rate
 from coldfront.core.allocation.forms import (AllocationAccountForm,
                                              AllocationAddUserForm,
@@ -117,14 +116,14 @@ def return_allocation_bytes_values(attributes_with_usage, allocation_users):
     '''
 
     allocation_quota_bytes = next((a for a in attributes_with_usage if \
-            a.allocation_attribute_type.name == "Quota_In_Bytes"), "None")
-    if allocation_quota_bytes != "None":
+            a.allocation_attribute_type.name == 'Quota_In_Bytes'), 'None')
+    if allocation_quota_bytes != 'None':
         quota_b, usage_b = attribute_and_usage_as_floats(allocation_quota_bytes)
         return (quota_b, usage_b)
 
     bytes_in_tb = 1099511627776
     allocation_quota_tb = next((a for a in attributes_with_usage if \
-        a.allocation_attribute_type.name == "Storage Quota (TB)"), "None")
+        a.allocation_attribute_type.name == 'Storage Quota (TB)'), 'None')
 
     quota_tb, usage_tb = attribute_and_usage_as_floats(allocation_quota_tb)
     allocation_quota_bytes = float(quota_tb)*bytes_in_tb
@@ -191,7 +190,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             attributes_with_usage.remove(a)
 
         allocation_quota_tb = next((a for a in attributes_with_usage if \
-            a.allocation_attribute_type.name == "Storage Quota (TB)"), "None")
+            a.allocation_attribute_type.name == 'Storage Quota (TB)'), 'None')
         allocation_usage_tb = float(allocation_quota_tb.allocationattributeusage.value)
         allocation_quota_bytes, allocation_usage_bytes = return_allocation_bytes_values(
                         attributes_with_usage, allocation_obj.allocationuser_set.all())
@@ -272,7 +271,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
 
         action = request.POST.get('action')
         if action not in ['update', 'approve', 'auto-approve', 'deny']:
-            return HttpResponseBadRequest("Invalid request")
+            return HttpResponseBadRequest('Invalid request')
 
         form_data = form.cleaned_data
 
@@ -348,22 +347,16 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
 
 
-class AllocationListView(LoginRequiredMixin, ListView):
+class AllocationListView(ColdfrontListView):
 
     model = Allocation
     template_name = 'allocation/allocation_list.html'
-    context_object_name = 'allocation_list'
+    context_object_name = 'item_list'
     paginate_by = 25
 
-    def get_queryset(self):
 
-        order_by = self.request.GET.get('order_by')
-        if order_by:
-            direction = self.request.GET.get('direction')
-            direction = '-' if direction == 'des' else ''
-            order_by = direction + order_by
-        else:
-            order_by = 'id'
+    def get_queryset(self):
+        order_by = self.return_order()
 
         allocation_search_form = AllocationSearchForm(self.request.GET)
 
@@ -441,54 +434,8 @@ class AllocationListView(LoginRequiredMixin, ListView):
         return allocations.distinct()
 
     def get_context_data(self, **kwargs):
-
-        context = super().get_context_data(**kwargs)
-        allocations_count = self.get_queryset().count()
-        context['allocations_count'] = allocations_count
-
-        allocation_search_form = AllocationSearchForm(self.request.GET)
-
-        if allocation_search_form.is_valid():
-            data = allocation_search_form.cleaned_data
-            filter_parameters = ''
-            for key, value in data.items():
-                if value:
-                    if isinstance(value, QuerySet):
-                        filter_parameters += ''.join([f'{key}={ele.pk}&' for ele in value])
-                    elif hasattr(value, 'pk'):
-                        filter_parameters += f'{key}={value.pk}&'
-                    else:
-                        filter_parameters += f'{key}={value}&'
-            context['allocation_search_form'] = allocation_search_form
-        else:
-            filter_parameters = None
-            context['allocation_search_form'] = AllocationSearchForm()
-
-        order_by = self.request.GET.get('order_by')
-        if order_by:
-            direction = self.request.GET.get('direction')
-            filter_parameters_with_order_by = filter_parameters + \
-                'order_by=%s&direction=%s&' % (order_by, direction)
-        else:
-            filter_parameters_with_order_by = filter_parameters
-
-        if filter_parameters:
-            context['expand_accordion'] = 'show'
-        context['filter_parameters'] = filter_parameters
-        context['filter_parameters_with_order_by'] = filter_parameters_with_order_by
-
-        allocation_list = context.get('allocation_list')
-        paginator = Paginator(allocation_list, self.paginate_by)
-
-        page = self.request.GET.get('page')
-
-        try:
-            allocation_list = paginator.page(page)
-        except PageNotAnInteger:
-            allocation_list = paginator.page(1)
-        except EmptyPage:
-            allocation_list = paginator.page(paginator.num_pages)
-
+        context = super().get_context_data(
+                        SearchFormClass=AllocationSearchForm, **kwargs)
         return context
 
 
@@ -613,7 +560,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 
         AllocationAttribute.objects.create(allocation=allocation_obj, value=quantity,
             allocation_attribute_type = AllocationAttributeType.objects.get(pk=1))
-        allocation_obj.set_usage("Storage Quota (TB)", 0)
+        allocation_obj.set_usage('Storage Quota (TB)', 0)
 
         for linked_resource in resource_obj.linked_resources.all():
             allocation_obj.resources.add(linked_resource)
@@ -627,7 +574,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                                     'New Allocation Request',
                                     'email/new_allocation_request.txt',
                                     domain_url=get_domain_url(self.request),
-                                    other_vars={"justification":justification, "quantity":quantity})
+                                    other_vars={'justification':justification, 'quantity':quantity})
 
     def get_success_url(self):
         return reverse('project-detail', kwargs={'pk': self.kwargs.get('project_pk')})
@@ -736,7 +683,7 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     allocation_activate_user.send(sender=self.__class__,
                                                   allocation_user_pk=allocation_user_obj.pk)
 
-            user_plural = "user" if users_added_count == 1 else "users"
+            user_plural = 'user' if users_added_count == 1 else 'users'
             messages.success(request, f'Added {users_added_count} {user_plural} to allocation.')
         else:
             for error in formset.errors:
@@ -838,7 +785,7 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
                     allocation_remove_user.send(sender=self.__class__,
                                                 allocation_user_pk=allocation_user_obj.pk)
 
-            user_plural = "user" if remove_users_count == 1 else "users"
+            user_plural = 'user' if remove_users_count == 1 else 'users'
             messages.success(request, f'Removed {remove_users_count} {user_plural} from allocation.')
         else:
             for error in formset.errors:
@@ -1256,7 +1203,7 @@ class AllocationInvoiceDetailView(LoginRequiredMixin, UserPassesTestMixin, Templ
 
 
         allocation_quota_tb = next((a for a in attributes_with_usage if \
-            a.allocation_attribute_type.name == "Storage Quota (TB)"), "None")
+            a.allocation_attribute_type.name == 'Storage Quota (TB)'), 'None')
 
         # allocation_usage_tb = float(allocation_quota_tb.allocationattributeusage.value)
         allocation_quota_bytes, allocation_usage_bytes = return_allocation_bytes_values(attributes_with_usage, allocation_users)
@@ -1449,7 +1396,7 @@ def render_to_pdf(template_src, context_dict={}):
     template = get_template(template_src)
     html  = template.render(context_dict)
     result = BytesIO()
-    pdf = pisa.pisaDocument(BytesIO(html.encode("ISO-8859-1")), result)
+    pdf = pisa.pisaDocument(BytesIO(html.encode('ISO-8859-1')), result)
     if not pdf.err:
         return HttpResponse(result.getvalue(), content_type='application/pdf')
     return None
@@ -1493,20 +1440,20 @@ class AllocationAccountCreateView(LoginRequiredMixin, UserPassesTestMixin, Creat
 
 
 data = {
-    "company": "FAS Research Computing",
-    "address": "38 Oxford St",
-    "city": "Cambridge",
-    "state": "MA",
-    "zipcode": "02138",
-    "website": "billing@rc.fas.harvard.edu",
+    'company': 'FAS Research Computing',
+    'address': '38 Oxford St',
+    'city': 'Cambridge',
+    'state': 'MA',
+    'zipcode': '02138',
+    'website': 'billing@rc.fas.harvard.edu',
     }
 
 class ViewPDF(View):
 
     def get(self, request, *args, **kwargs):
         # one_allocation_users = AllocationUser.objects.filter(allocation__pk = kwargs)
-        # print("line 1775 one_allocation_user",one_allocation_users)
-        print("line magic 1773",kwargs)
+        # print('line 1775 one_allocation_user',one_allocation_users)
+        print('line magic 1773',kwargs)
         # pdf = render_to_pdf('allocation/pdf_template.html', one_allocation_users)
         pdf = render_to_pdf('allocation/pdf_template.html', data)
         return HttpResponse(pdf, content_type='application/pdf')
@@ -1519,8 +1466,8 @@ class DownloadPDF(View):
         pdf = render_to_pdf('allocation/pdf_template.html', data)
 
         response = HttpResponse(pdf, content_type='allocation/pdf')
-        filename = "Invoice_%s.pdf" %("12341231")
-        content = "attachment; filename='%s'" %(filename)
+        filename = 'Invoice_%s.pdf' %('12341231')
+        content = f"attachment; filename='{filename}'"
         response['Content-Disposition'] = content
         return response
 
@@ -1675,13 +1622,13 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
 
         action = request.POST.get('action')
         if action not in ['update', 'approve', 'deny']:
-            return HttpResponseBadRequest("Invalid request")
+            return HttpResponseBadRequest('Invalid request')
 
         if not allocation_change_form.is_valid() or (allocation_attributes_to_change and not formset.is_valid()):
             for error in allocation_change_form.errors:
                 messages.error(request, error)
             if allocation_attributes_to_change:
-                attribute_errors = ""
+                attribute_errors = ''
                 for error in formset.errors:
                     if error:
                         attribute_errors += error.get('__all__')
@@ -1698,7 +1645,7 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
             allocation_change_obj.status = allocation_change_status_denied_obj
             allocation_change_obj.save()
 
-            message = make_allocation_change_message(allocation_change_obj, "DENIED")
+            message = make_allocation_change_message(allocation_change_obj, 'DENIED')
             messages.success(request, message)
 
             send_allocation_customer_email(allocation_change_obj.allocation,
@@ -1760,7 +1707,7 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                     attribute_change.allocation_attribute.value = attribute_change.new_value
                     attribute_change.allocation_attribute.save()
 
-            message = make_allocation_change_message(allocation_change_obj, "APPROVED")
+            message = make_allocation_change_message(allocation_change_obj, 'APPROVED')
             messages.success(request, message)
 
             allocation_change_approved.send(
@@ -1887,7 +1834,7 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                 request.POST, initial=allocation_attributes_to_change, prefix='attributeform')
 
             if not form.is_valid() or not formset.is_valid():
-                attribute_errors = ""
+                attribute_errors = ''
                 for error in form.errors:
                     messages.error(request, error)
                 for error in formset.errors:
@@ -1904,7 +1851,7 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 
                 new_value = formset_data.get('new_value')
 
-                if new_value != "":
+                if new_value != '':
                     change_requested = True
                     allocation_attribute = AllocationAttribute.objects.get(pk=formset_data.get('pk'))
                     attribute_changes_to_make.add((allocation_attribute, new_value))
@@ -1944,8 +1891,8 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                 new_value=attribute[1]
                 )
 
-        quantity = [a for a in attribute_changes_to_make if a[0].allocation_attribute_type.name == "Storage Quota (TB)"]
-        email_vars = {"justification":justification}
+        quantity = [a for a in attribute_changes_to_make if a[0].allocation_attribute_type.name == 'Storage Quota (TB)']
+        email_vars = {'justification':justification}
         if quantity:
             email_vars['quantity'] = quantity[0][1]
 

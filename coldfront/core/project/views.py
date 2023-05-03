@@ -1,7 +1,4 @@
 import datetime
-from pipes import Template
-import pprint
-import django
 import logging
 
 from django import forms
@@ -13,8 +10,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db.models import Q
-from django.forms import formset_factory, modelformset_factory
-from django.http import (HttpResponse, HttpResponseForbidden,
+from django.forms import formset_factory
+from django.http import (HttpResponse,
                          HttpResponseRedirect)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -56,8 +53,10 @@ from coldfront.core.publication.models import Publication
 from coldfront.core.research_output.models import ResearchOutput
 from coldfront.core.user.forms import UserSearchForm
 from coldfront.core.user.utils import CombinedUserSearch
+from coldfront.core.utils.views import ColdfrontListView
 from coldfront.core.utils.common import get_domain_url, import_from_settings
 from coldfront.core.utils.mail import send_email, send_email_template
+
 
 ALLOCATION_ENABLE_ALLOCATION_RENEWAL = import_from_settings(
     'ALLOCATION_ENABLE_ALLOCATION_RENEWAL', True)
@@ -70,7 +69,7 @@ EMAIL_SENDER = import_from_settings('EMAIL_SENDER')
 
 def produce_filter_parameter(key, value):
     if isinstance(value, list):
-        return "".join([f'{key}={ele}&' for ele in value])
+        return ''.join([f'{key}={ele}&' for ele in value])
     return f'{key}={value}&'
 
 logger = logging.getLogger(__name__)
@@ -108,22 +107,22 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
             attributes_with_usage = [attribute for attribute in project_obj.projectattribute_set.all(
             ).order_by('proj_attr_type__name') if hasattr(attribute, 'projectattributeusage')]
 
-            attributes = [attribute for attribute in project_obj.projectattribute_set.all(
-            ).order_by('proj_attr_type__name')]
+            attributes = list(project_obj.projectattribute_set.all(
+                ).order_by('proj_attr_type__name'))
 
         else:
             attributes_with_usage = [attribute for attribute in project_obj.projectattribute_set.filter(
                 proj_attr_type__is_private=False) if hasattr(attribute, 'projectattributeusage')]
 
-            attributes = [attribute for attribute in project_obj.projectattribute_set.filter(
-                proj_attr_type__is_private=False)]
+            attributes = list(project_obj.projectattribute_set.filter(
+                proj_attr_type__is_private=False))
 
         guage_data = []
         invalid_attributes = []
         for attribute in attributes_with_usage:
             try:
                 guage_data.append(generate_guauge_data_from_usage(attribute.proj_attr_type.name,
-                                                                  float(attribute.value), float(attribute.projectattributeusage.value)))
+                          float(attribute.value), float(attribute.projectattributeusage.value)))
             except ValueError:
                 logger.error("Allocation attribute '%s' is not an int but has a usage",
                              attribute.allocation_attribute_type.name)
@@ -141,7 +140,7 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         min_filters = ( Q(project=self.object) &
                         Q(status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested', ]))
         if self.request.user.is_superuser or self.request.user.has_perm(
-                                        'allocation.can_view_all_allocations'):
+                                    'allocation.can_view_all_allocations'):
             allocations = Allocation.objects.prefetch_related(
                     'resources').filter(min_filters).order_by('-end_date')
         else:
@@ -149,15 +148,18 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
                 allocations = Allocation.objects.filter(
                     min_filters &
                     Q(project__projectuser__user=self.request.user) &
-                    Q(project__projectuser__status__name__in=['Active', ]) &
-                    Q(allocationuser__user=self.request.user) &
-                    Q(allocationuser__status__name__in=['Active', ])
-                ).distinct().order_by('-end_date')
+                    Q(project__projectuser__status__name__in=['Active', ]))
+                if not self.object.has_perm(self.request.user, ProjectPermission.MANAGER):
+                    allocations = allocations.objects.filter(
+                        Q(allocationuser__user=self.request.user) &
+                        Q(allocationuser__status__name__in=['Active', ])
+                    )
+                allocations = allocations.distinct().order_by('-end_date')
             else:
                 allocations = Allocation.objects.prefetch_related(
                     'resources').filter(min_filters).order_by('-end_date')
 
-        allocation_total = {"allocation_user_count": 0, "size": 0, "cost": 0}
+        allocation_total = {'allocation_user_count': 0, 'size': 0, 'cost': 0}
         for allocation in allocations:
             allocation_total['cost'] += allocation.cost
             allocation_total['allocation_user_count'] += int(allocation.allocationuser_set.count())
@@ -193,24 +195,17 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         return context
 
 
-class ProjectListView(LoginRequiredMixin, ListView):
+class ProjectListView(ColdfrontListView):
 
     model = Project
     template_name = 'project/project_list.html'
     prefetch_related = ['pi', 'status', 'field_of_science', ]
-    context_object_name = 'project_list'
+    context_object_name = 'item_list'
     paginate_by = 25
 
-    def get_queryset(self):
 
-        order_by = self.request.GET.get('order_by', 'id')
-        direction = self.request.GET.get('direction', 'asc')
-        if order_by != "name":
-            if direction == 'asc':
-                direction = ''
-            if direction == 'des':
-                direction = '-'
-            order_by = direction + order_by
+    def get_queryset(self):
+        order_by = self.return_order()
 
         project_search_form = ProjectSearchForm(self.request.GET)
 
@@ -253,68 +248,22 @@ class ProjectListView(LoginRequiredMixin, ListView):
         return projects.distinct()
 
     def get_context_data(self, **kwargs):
-
-        context = super().get_context_data(**kwargs)
-        projects_count = self.get_queryset().count()
-        context['projects_count'] = projects_count
-
-        project_search_form = ProjectSearchForm(self.request.GET)
-        if project_search_form.is_valid():
-            data = project_search_form.cleaned_data
-            filter_parameters = ''
-            for key, value in data.items():
-                if value:
-                    filter_parameters += produce_filter_parameter(key, value)
-            context['project_search_form'] = project_search_form
-        else:
-            filter_parameters = None
-            context['project_search_form'] = ProjectSearchForm()
-
-        order_by = self.request.GET.get('order_by')
-        if order_by:
-            direction = self.request.GET.get('direction')
-            filter_parameters_with_order_by = filter_parameters + \
-                'order_by=%s&direction=%s&' % (order_by, direction)
-        else:
-            filter_parameters_with_order_by = filter_parameters
-
-        if filter_parameters:
-            context['expand_accordion'] = 'show'
-
-        context['filter_parameters'] = filter_parameters
-        context['filter_parameters_with_order_by'] = filter_parameters_with_order_by
-
-        project_list = context.get('project_list')
-        paginator = Paginator(project_list, self.paginate_by)
-
-        page = self.request.GET.get('page')
-
-        try:
-            project_list = paginator.page(page)
-        except PageNotAnInteger:
-            project_list = paginator.page(1)
-        except EmptyPage:
-            project_list = paginator.page(paginator.num_pages)
-
+        context = super().get_context_data(
+                            SearchFormClass=ProjectSearchForm, **kwargs)
+        context['expand'] = False
         return context
 
 
-class ProjectArchivedListView(LoginRequiredMixin, ListView):
+class ProjectArchivedListView(ColdfrontListView):
 
     model = Project
     template_name = 'project/project_archived_list.html'
     prefetch_related = ['pi', 'status', 'field_of_science', ]
-    context_object_name = 'project_list'
+    context_object_name = 'item_list'
     paginate_by = 10
 
     def get_queryset(self):
-
-        order_by = self.request.GET.get('order_by', 'id')
-        direction = self.request.GET.get('direction', '')
-        if order_by != "name":
-            if direction == 'des':
-                direction = '-'
-            order_by = direction + order_by
+        order_by = self.return_order()
 
         project_search_form = ProjectSearchForm(self.request.GET)
 
@@ -352,50 +301,9 @@ class ProjectArchivedListView(LoginRequiredMixin, ListView):
         return projects
 
     def get_context_data(self, **kwargs):
-
-        context = super().get_context_data(**kwargs)
-        projects_count = self.get_queryset().count()
-        context['projects_count'] = projects_count
+        context = super().get_context_data(
+                            SearchFormClass=ProjectSearchForm, **kwargs)
         context['expand'] = False
-
-        project_search_form = ProjectSearchForm(self.request.GET)
-        if project_search_form.is_valid():
-            data = project_search_form.cleaned_data
-            filter_parameters = ''
-            for key, value in data.items():
-                if value:
-                    filter_parameters += produce_filter_parameter(key, value)
-            context['project_search_form'] = project_search_form
-        else:
-            filter_parameters = None
-            context['project_search_form'] = ProjectSearchForm()
-
-        order_by = self.request.GET.get('order_by')
-        if order_by:
-            direction = self.request.GET.get('direction')
-            filter_parameters_with_order_by = filter_parameters + \
-                'order_by=%s&direction=%s&' % (order_by, direction)
-        else:
-            filter_parameters_with_order_by = filter_parameters
-
-        if filter_parameters:
-            context['expand_accordion'] = 'show'
-
-        context['filter_parameters'] = filter_parameters
-        context['filter_parameters_with_order_by'] = filter_parameters_with_order_by
-
-        project_list = context.get('project_list')
-        paginator = Paginator(project_list, self.paginate_by)
-
-        page = self.request.GET.get('page')
-
-        try:
-            project_list = paginator.page(page)
-        except PageNotAnInteger:
-            project_list = paginator.page(1)
-        except EmptyPage:
-            project_list = paginator.page(paginator.num_pages)
-
         return context
 
 
@@ -863,7 +771,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
 @login_required
 def project_update_email_notification(request):
 
-    if request.method != "POST":
+    if request.method != 'POST':
         return HttpResponse('no POST', status=400)
     data = request.POST
     project_user_obj = get_object_or_404(
@@ -896,7 +804,7 @@ def project_update_email_notification(request):
 
 class ProjectReviewView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     template_name = 'project/project_review.html'
-    login_url = "/"  # redirect URL if fail test_func
+    login_url = '/'  # redirect URL if fail test_func
 
     def test_func(self):
         ''' UserPassesTestMixin Tests'''
@@ -1002,7 +910,7 @@ class ProjectReviewListView(LoginRequiredMixin, UserPassesTestMixin, ListView):
 
 
 class ProjectReviewCompleteView(LoginRequiredMixin, UserPassesTestMixin, View):
-    login_url = "/"
+    login_url = '/'
 
     def test_func(self):
         ''' UserPassesTestMixin Tests'''
@@ -1037,7 +945,7 @@ class ProjectReviewCompleteView(LoginRequiredMixin, UserPassesTestMixin, View):
 class ProjectReviewEmailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
     form_class = ProjectReviewEmailForm
     template_name = 'project/project_review_email.html'
-    login_url = "/"
+    login_url = '/'
 
     def test_func(self):
         ''' UserPassesTestMixin Tests'''
