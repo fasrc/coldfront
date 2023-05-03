@@ -8,7 +8,6 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.messages.views import SuccessMessageMixin
-from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.db.models import Q
 from django.forms import formset_factory
 from django.http import (HttpResponse,
@@ -53,7 +52,7 @@ from coldfront.core.publication.models import Publication
 from coldfront.core.research_output.models import ResearchOutput
 from coldfront.core.user.forms import UserSearchForm
 from coldfront.core.user.utils import CombinedUserSearch
-from coldfront.core.utils.views import ColdfrontListView
+from coldfront.core.utils.views import ColdfrontListView, NoteCreateView
 from coldfront.core.utils.common import get_domain_url, import_from_settings
 from coldfront.core.utils.mail import send_email, send_email_template
 
@@ -95,26 +94,20 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # Can the user update the project?
-        if self.object.has_perm(self.request.user, ProjectPermission.MANAGER):
-            context['is_allowed_to_update_project'] = True
-        else:
-            context['is_allowed_to_update_project'] = False
-
-        pk = self.kwargs.get('pk')
-        project_obj = get_object_or_404(Project, pk=pk)
+        context['is_allowed_to_update_project'] = self.object.has_perm(self.request.user, ProjectPermission.MANAGER)
 
         if self.request.user.is_superuser:
-            attributes_with_usage = [attribute for attribute in project_obj.projectattribute_set.all(
+            attributes_with_usage = [attribute for attribute in self.object.projectattribute_set.all(
             ).order_by('proj_attr_type__name') if hasattr(attribute, 'projectattributeusage')]
 
-            attributes = list(project_obj.projectattribute_set.all(
+            attributes = list(self.object.projectattribute_set.all(
                 ).order_by('proj_attr_type__name'))
 
         else:
-            attributes_with_usage = [attribute for attribute in project_obj.projectattribute_set.filter(
+            attributes_with_usage = [attribute for attribute in self.object.projectattribute_set.filter(
                 proj_attr_type__is_private=False) if hasattr(attribute, 'projectattributeusage')]
 
-            attributes = list(project_obj.projectattribute_set.filter(
+            attributes = list(self.object.projectattribute_set.filter(
                 proj_attr_type__is_private=False))
 
         guage_data = []
@@ -171,6 +164,9 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         except Exception as e:
             time_chart_data_error = e
             time_chart_data = None
+
+        context['notes'] = self.return_visible_notes()
+
         context['time_chart_data'] = time_chart_data
         context['time_chart_data_error'] = time_chart_data_error
         context['publications'] = Publication.objects.filter(
@@ -194,6 +190,11 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
         return context
 
+    def return_visible_notes(self):
+        notes = self.object.projectusermessage_set.all()
+        if not self.request.user.is_superuser:
+            notes = notes.filter(is_private=False)
+        return notes
 
 class ProjectListView(ColdfrontListView):
 
@@ -499,10 +500,13 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
+        messages.error(self.request,
+                'You do not have permission to add users to the project.')
         return False
 
     def dispatch(self, request, *args, **kwargs):
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
+
         if project_obj.status.name not in ['Active', 'New', ]:
             messages.error(
                 request, 'You cannot add users to an archived project.')
@@ -900,7 +904,6 @@ class ProjectReviewListView(LoginRequiredMixin, UserPassesTestMixin, ListView):
 
         if self.request.user.is_superuser:
             return True
-
         if self.request.user.has_perm('project.can_review_pending_project_reviews'):
             return True
 
@@ -1005,42 +1008,12 @@ class ProjectReviewEmailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         return reverse('project-review-list')
 
 
-class ProjectNoteCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
+class ProjectNoteCreateView(NoteCreateView):
     model = ProjectUserMessage
     fields = '__all__'
     template_name = 'project/project_note_create.html'
-
-    def test_func(self):
-        ''' UserPassesTestMixin Tests'''
-        if self.request.user.is_superuser:
-            return True
-        messages.error(
-            self.request, 'You do not have permission to add allocation notes.')
-        return False
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        pk = self.kwargs.get('pk')
-        project_obj = get_object_or_404(Project, pk=pk)
-        context['project'] = project_obj
-        return context
-
-    def get_initial(self):
-        initial = super().get_initial()
-        pk = self.kwargs.get('pk')
-        project_obj = get_object_or_404(Project, pk=pk)
-        author = self.request.user
-        initial['project'] = project_obj
-        initial['author'] = author
-        return initial
-
-    def get_form(self, form_class=None):
-        '''Return an instance of the form to be used in this view.'''
-        form = super().get_form(form_class)
-        form.fields['project'].widget = forms.HiddenInput()
-        form.fields['author'].widget = forms.HiddenInput()
-        form.order_fields([ 'project', 'author', 'message', 'is_private' ])
-        return form
+    object_model = Project
+    form_obj = 'project'
 
     def get_success_url(self):
         return reverse('project-detail', kwargs={'pk': self.kwargs.get('pk')})

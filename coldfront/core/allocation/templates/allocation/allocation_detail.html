@@ -11,7 +11,7 @@
 {% load static %}
 {% load django_tables2 %}
 {% load mathfilters %}
-
+{% load common_tags %}
 {% render_table table %}
 
 
@@ -20,11 +20,11 @@
 Allocation Detail
 {% endblock %}
 
-
 {% block content %}
+
 {% if allocation.project.status.name == 'Archived' %}
   <div class="alert alert-warning" role="alert">
-    This is a allocation from an archived project! You cannot make any changes.
+    This is an allocation from an archived project! You cannot make any changes.
   </div>
 {% endif %}
 <div id = "allocation">
@@ -463,52 +463,13 @@ Allocation Detail
 
       } );
   </script>
-<div class="html2pdf__page-break"></div>
-<!-- Start Admin Messages -->
-<div class="card mb-3">
-  <div class="card-header">
-    <h3 class="d-inline"><i class="fas fa-users" aria-hidden="true"></i> Notifications</h3>
-    <span class="badge badge-secondary">{{notes.count}}</span>
-    <div class="float-right">
-      {% if request.user.is_superuser %}
-        <a class="btn btn-success" href="{% url 'allocation-note-add' allocation.pk %}" role="button">
-          <i class="fas fa-plus" aria-hidden="true"></i> Add Notification
-        </a>
-      {% endif %}
-    </div>
-  </div>
-  <div class="card-body">
-    {% if notes %}
-      <div class="table-responsive">
-        <table class="table table-hover">
-          <thead>
-            <tr>
-              <th scope="col">Note</th>
-              <th scope="col">Administrator</th>
-              <th scope="col">Last Modified</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for note in notes %}
-              {% if not note.is_private or request.user.is_superuser %}
-                <tr>
-                  <td>{{ note.note }}</td>
-                  <td>{{ note.author.first_name }} {{ note.author.last_name }}</td>
-                  <td>{{ note.modified }}</td>
-                </tr>
-              {% endif %}
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="alert alert-info" role="alert">
-        <i class="fa fa-info-circle" aria-hidden="true"></i> There are no notes from system administrators.
-      </div>
-    {% endif %}
-  </div>
+  <div class="html2pdf__page-break"></div>
+  <!-- Start Admin Messages -->
+  {% note_table request.user 'allocation-note-add' allocation %}
+  <!-- End Admin Messages -->
+
 </div>
-</div>
+
 <script type="text/javascript">
 window.onload = function () {
     document.getElementById("download")

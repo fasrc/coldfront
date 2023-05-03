@@ -1,6 +1,10 @@
+from django import forms
+from django.contrib import messages
 from django.views.generic import ListView
 from django.db.models.query import QuerySet
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.shortcuts import get_object_or_404
+from django.views.generic.edit import CreateView
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 
 def produce_filter_parameter(key, value):
@@ -76,3 +80,40 @@ class ColdfrontListView(LoginRequiredMixin, ListView):
         context['filter_parameters_with_order_by'] = filter_parameters_with_order_by
 
         return context
+
+
+class NoteCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
+    template_name = 'note_create.html'
+    fields = '__all__'
+
+    def test_func(self):
+        ''' UserPassesTestMixin Tests'''
+        if self.request.user.is_superuser:
+            return True
+        messages.error(
+            self.request, 'You do not have permission to add allocation notes.')
+        return False
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        pk = self.kwargs.get('pk')
+        obj = get_object_or_404(self.object_model, pk=pk)
+        context[self.form_obj] = obj
+        return context
+
+    def get_initial(self):
+        initial = super().get_initial()
+        pk = self.kwargs.get('pk')
+        obj = get_object_or_404(self.object_model, pk=pk)
+        author = self.request.user
+        initial[self.form_obj] = obj
+        initial['author'] = author
+        return initial
+
+    def get_form(self, form_class=None):
+        '''Return an instance of the form to be used in this view.'''
+        form = super().get_form(form_class)
+        form.fields[self.form_obj].widget = forms.HiddenInput()
+        form.fields['author'].widget = forms.HiddenInput()
+        form.order_fields([ self.form_obj, 'author', 'note', 'is_private' ])
+        return form

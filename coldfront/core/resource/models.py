@@ -1,15 +1,17 @@
 from datetime import datetime
 
+from django.db import models
+from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
-from django.conf import settings
-from django.db import models
 from model_utils.models import TimeStampedModel
 from simple_history.models import HistoricalRecords
+
 from coldfront.core import attribute_expansion
 
 class AttributeType(TimeStampedModel):
-    ''' An attribute type indicates the data type of the attribute. Examples include Date, Float, Int, Text, and Yes/No.
+    ''' An attribute type indicates the data type of the attribute. Examples
+    include Date, Float, Int, Text, and Yes/No.
 
     Attributes:
         name (str): name of attribute data type
@@ -50,7 +52,7 @@ class ResourceType(TimeStampedModel):
         '''
 
         return ResourceAttribute.objects.filter(
-            resource__resource_type__name=self.name, value="Active").count()
+            resource__resource_type__name=self.name, value='Active').count()
 
     @property
     def inactive_count(self):
@@ -60,7 +62,7 @@ class ResourceType(TimeStampedModel):
         '''
 
         return ResourceAttribute.objects.filter(
-            resource__resource_type__name=self.name, value="Inactive").count()
+            resource__resource_type__name=self.name, value='Inactive').count()
 
     def __str__(self):
         return self.name
@@ -159,11 +161,11 @@ class Resource(TimeStampedModel):
             str: the status of the resource
         '''
 
-        return ResourceAttribute.objects.get(resource=self, resource_attribute_type__attribute="Status").value
+        return ResourceAttribute.objects.get(resource=self, resource_attribute_type__attribute='Status').value
 
     # @property
     # def status(self):
-    #     return ResourceAttribute.objects.get(resource=self, resource_attribute_type__attribute="Status").value
+    #     return ResourceAttribute.objects.get(resource=self, resource_attribute_type__attribute='Status').value
 
     @property
     def expiry(self):
@@ -253,21 +255,21 @@ class ResourceAttribute(TimeStampedModel):
         ''' Validates the resource and raises errors if the resource is invalid. '''
         expected_value_type = self.resource_attribute_type.attribute_type.name.strip()
 
-        if expected_value_type == "Int" and not self.value.isdigit():
+        if expected_value_type == 'Int' and not self.value.isdigit():
             raise ValidationError(
-                'Invalid Value "%s". Value must be an integer.' % (self.value))
-        if expected_value_type == "Active/Inactive" and self.value not in ["Active", "Inactive"]:
+                f'Invalid Value "{self.value}". Value must be an integer.')
+        if expected_value_type == 'Active/Inactive' and self.value not in ['Active', 'Inactive']:
             raise ValidationError(
-                'Invalid Value "%s". Allowed inputs are "Active" or "Inactive".' % (self.value))
-        if expected_value_type == "Public/Private" and self.value not in ["Public", "Private"]:
+                f'Invalid Value "{self.value}". Allowed inputs are "Active" or "Inactive".')
+        if expected_value_type == 'Public/Private' and self.value not in ['Public', 'Private']:
             raise ValidationError(
-                'Invalid Value "%s". Allowed inputs are "Public" or "Private".' % (self.value))
-        if expected_value_type == "Date":
+                f'Invalid Value "{self.value}" Allowed inputs are "Public" or "Private".')
+        if expected_value_type == 'Date':
             try:
-                datetime.strptime(self.value.strip(), "%m/%d/%Y")
-            except ValueError:
+                datetime.strptime(self.value.strip(), '%m/%d/%Y')
+            except ValueError as exc:
                 raise ValidationError(
-                    'Invalid Value "%s". Date must be in format MM/DD/YYYY' % (self.value))
+                    f'Invalid Value "{self.value}". Date must be in format MM/DD/YYYY') from exc
 
     def __str__(self):
         return '%s: %s (%s)' % (self.resource_attribute_type, self.value, self.resource)

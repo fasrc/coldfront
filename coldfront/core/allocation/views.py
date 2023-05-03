@@ -23,7 +23,7 @@ from django.views import View
 from django.views.generic import ListView, TemplateView
 from django.views.generic.edit import CreateView, FormView, UpdateView
 
-from coldfront.core.utils.views import ColdfrontListView
+from coldfront.core.utils.views import ColdfrontListView, NoteCreateView
 from coldfront.core.utils.fasrc import get_resource_rate
 from coldfront.core.allocation.forms import (AllocationAccountForm,
                                              AllocationAddUserForm,
@@ -214,13 +214,15 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         context['is_allowed_to_update_project'] = allocation_obj.project.has_perm(
                                 self.request.user, ProjectPermission.UPDATE)
 
-        noteset = allocation_obj.allocationusernote_set
-        notes = noteset.all() if self.request.user.is_superuser else noteset.filter(
-                                                            is_private=False)
-
-        context['notes'] = notes
+        context['notes'] = self.return_visible_notes(allocation_obj)
         context['ALLOCATION_ENABLE_ALLOCATION_RENEWAL'] = ALLOCATION_ENABLE_ALLOCATION_RENEWAL
         return context
+
+    def return_visible_notes(self, allocation_obj):
+        notes = allocation_obj.allocationusernote_set.all()
+        if not self.request.user.is_superuser:
+            notes = notes.filter(is_private=False)
+        return notes
 
     def get(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
@@ -323,10 +325,12 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                     allocation_remove_user.send(
                         sender=self.__class__, allocation_user_pk=allocation_user.pk)
             if allocation_obj.status.name == 'Denied':
-                send_allocation_customer_email(allocation_obj, 'Allocation Denied', 'email/allocation_denied.txt', domain_url=get_domain_url(self.request))
+                send_allocation_customer_email(allocation_obj, 'Allocation Denied',
+                    'email/allocation_denied.txt', domain_url=get_domain_url(self.request))
                 messages.success(request, 'Allocation Denied!')
             elif allocation_obj.status.name == 'Revoked':
-                send_allocation_customer_email(allocation_obj, 'Allocation Revoked', 'email/allocation_revoked.txt', domain_url=get_domain_url(self.request))
+                send_allocation_customer_email(allocation_obj, 'Allocation Revoked',
+                    'email/allocation_revoked.txt', domain_url=get_domain_url(self.request))
                 messages.success(request, 'Allocation Revoked!')
             else:
                 messages.success(request, 'Allocation updated!')
@@ -598,7 +602,8 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         message = None
         if allocation_obj.is_locked and not self.request.user.is_superuser:
             message = 'You cannot modify this allocation because it is locked! Contact support for details.'
-        elif allocation_obj.status.name not in ['Active', 'New', 'Renewal Requested', 'Payment Pending', 'Payment Requested', 'Paid']:
+        elif allocation_obj.status.name not in ['Active', 'New', 'Renewal Requested',
+                                    'Payment Pending', 'Payment Requested', 'Paid']:
             message = f'You cannot add users to an allocation with status {allocation_obj.status.name}.'
         if message:
             messages.error(request, message)
@@ -646,6 +651,7 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 
     def post(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
+
         allocation_obj = get_object_or_404(Allocation, pk=pk)
 
         users_to_add = self.get_users_to_add(allocation_obj)
@@ -909,43 +915,12 @@ class AllocationAttributeDeleteView(LoginRequiredMixin, UserPassesTestMixin, Tem
         return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
 
 
-class AllocationNoteCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
+class AllocationNoteCreateView(NoteCreateView):
     model = AllocationUserNote
     fields = '__all__'
     template_name = 'allocation/allocation_note_create.html'
-
-    def test_func(self):
-        ''' UserPassesTestMixin Tests'''
-
-        if self.request.user.is_superuser:
-            return True
-        messages.error(
-            self.request, 'You do not have permission to add allocation notes.')
-        return False
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        pk = self.kwargs.get('pk')
-        allocation_obj = get_object_or_404(Allocation, pk=pk)
-        context['allocation'] = allocation_obj
-        return context
-
-    def get_initial(self):
-        initial = super().get_initial()
-        pk = self.kwargs.get('pk')
-        allocation_obj = get_object_or_404(Allocation, pk=pk)
-        author = self.request.user
-        initial['allocation'] = allocation_obj
-        initial['author'] = author
-        return initial
-
-    def get_form(self, form_class=None):
-        '''Return an instance of the form to be used in this view.'''
-        form = super().get_form(form_class)
-        form.fields['allocation'].widget = forms.HiddenInput()
-        form.fields['author'].widget = forms.HiddenInput()
-        form.order_fields([ 'allocation', 'author', 'note', 'is_private' ])
-        return form
+    object_model = Allocation
+    form_obj = 'allocation'
 
     def get_success_url(self):
         return reverse('allocation-detail', kwargs={'pk': self.kwargs.get('pk')})

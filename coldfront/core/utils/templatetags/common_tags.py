@@ -5,7 +5,14 @@ from django.utils.safestring import mark_safe
 register = template.Library()
 
 
-# settings value
+@register.inclusion_tag('note_table.html', takes_context=True)
+def note_table(context, user, note_addition_url, obj):
+    return {'note_addition_url': note_addition_url,
+            'edit_link': 'update-note',
+            'notes': context['notes'],
+            'user': user,
+            'object': obj}
+
 @register.simple_tag
 def settings_value(name):
     allowed_names = [
@@ -22,16 +29,14 @@ def settings_value(name):
 def get_icon(expand_accordion):
     if expand_accordion == 'show':
         return 'fa-minus'
-    else:
-        return 'fa-plus'
+    return 'fa-plus'
 
 
 @register.filter
 def convert_boolean_to_icon(boolean):
     if boolean == False:
         return mark_safe('<span class="badge badge-success"><i class="fas fa-check"></i></span>')
-    else:
-        return mark_safe('<span class="badge badge-danger"><i class="fas fa-times"></i></span>')
+    return mark_safe('<span class="badge badge-danger"><i class="fas fa-times"></i></span>')
 
 
 @register.filter
@@ -40,7 +45,7 @@ def convert_status_to_icon(project):
         status = project.last_project_review.status.name
         if status == 'Pending':
             return mark_safe('<h4><span class="badge badge-info"><i class="fas fa-exclamation-circle"></i></span></h4>')
-        elif status == 'Completed':
+        if status == 'Completed':
             return mark_safe('<h4><span class="badge badge-success"><i class="fas fa-check-circle"></i></span></h4>')
     elif project.needs_review and not project.last_project_review:
         return mark_safe('<h4><span class="badge badge-danger"><i class="fas fa-question-circle"></i></span></h4>')
@@ -52,8 +57,8 @@ def convert_status_to_icon(project):
 
 @register.filter('get_value_from_dict')
 def get_value_from_dict(dict_data, key):
-    """
+    '''
     usage example {{ your_dict|get_value_from_dict:your_key }}
-    """
+    '''
     if key:
         return dict_data.get(key)
