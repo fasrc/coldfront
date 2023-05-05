@@ -1014,8 +1014,8 @@ class ProjectNoteCreateView(NoteCreateView):
     object_model = Project
     form_obj = 'project'
 
-    def get_context_data(self):
-        context = super().get_context_data()
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
         context['object_page'] = 'project-detail'
         context['object_title'] = f'Project {context["object"].title}'
         return context

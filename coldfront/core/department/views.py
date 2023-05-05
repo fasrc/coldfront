@@ -95,8 +95,8 @@ class DepartmentNoteCreateView(NoteCreateView):
     form_obj = 'department'
     object_model = Department
 
-    def get_context_data(self):
-        context = super().get_context_data()
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
         context['object_page'] = 'department-detail'
         context['object_title'] = f'Department {context["self.form_obj"].name}'
         return context

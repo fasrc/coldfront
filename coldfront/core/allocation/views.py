@@ -921,8 +921,8 @@ class AllocationNoteCreateView(NoteCreateView):
     object_model = Allocation
     form_obj = 'allocation'
 
-    def get_context_data(self):
-        context = super().get_context_data()
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
         context['object_page'] = 'allocation-detail'
         context['object_title'] = f'Allocation {context["object"]}'
         return context
