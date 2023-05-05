@@ -191,8 +191,7 @@
       "user": 1,
       "status": 1,
       "usage": 222.0,
-      "unit":"Kb",
-      "allocation_group_quota": 2199023255552
+      "unit":"Kb"
     }
   },
   {

@@ -51,14 +51,14 @@ class AllocationListViewTest(TestCase):
                     backend="django.contrib.auth.backends.ModelBackend")
         response = self.client.get("/allocation/?show_all_allocations=on")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['allocation_list']), 1)
+        self.assertEqual(len(response.context['item_list']), 1)
 
         # confirm that show_all_allocations=on is accessible to non-admin but
         # contains only the user's allocations
         self.client.force_login(self.project_admin_allocation_user, backend="django.contrib.auth.backends.ModelBackend")
         response = self.client.get("/allocation/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['allocation_list']), 1)
+        self.assertEqual(len(response.context['item_list']), 1)
 
 
 
@@ -82,7 +82,7 @@ class AllocationChangeDetailViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_allocationchangedetailview_post_deny(self):
-        param = {'choice': 'deny'}
+        param = {'action': 'deny'}
         response = self.client.post(reverse('allocation-change-detail', kwargs={'pk':2}),
         param, follow=True)
         self.assertEqual(response.status_code, 200)
@@ -91,11 +91,11 @@ class AllocationChangeDetailViewTest(TestCase):
 
     def test_allocationchangedetailview_post_approve(self):
         # with nothing changed, should get error message of "You must make a change to the allocation."
-        param = {'choice': 'approve'}
+        param = {'action': 'approve'}
         response = self.client.post(reverse('allocation-change-detail', kwargs={'pk':2}),
         param, follow=True)
-        messages = list(response.context['messages'])
         self.assertEqual(response.status_code, 200)
+        messages = list(response.context['messages'])
         self.assertEqual(str(messages[0]), "You must make a change to the allocation.")
         # alloc_change_req = AllocationChangeRequest.objects.get(pk=2)
         # self.assertEqual(alloc_change_req.status_id, 2)

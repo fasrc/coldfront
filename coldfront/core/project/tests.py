@@ -5,24 +5,28 @@ from django.test import TestCase, Client
 from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import (
     FieldOfScienceFactory,
+    ProjectFactory,
     ProjectStatusChoiceFactory,
     UserFactory,
 )
 
-from coldfront.core.project.models import Project
+from coldfront.core.project.models import Project, ProjectUser, ProjectUserRoleChoice, ProjectUserStatusChoice
 
-FIXTURES = [
+UTIL_FIXTURES = [
+                "coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json",
+                "coldfront/core/test_helpers/test_data/test_fixtures/project_choices.json",
+]
+
+FIXTURES = UTIL_FIXTURES + [
             "coldfront/core/test_helpers/test_data/test_fixtures/resources.json",
             "coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json",
             "coldfront/core/test_helpers/test_data/test_fixtures/kohn_fixtures.json",
             "coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json",
             "coldfront/core/test_helpers/test_data/test_fixtures/field_of_science.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/project_choices.json",
             ]
 
 class ProjectListViewTest(TestCase):
-    '''tests for projectlist view'''
+    """tests for projectlist view"""
     fixtures = FIXTURES
 
     def setUp(self):
@@ -31,7 +35,7 @@ class ProjectListViewTest(TestCase):
 
 
     def test_project_list_access(self):
-        '''Test project list access controls.'''
+        """Test project list access controls."""
         # If not logged in, can't see page; redirect to login page.
         utils.test_logged_out_redirect_to_login(self, "/project/")
 
@@ -40,36 +44,43 @@ class ProjectListViewTest(TestCase):
 
 
     def test_project_list_search_pagination(self):
-        '''confirm that navigation to next page of search works as expected'''
+        """confirm that navigation to next page of search works as expected"""
         self.client.force_login(self.admin_user, backend="django.contrib.auth.backends.ModelBackend")
         response = self.client.get("/project/?last_name=&username=&field_of_science=SEAS&show_all_projects=on")
         # print(response.context)
 
-
 class ProjectDetailViewTest(TestCase):
-    '''tests for projectdetail view'''
-    fixtures = FIXTURES
+    '''tests for projectdetail view using factories'''
+    fixtures = UTIL_FIXTURES
 
     def setUp(self):
-        self.project = Project.objects.get(pk=1)
-        self.admin_user = get_user_model().objects.get(username='gvanrossum')
-        self.pi_user = get_user_model().objects.get(username='sdpoisson')
-        self.project_user = get_user_model().objects.get(username='ljbortkiewicz')
-        self.nonproject_user = get_user_model().objects.get(username='wkohn')
+        '''set up users and project for testing'''
+        self.admin_user = UserFactory(username='gvanrossum', is_staff=True, is_superuser=True)
+        self.pi_user = UserFactory(username='sdpoisson', is_staff=False, is_superuser=False)
+        self.project_user = UserFactory(username='ljbortkiewicz', is_staff=False, is_superuser=False)
+        self.nonproject_user = UserFactory(username='wkohn', is_staff=False, is_superuser=False)
+        self.project = ProjectFactory(pi=self.pi_user)
         self.client = Client()
+        # add pi_user and project_user to project
+        ProjectUser.objects.create(project=self.project, user=self.pi_user, 
+                                   role=ProjectUserRoleChoice.objects.get(name='Manager'), status=ProjectUserStatusChoice.objects.get(name='Active'))
+        ProjectUser.objects.create(project=self.project, user=self.project_user, 
+                                   role=ProjectUserRoleChoice.objects.get(name='User'), status=ProjectUserStatusChoice.objects.get(name='Active'))
 
     def test_project_detail_access(self):
-        '''Test project detail page access
-        '''
+        """Test project detail page access
+        """
         url = f"/project/{self.project.pk}/"
         # If not logged in, can't see page; redirect to login page.
         utils.test_logged_out_redirect_to_login(self, url)
 
         # admin can access
         utils.test_user_can_access(self, self.admin_user, url)
-        # pi user can access
+
+        # pi can access
         utils.test_user_can_access(self, self.pi_user, url)
-        # non-manager user belonging to project can access
+
+        # project user can access
         utils.test_user_can_access(self, self.project_user, url)
 
         # user not belonging to project cannot access
@@ -78,8 +89,8 @@ class ProjectDetailViewTest(TestCase):
 
 
     def test_project_detail_permissions(self):
-        '''Test project detail permissions
-        '''
+        """Test project detail permissions
+        """
         url = f"/project/{self.project.pk}/"
 
         # admin has is_allowed_to_update_project set to True
@@ -98,7 +109,7 @@ class ProjectDetailViewTest(TestCase):
 
 class TestProject(TestCase):
     class Data:
-        '''Collection of test data, separated for readability'''
+        """Collection of test data, separated for readability"""
 
         def __init__(self):
             user = UserFactory(username='cgray')
