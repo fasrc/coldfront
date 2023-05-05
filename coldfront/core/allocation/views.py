@@ -918,9 +918,14 @@ class AllocationAttributeDeleteView(LoginRequiredMixin, UserPassesTestMixin, Tem
 class AllocationNoteCreateView(NoteCreateView):
     model = AllocationUserNote
     fields = '__all__'
-    template_name = 'allocation/allocation_note_create.html'
     object_model = Allocation
     form_obj = 'allocation'
+
+    def get_context_data(self):
+        context = super().get_context_data()
+        context['object_page'] = 'allocation-detail'
+        context['object_title'] = f'Allocation {context["object"]}'
+        return context
 
     def get_success_url(self):
         return reverse('allocation-detail', kwargs={'pk': self.kwargs.get('pk')})

@@ -14,12 +14,12 @@ from django.http import (HttpResponse,
                          HttpResponseRedirect)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from coldfront.core.allocation.utils import generate_guauge_data_from_usage
 from django.views import View
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 from django.views.generic.base import TemplateView
 from django.views.generic.edit import FormView
 
+from coldfront.core.allocation.utils import generate_guauge_data_from_usage
 from coldfront.core.allocation.models import (Allocation,
                                               AllocationStatusChoice,
                                               AllocationUser,
@@ -143,7 +143,7 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
                     Q(project__projectuser__user=self.request.user) &
                     Q(project__projectuser__status__name__in=['Active', ]))
                 if not self.object.has_perm(self.request.user, ProjectPermission.MANAGER):
-                    allocations = allocations.objects.filter(
+                    allocations = allocations.filter(
                         Q(allocationuser__user=self.request.user) &
                         Q(allocationuser__status__name__in=['Active', ])
                     )
@@ -571,7 +571,8 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         project_user_obj.save()
                     else:
                         project_user_obj = ProjectUser.objects.create(
-                            user=user_obj, project=project_obj, role=role_choice, status=project_user_active_status_choice)
+                            user=user_obj, project=project_obj, role=role_choice,
+                            status=project_user_active_status_choice)
 
                     for allocation in Allocation.objects.filter(pk__in=allocation_form_data):
                         if allocation.allocationuser_set.filter(user=user_obj).exists():
@@ -588,7 +589,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                                                       allocation_user_pk=allocation_user_obj.pk)
 
             messages.success(
-                request, 'Added {} users to project.'.format(added_users_count))
+                request, f'Added {added_users_count} users to project.')
         else:
             if not formset.is_valid():
                 for error in formset.errors:
@@ -694,7 +695,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                             allocation_user_obj.save()
 
                             allocation_remove_user.send(sender=self.__class__,
-                                                        allocation_user_pk=allocation_user_obj.pk)
+                                        allocation_user_pk=allocation_user_obj.pk)
 
             if remove_users_count == 1:
                 messages.success(
@@ -849,7 +850,7 @@ class ProjectReviewView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         context = {}
         context['project'] = project_obj
         context['project_review_form'] = project_review_form
-        context['project_users'] = ', '.join(['{} {}'.format(ele.user.first_name, ele.user.last_name)
+        context['project_users'] = ', '.join([f'{ele.user.first_name} {ele.user.last_name}'
                 for ele in project_obj.projectuser_set.filter(status__name='Active'
                 ).order_by('user__last_name')])
 
@@ -863,7 +864,7 @@ class ProjectReviewView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             name='Pending')
 
         if not project_review_form.is_valid():
-            messages.error(request, 'There was an error in processing  your project review.')
+            messages.error(request, 'There was an error in processing your project review.')
             return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': project_obj.pk}))
         form_data = project_review_form.cleaned_data
         ProjectReview.objects.create(
@@ -938,9 +939,8 @@ class ProjectReviewCompleteView(LoginRequiredMixin, UserPassesTestMixin, View):
         project_review_obj.project.project_needs_review = False
         project_review_obj.save()
 
-        messages.success(request, 'Project review for {} has been completed'.format(
-            project_review_obj.project.title)
-        )
+        messages.success(request,
+            f'Project review for {project_review_obj.project.title} has been completed')
 
         return HttpResponseRedirect(reverse('project-review-list'))
 
@@ -1011,9 +1011,14 @@ class ProjectReviewEmailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 class ProjectNoteCreateView(NoteCreateView):
     model = ProjectUserMessage
     fields = '__all__'
-    template_name = 'project/project_note_create.html'
     object_model = Project
     form_obj = 'project'
+
+    def get_context_data(self):
+        context = super().get_context_data()
+        context['object_page'] = 'project-detail'
+        context['object_title'] = f'Project {context["object"].title}'
+        return context
 
     def get_success_url(self):
         return reverse('project-detail', kwargs={'pk': self.kwargs.get('pk')})
