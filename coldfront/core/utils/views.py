@@ -98,7 +98,7 @@ class NoteCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
         context = super().get_context_data(**kwargs)
         pk = self.kwargs.get('pk')
         obj = get_object_or_404(self.object_model, pk=pk)
-        context[self.form_obj] = obj
+        context['object'] = obj
         return context
 
     def get_initial(self):

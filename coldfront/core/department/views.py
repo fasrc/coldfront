@@ -1,5 +1,6 @@
 '''Department views'''
 
+from django.urls import reverse
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Sum, Q
@@ -7,10 +8,10 @@ from django.shortcuts import get_object_or_404
 from django.views.generic import DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 
-from coldfront.core.utils.views import ColdfrontListView
+from coldfront.core.utils.views import ColdfrontListView, NoteCreateView
 from coldfront.core.allocation.models import Allocation, AllocationUser
 from coldfront.core.department.forms import DepartmentSearchForm
-from coldfront.core.department.models import Department, DepartmentMember
+from coldfront.core.department.models import Department, DepartmentMember, DepartmentUserNote
 
 
 def return_department_roles(user, department):
@@ -88,6 +89,20 @@ class DepartmentListView(ColdfrontListView):
 #         return context
 
 
+class DepartmentNoteCreateView(NoteCreateView):
+    model = DepartmentUserNote
+    fields = '__all__'
+    form_obj = 'department'
+    object_model = Department
+
+    def get_context_data(self):
+        context = super().get_context_data()
+        context['object_page'] = 'department-detail'
+        context['object_title'] = f'Department {context["self.form_obj"].name}'
+        return context
+
+    def get_success_url(self):
+        return reverse('department-detail', kwargs={'pk': self.kwargs.get('pk')})
 
 
 class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
@@ -114,6 +129,11 @@ class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
             self.request, 'You do not have permission to view this department.')
         return False
 
+    def return_visible_notes(self, department_obj):
+        noteset = department_obj.departmentusernote_set
+        notes = noteset.all() if self.request.user.is_superuser else noteset.filter(
+        is_private=False)
+        return notes
 
     def get_context_data(self, **kwargs):
 
@@ -170,6 +190,7 @@ class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
                 .order_by('user__username')
 
         context['allocation_users'] = allocation_users
+        context['notes'] = self.return_visible_notes(department_obj)
 
         try:
             context['ondemand_url'] = settings.ONDEMAND_URL
