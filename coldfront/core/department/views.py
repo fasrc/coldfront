@@ -1,14 +1,14 @@
 '''Department views'''
 
-from django.urls import reverse
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Sum, Q
+from django.urls import reverse, reverse_lazy
 from django.shortcuts import get_object_or_404
 from django.views.generic import DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 
-from coldfront.core.utils.views import ColdfrontListView, NoteCreateView
+from coldfront.core.utils.views import ColdfrontListView, NoteCreateView, NoteUpdateView
 from coldfront.core.allocation.models import Allocation, AllocationUser
 from coldfront.core.department.forms import DepartmentSearchForm
 from coldfront.core.department.models import Department, DepartmentMember, DepartmentUserNote
@@ -98,12 +98,24 @@ class DepartmentNoteCreateView(NoteCreateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['object_page'] = 'department-detail'
-        context['object_title'] = f'Department {context["self.form_obj"].name}'
+        context['object_title'] = f'Department {context["object"].name}'
         return context
 
     def get_success_url(self):
         return reverse('department-detail', kwargs={'pk': self.kwargs.get('pk')})
 
+
+class DepartmentNoteUpdateView(NoteUpdateView):
+    model = DepartmentUserNote
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['parent_object'] = self.object.department
+        context['object_detail_link'] = 'department-detail'
+        return context
+
+    def get_success_url(self):
+        return reverse_lazy('department-detail', kwargs={'pk': self.object.department.pk})
 
 class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
     '''Department Stats, Projects, Allocations, and invoice details.
@@ -191,6 +203,7 @@ class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
         context['allocation_users'] = allocation_users
         context['notes'] = self.return_visible_notes(department_obj)
+        context['note_update_link'] = 'department-note-update'
 
         try:
             context['ondemand_url'] = settings.ONDEMAND_URL

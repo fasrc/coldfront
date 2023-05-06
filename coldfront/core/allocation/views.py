@@ -21,9 +21,9 @@ from django.urls import reverse, reverse_lazy
 from django.utils.html import format_html, mark_safe
 from django.views import View
 from django.views.generic import ListView, TemplateView
-from django.views.generic.edit import CreateView, FormView, UpdateView
+from django.views.generic.edit import CreateView, FormView
 
-from coldfront.core.utils.views import ColdfrontListView, NoteCreateView
+from coldfront.core.utils.views import ColdfrontListView, NoteCreateView, NoteUpdateView
 from coldfront.core.utils.fasrc import get_resource_rate
 from coldfront.core.allocation.forms import (AllocationAccountForm,
                                              AllocationAddUserForm,
@@ -160,6 +160,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context['note_update_link'] = 'allocation-note-update'
         pk = self.kwargs.get('pk')
         allocation_obj = get_object_or_404(Allocation, pk=pk)
         allocation_users = allocation_obj.allocationuser_set.exclude(
@@ -931,6 +932,18 @@ class AllocationNoteCreateView(NoteCreateView):
         return reverse('allocation-detail', kwargs={'pk': self.kwargs.get('pk')})
 
 
+class AllocationNoteUpdateView(NoteUpdateView):
+    model = AllocationUserNote
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['parent_object'] = self.object.allocation
+        context['object_detail_link'] = 'allocation-detail'
+        return context
+
+    def get_success_url(self):
+        return reverse_lazy('allocation-detail', kwargs={'pk': self.object.allocation.pk})
+
 class AllocationRequestListView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     template_name = 'allocation/allocation_request_list.html'
     login_url = '/'
@@ -1252,24 +1265,23 @@ class AllocationInvoiceDetailView(LoginRequiredMixin, UserPassesTestMixin, Templ
                 messages.error(request, error)
         return HttpResponseRedirect(reverse('allocation-invoice-detail', kwargs={'pk': pk}))
 
-class AllocationAddInvoiceNoteView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
+class AllocationInvoiceNoteCreateView(NoteCreateView):
     model = AllocationUserNote
-    template_name = 'allocation/allocation_add_invoice_note.html'
-    fields = ('is_private', 'note',)
+    fields = ('is_private', 'note', 'author', 'allocation')
+    object_model = Allocation
+    form_obj = 'allocation'
 
     def test_func(self):
         ''' UserPassesTestMixin Tests'''
         invoice_perm = self.request.user.has_perm('allocation.can_manage_invoice')
-        if self.request.user.is_superuser or invoice_perm:
+        if invoice_perm:
             return True
-        messages.error(self.request, 'You do not have permission to manage invoices.')
-        return False
+        return super().test_func()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        pk = self.kwargs.get('pk')
-        allocation_obj = get_object_or_404(Allocation, pk=pk)
-        context['allocation'] = allocation_obj
+        context['object_page'] = 'allocation-invoice-detail'
+        context['object_title'] = f'Allocation {context["object"]}'
         return context
 
     def form_valid(self, form):
@@ -1285,13 +1297,12 @@ class AllocationAddInvoiceNoteView(LoginRequiredMixin, UserPassesTestMixin, Crea
         return super().form_valid(form)
 
     def get_success_url(self):
-        return reverse_lazy('allocation-invoice-detail', kwargs={'pk': self.object.allocation.pk})
+        return reverse_lazy('allocation-invoice-detail', kwargs={'pk': self.kwargs.get('pk')})
 
 
-class AllocationUpdateInvoiceNoteView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
+class AllocationInvoiceNoteUpdateView(NoteUpdateView):
     model = AllocationUserNote
     template_name = 'allocation/allocation_update_invoice_note.html'
-    fields = ('is_private', 'note',)
 
     def test_func(self):
         ''' UserPassesTestMixin Tests'''
@@ -1301,8 +1312,11 @@ class AllocationUpdateInvoiceNoteView(LoginRequiredMixin, UserPassesTestMixin, U
         messages.error(self.request, 'You do not have permission to manage invoices.')
         return False
 
-        messages.error(self.request, 'You do not have permission to manage invoices.')
-        return False
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['parent_object'] = self.object.allocation
+        context['object_detail_link'] = 'allocation-detail'
+        return context
 
     def get_success_url(self):
         return reverse_lazy('allocation-invoice-detail', kwargs={'pk': self.object.allocation.pk})

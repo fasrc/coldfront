@@ -13,7 +13,7 @@ from django.forms import formset_factory
 from django.http import (HttpResponse,
                          HttpResponseRedirect)
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 from django.views.generic.base import TemplateView
@@ -52,7 +52,7 @@ from coldfront.core.publication.models import Publication
 from coldfront.core.research_output.models import ResearchOutput
 from coldfront.core.user.forms import UserSearchForm
 from coldfront.core.user.utils import CombinedUserSearch
-from coldfront.core.utils.views import ColdfrontListView, NoteCreateView
+from coldfront.core.utils.views import ColdfrontListView, NoteCreateView, NoteUpdateView
 from coldfront.core.utils.common import get_domain_url, import_from_settings
 from coldfront.core.utils.mail import send_email, send_email_template
 
@@ -167,6 +167,7 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
         context['notes'] = self.return_visible_notes()
 
+        context['note_update_link'] = 'project-note-update'
         context['time_chart_data'] = time_chart_data
         context['time_chart_data_error'] = time_chart_data_error
         context['publications'] = Publication.objects.filter(
@@ -1022,6 +1023,18 @@ class ProjectNoteCreateView(NoteCreateView):
 
     def get_success_url(self):
         return reverse('project-detail', kwargs={'pk': self.kwargs.get('pk')})
+
+class ProjectNoteUpdateView(NoteUpdateView):
+    model = ProjectUserMessage
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['parent_object'] = self.object.project
+        context['object_detail_link'] = 'project-detail'
+        return context
+
+    def get_success_url(self):
+        return reverse_lazy('project-detail', kwargs={'pk': self.object.project.pk})
 
 class ProjectAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
     model = ProjectAttribute

@@ -3,8 +3,9 @@ from django.contrib import messages
 from django.views.generic import ListView
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
-from django.views.generic.edit import CreateView
+from django.views.generic.edit import CreateView, UpdateView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from coldfront.core.allocation.models import AllocationUserNote
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 
 def produce_filter_parameter(key, value):
@@ -81,6 +82,18 @@ class ColdfrontListView(LoginRequiredMixin, ListView):
 
         return context
 
+class NoteUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
+    template_name = 'note_update.html'
+    fields = ('is_private', 'note',)
+
+    def test_func(self):
+        ''' UserPassesTestMixin Tests'''
+        note_obj = get_object_or_404(self.model, pk=self.kwargs.get('pk'))
+        is_author = self.request.user == note_obj.author
+        if self.request.user.is_superuser or is_author:
+            return True
+        messages.error(self.request, 'You do not have permission to change this note.')
+        return False
 
 class NoteCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
     template_name = 'note_create.html'

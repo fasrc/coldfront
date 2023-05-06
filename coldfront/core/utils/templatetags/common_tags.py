@@ -11,6 +11,7 @@ def note_table(context, user, note_addition_url, obj):
             'edit_link': 'update-note',
             'notes': context['notes'],
             'user': user,
+            'note_update_link': context['note_update_link'],
             'object': obj}
 
 @register.simple_tag

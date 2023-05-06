@@ -21,6 +21,7 @@ urlpatterns = [
          name='project-review-complete'),
     path('project-review/<int:pk>/email', project_views.ProjectReviewEmailView.as_view(), name='project-review-email'),
     path('<int:pk>/projectnote/add', project_views.ProjectNoteCreateView.as_view(), name='project-note-add'),
+    path('projectnote/<int:pk>/update', project_views.ProjectNoteUpdateView.as_view(), name='project-note-update'),
     path('<int:pk>/project-attribute-create/', project_views.ProjectAttributeCreateView.as_view(), name='project-attribute-create'),
     path('<int:pk>/project-attribute-delete/', project_views.ProjectAttributeDeleteView.as_view(), name='project-attribute-delete'),
     path('<int:pk>/project-attribute-update/<int:project_attribute_pk>', project_views.ProjectAttributeUpdateView.as_view(), name='project-attribute-update'),

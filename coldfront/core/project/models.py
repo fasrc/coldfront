@@ -249,10 +249,10 @@ class ProjectUserMessage(TimeStampedModel):
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     is_private = models.BooleanField(default=True)
-    message = models.TextField()
+    note = models.TextField()
 
     def __str__(self):
-        return self.message
+        return self.note
 
 class ProjectReviewStatusChoice(TimeStampedModel):
     ''' A project review status choice is an option a user can choose when setting a project's status. Examples include Completed and Pending.

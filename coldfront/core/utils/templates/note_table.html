@@ -21,6 +21,7 @@
               <th scope="col">Note</th>
               <th scope="col">Administrator</th>
               <th scope="col">Last Modified</th>
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -29,6 +30,7 @@
                   <td>{{ note.note }}</td>
                   <td>{{ note.author.first_name }} {{ note.author.last_name }}</td>
                   <td>{{ note.modified }}</td>
+                  <td><a href="{% url note_update_link note.pk %}"><i class="fas fa-edit" aria-hidden="true"></i><span class="sr-only">Edit</span></a></td>
                 </tr>
             {% endfor %}
           </tbody>
