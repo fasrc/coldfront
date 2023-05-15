@@ -107,7 +107,7 @@ Project Detail
             <td>{{ allocation.get_parent_resource.name }}</td>
             <td>{{ allocation.get_parent_resource.resource_type.name }}</td>
             <td>{{ allocation.path }}</td>
-            <td>{{ allocation.allocation_users.count }}</td>
+            <td>{{ allocation.allocationuser_set.count }}</td>
             <td>{{ allocation.size|floatformat:1 }}</td>
             <td>${{allocation.cost|floatformat:2 }}</td>
             <td>
@@ -210,8 +210,7 @@ Project Detail
           {% for user in project_users %}
             <tr status = "{{ user.status }}">
               <td>{{ user.user.username }}</td>
-              <td>{{ user.user.first_name }} </td>
-              <td>{{ user.user.last_name }}</td>
+              <td>{{ user.user.first_name }} {{ user.user.last_name }}</td>
               <td>{{ user.user.email }}</td>
               <td>{{ user.role.name }}</td>
 
