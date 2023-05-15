@@ -12,6 +12,7 @@
 {% load django_tables2 %}
 {% load mathfilters %}
 {% load common_tags %}
+{% load fasrc_tags %}
 {% render_table table %}
 
 
@@ -120,8 +121,10 @@ Allocation Detail
             </tr>
             <tr>
                 <th  style="background-color:#D3D3D3" bordercolor="red" scope="row" class="text-nowrap">Total Amount Due:	</th>
-
-                <td style="background-color:#D3D3D3">${{allocation_quota_tb|mul:price|floatformat:2}}</td>
+                  {% cost_tb allocation_quota_tb as cost %}
+                  {% if cost %}
+                    <td style="background-color:#D3D3D3">{{ cost }}</td>
+                  {% endif %}
               </tr>
           <tr>
           <tr>
@@ -385,7 +388,10 @@ Allocation Detail
               {% else %}
               <td>{{user.usage_bytes|div:allocation_usage_bytes|mul:100|floatformat:2 }}</td>
               {% endif %}
-              <td>{{user.usage_bytes|div:1099511627776|mul:price|floatformat:2}}</td>
+              {% cost_bytes user.usage_bytes as cost %}
+              {% if cost %}
+                <td>{{ cost }}</td>
+              {% endif %}
             </tr>
 
           {% endfor %}

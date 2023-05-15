@@ -24,7 +24,6 @@ from django.views.generic import ListView, TemplateView
 from django.views.generic.edit import CreateView, FormView
 
 from coldfront.core.utils.views import ColdfrontListView, NoteCreateView, NoteUpdateView
-from coldfront.core.utils.fasrc import get_resource_rate
 from coldfront.core.allocation.forms import (AllocationAccountForm,
                                              AllocationAddUserForm,
                                              AllocationAttributeCreateForm,
@@ -116,16 +115,19 @@ def return_allocation_bytes_values(attributes_with_usage, allocation_users):
     """
 
     allocation_quota_bytes = next((a for a in attributes_with_usage if \
-            a.allocation_attribute_type.name == 'Quota_In_Bytes'), 'None')
-    if allocation_quota_bytes != 'None':
+            a.allocation_attribute_type.name == 'Quota_In_Bytes'), None)
+    if allocation_quota_bytes:
         quota_b, usage_b = attribute_and_usage_as_floats(allocation_quota_bytes)
         return (quota_b, usage_b)
 
     bytes_in_tb = 1099511627776
     allocation_quota_tb = next((a for a in attributes_with_usage if \
-        a.allocation_attribute_type.name == 'Storage Quota (TB)'), 'None')
+        a.allocation_attribute_type.name == 'Storage Quota (TB)'), None)
 
-    quota_tb, usage_tb = attribute_and_usage_as_floats(allocation_quota_tb)
+    if allocation_quota_tb:
+        quota_tb, usage_tb = attribute_and_usage_as_floats(allocation_quota_tb)
+    else:
+        return (0, 0)
     allocation_quota_bytes = float(quota_tb)*bytes_in_tb
     if usage_tb != 0:
         allocation_usage_bytes = usage_tb*bytes_in_tb
@@ -191,8 +193,10 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             attributes_with_usage.remove(a)
 
         allocation_quota_tb = next((a for a in attributes_with_usage if \
-            a.allocation_attribute_type.name == 'Storage Quota (TB)'), 'None')
-        allocation_usage_tb = float(allocation_quota_tb.allocationattributeusage.value)
+            a.allocation_attribute_type.name == 'Storage Quota (TB)'), None)
+        if allocation_quota_tb :
+            print("HERE", allocation_quota_tb)
+            allocation_usage_tb = float(allocation_quota_tb.allocationattributeusage.value)
         allocation_quota_bytes, allocation_usage_bytes = return_allocation_bytes_values(
                         attributes_with_usage, allocation_obj.allocationuser_set.all())
 
@@ -206,10 +210,6 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         context['attributes_with_usage'] = attributes_with_usage
         context['attributes'] = attributes
         context['allocation_changes'] = allocation_changes
-
-        # set price
-        rate = get_resource_rate(allocation_obj.get_resources_as_string)
-        context['price'] = rate
 
         # Can the user update the project?
         context['is_allowed_to_update_project'] = allocation_obj.project.has_perm(
@@ -1213,10 +1213,6 @@ class AllocationInvoiceDetailView(LoginRequiredMixin, UserPassesTestMixin, Templ
         context['guage_data'] = guage_data
         context['attributes_with_usage'] = attributes_with_usage
         context['attributes'] = attributes
-
-        # set price
-        rate = get_resource_rate(allocation_obj.get_resources_as_string)
-        context['price'] = rate
 
         # Can the user update the project?
         context['is_allowed_to_update_project'] = allocation_obj.project.has_perm(
