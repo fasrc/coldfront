@@ -3,11 +3,8 @@ import datetime
 from django import forms
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
-from ast import Constant
-from django.db.models.functions import Lower
-from cProfile import label
 
-from coldfront.core.project.models import (Project, ProjectAttribute, ProjectAttributeType, ProjectReview,
+from coldfront.core.project.models import (Project, ProjectAttribute, ProjectReview,
                                            ProjectUserRoleChoice)
 from coldfront.core.utils.common import import_from_settings
 
@@ -19,12 +16,16 @@ EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings(
 
 
 class ProjectSearchForm(forms.Form):
-    ''' Search form for the Project list page.
-    '''
+    """ Search form for the Project list page.
+    """
+    PROJECT_TITLE = 'Project Title'
     LAST_NAME = 'Last Name'
     USERNAME = 'Username'
     FIELD_OF_SCIENCE = 'Field of Science'
 
+    title = forms.CharField(
+        label = PROJECT_TITLE, max_length=100, required=False
+        )
     last_name = forms.CharField(
         label=LAST_NAME, max_length=100, required=False)
     username = forms.CharField(label=USERNAME, max_length=100, required=False)
