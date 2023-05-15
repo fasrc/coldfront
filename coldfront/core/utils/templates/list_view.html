@@ -27,8 +27,7 @@ Item List
     </div>
     <div id="collapseOne" class="collapse {{expand_accordion}}" data-parent="#accordion">
       <div class="card-body">
-        <form id="filter_form" method="GET" action="{% url 'project-list' %}" autocomplete="off">
-          {% csrf_token %}
+        <form id="filter_form" method="GET" action="{{ request.path }}" autocomplete="off">
           {{ search_form|crispy }}
           <input type="submit" class="btn btn-primary" value="Search">
           <button id="form_reset_button" type="button" class="btn btn-secondary">Reset</button>
@@ -68,7 +67,7 @@ Item List
   </div>
 {% else %}
   <div class="alert alert-secondary">
-    No allocations to display!
+    Nothing to display!
   </div>
 {% endif %}
 
