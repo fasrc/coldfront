@@ -79,7 +79,7 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
     context_object_name = 'project'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.has_perm('project.can_view_all_projects'):
             return True
 
@@ -227,6 +227,11 @@ class ProjectListView(ColdfrontListView):
                 projects = projects.filter(
                     pi__last_name__icontains=data.get('last_name'))
 
+            # Last Name
+            if data.get('title'):
+                projects = projects.filter(
+                    title__icontains=data.get('title'))
+
             # Username
             if data.get('username'):
                 projects = projects.filter(
@@ -313,7 +318,7 @@ class ProjectArchiveProjectView(LoginRequiredMixin, UserPassesTestMixin, Templat
     template_name = 'project/project_archive.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
@@ -352,7 +357,7 @@ class ProjectCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
     fields = ['title', 'description', 'field_of_science', ]
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser or self.request.user.userprofile.is_pi:
             return True
         return False
@@ -384,7 +389,7 @@ class ProjectUpdateView(SuccessMessageMixin, LoginRequiredMixin, UserPassesTestM
     success_message = 'Project updated.'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
@@ -405,7 +410,7 @@ class ProjectAddUsersSearchView(LoginRequiredMixin, UserPassesTestMixin, Templat
     template_name = 'project/project_add_users.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
@@ -431,7 +436,7 @@ class ProjectAddUsersSearchResultsView(LoginRequiredMixin, UserPassesTestMixin, 
     raise_exception = True
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
@@ -497,7 +502,7 @@ class ProjectAddUsersSearchResultsView(LoginRequiredMixin, UserPassesTestMixin, 
 class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
@@ -607,7 +612,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
     template_name = 'project/project_remove_users.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
@@ -715,7 +720,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     template_name = 'project/project_user_detail.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
@@ -813,7 +818,7 @@ class ProjectReviewView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     login_url = '/'  # redirect URL if fail test_func
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
         if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
             return True
@@ -902,7 +907,7 @@ class ProjectReviewListView(LoginRequiredMixin, UserPassesTestMixin, ListView):
         return ProjectReview.objects.filter(status__name='Pending')
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
 
         if self.request.user.is_superuser:
             return True
@@ -918,7 +923,7 @@ class ProjectReviewCompleteView(LoginRequiredMixin, UserPassesTestMixin, View):
     login_url = '/'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
 
         if self.request.user.is_superuser:
             return True
@@ -952,7 +957,7 @@ class ProjectReviewEmailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
     login_url = '/'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
 
         if self.request.user.is_superuser:
             return True
@@ -973,7 +978,7 @@ class ProjectReviewEmailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         return context
 
     def get_form(self, form_class=None):
-        '''Return an instance of the form to be used in this view.'''
+        """Return an instance of the form to be used in this view."""
         if form_class is None:
             form_class = self.get_form_class()
         return form_class(self.kwargs.get('pk'), **self.get_form_kwargs())
@@ -1042,7 +1047,7 @@ class ProjectAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, Create
     template_name = 'project/project_attribute_create.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
 
         if self.request.user.is_superuser:
@@ -1065,7 +1070,7 @@ class ProjectAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, Create
         return initial
 
     def get_form(self, form_class=None):
-        '''Return an instance of the form to be used in this view.'''
+        """Return an instance of the form to be used in this view."""
         form = super().get_form(form_class)
         form.fields['project'].widget = forms.HiddenInput()
         return form
@@ -1086,7 +1091,7 @@ class ProjectAttributeDeleteView(LoginRequiredMixin, UserPassesTestMixin, Templa
     template_name = 'project/project_attribute_delete.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
 
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
 
@@ -1176,7 +1181,7 @@ class ProjectAttributeUpdateView(LoginRequiredMixin, UserPassesTestMixin, Templa
     template_name = 'project/project_attribute_update.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
 
         if self.request.user.is_superuser:
