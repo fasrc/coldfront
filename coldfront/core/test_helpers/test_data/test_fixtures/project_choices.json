@@ -36,6 +36,54 @@
     }
   },
   {
+    "model": "project.projectattributetype",
+    "pk": 1,
+    "fields": {
+      "created": "2022-02-22T15:53:53.285Z",
+      "modified": "2022-02-22T15:53:53.286Z",
+      "name": "Project ID",
+      "has_usage": false,
+      "is_required": false,
+      "is_unique": false,
+      "is_private": false,
+      "is_changeable": false,
+      "attribute_type_id": 4
+    }
+  },
+  {
+    "model": "project.projectattributetype",
+    "pk": 2,
+    "fields": {
+      "created": "2022-02-22T15:53:53.285Z",
+      "modified": "2022-02-22T15:53:53.286Z",
+      "name": "Account Number",
+      "has_usage": false,
+      "is_required": false,
+      "is_unique": false,
+      "is_private": false,
+      "is_changeable": false,
+      "attribute_type_id": 3
+    }
+  },
+  {
+    "model": "project.attributetype",
+    "pk": 3,
+    "fields": {
+      "created": "2022-02-22T15:53:53.285Z",
+      "modified": "2022-02-22T15:53:53.286Z",
+      "name": "Int"
+    }
+  },
+  {
+    "model": "project.attributetype",
+    "pk": 4,
+    "fields": {
+      "created": "2022-02-22T15:53:53.285Z",
+      "modified": "2022-02-22T15:53:53.286Z",
+      "name": "Text"
+    }
+  },
+  {
     "model": "project.projectstatuschoice",
     "pk": 1,
     "fields": {
@@ -54,4 +102,3 @@
     }
   }
 ]
-

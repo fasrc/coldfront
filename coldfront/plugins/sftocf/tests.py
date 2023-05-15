@@ -9,7 +9,11 @@ from coldfront.plugins.sftocf.utils import (push_cf,
                                             )
 from coldfront.core.allocation.models import Allocation
 
-FIXTURES = [
+UTIL_FIXTURES = [
+        "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
+]
+
+FIXTURES = UTIL_FIXTURES + [
         'coldfront/core/test_helpers/test_data/test_fixtures/field_of_science.json',
         'coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json',
         'coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json',
@@ -55,8 +59,8 @@ class UtilTests(TestCase):
         assert not errors
 
     def test_match_allocations_with_usage_entries(self):
-        '''test match_allocations_with_usage_entries
-        '''
+        """test match_allocations_with_usage_entries
+        """
         allocations = Allocation.objects.all()
         result = match_allocations_with_usage_entries(allocations, self.dummy_user_usage, self.dummy_allocation_usage)
         desired_dict = {

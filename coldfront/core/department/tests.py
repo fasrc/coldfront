@@ -5,7 +5,11 @@ from django.test import TestCase, Client
 from coldfront.core.test_helpers import utils
 from coldfront.core.department.models import Department, DepartmentMember
 
-FIXTURES = [
+UTIL_FIXTURES = [
+        "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
+]
+
+FIXTURES = UTIL_FIXTURES + [
             "coldfront/core/test_helpers/test_data/test_fixtures/resources.json",
             "coldfront/core/test_helpers/test_data/test_fixtures/department.json",
             "coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json",
@@ -28,7 +32,7 @@ class DepartmentListViewTest(TestCase):
         self.client = Client()
 
     def test_department_list_access(self):
-        '''Test department list access controls.'''
+        """Test department list access controls."""
         # If not logged in, can't see page; redirect to login page.
         utils.test_logged_out_redirect_to_login(self, "/department/")
 
@@ -38,8 +42,8 @@ class DepartmentListViewTest(TestCase):
 
 
     def test_department_list_content(self):
-        '''Confirm that department-list has correct content
-        '''
+        """Confirm that department-list has correct content
+        """
         # admins can see all departments.
         response = utils.login_and_get_page(
                 self.client, self.admin_user, "/department/?show_all_departments=on")
@@ -73,8 +77,8 @@ class DepartmentDetailViewTest(TestCase):
 
 
     def test_department_detail_access(self):
-        '''Test department-detail access controls
-        '''
+        """Test department-detail access controls
+        """
         url = f"/department/{self.department.pk}/"
         # If not logged in, can't see page; redirect to login page.
         utils.test_logged_out_redirect_to_login(self, url)
@@ -92,8 +96,8 @@ class DepartmentDetailViewTest(TestCase):
 
 
     def test_department_detail_content(self):
-        '''Check content of department detail pages.
-        '''
+        """Check content of department detail pages.
+        """
         url = f"/department/{self.department.pk}/"
         response = utils.login_and_get_page(self.client, self.admin_user, url)
         # print("response ADMIN:", response.context, "\n\n")

@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 
-from factory import SubFactory
+import factory
+from factory import SubFactory, RelatedFactory, post_generation
 from faker import Faker
 from faker.providers import BaseProvider, DynamicProvider
 from factory.django import DjangoModelFactory
@@ -16,13 +17,19 @@ from coldfront.core.project.models import (Project,
                                             ProjectUserRoleChoice,
                                             ProjectUserStatusChoice,
                                             ProjectStatusChoice,
-                                            AttributeType as PAttributeType,
+                                            AttributeType as PAttributeType
                                         )
 from coldfront.core.allocation.models import (Allocation,
                                             AllocationUser,
                                             AllocationUserNote,
+                                            AllocationAttribute,
                                             AllocationStatusChoice,
+                                            AllocationAttributeType,
+                                            AllocationChangeRequest,
+                                            AllocationChangeStatusChoice,
+                                            AllocationAttributeUsage,
                                             AllocationUserStatusChoice,
+                                            AttributeType as AAttributeType
                                         )
 from coldfront.core.grant.models import GrantFundingAgency, GrantStatusChoice
 from coldfront.core.publication.models import PublicationSource
@@ -59,60 +66,10 @@ class UserFactory(DjangoModelFactory):
         model = get_user_model()
         django_get_or_create = ('username',)
     username = fake.unique.username()
-    email = username + '@example.com'
+    email = factory.LazyAttribute(lambda obj: '%s@example.com' % obj.username)
     is_staff = False
     is_active = True
     is_superuser = False
-
-
-
-
-### Allocation factories ###
-
-
-class AllocationStatusChoiceFactory(DjangoModelFactory):
-    class Meta:
-        model = AllocationStatusChoice
-        django_get_or_create = ('name',)
-    name = 'Active'
-
-
-class AllocationFactory(DjangoModelFactory):
-    class Meta:
-        model = Allocation
-        django_get_or_create = ('project','resource')
-    justification = fake.sentence()
-    status = AllocationStatusChoiceFactory()
-
-
-class AllocationUserStatusChoiceFactory(DjangoModelFactory):
-    class Meta:
-        model = AllocationUserStatusChoice
-        django_get_or_create = ('name',)
-    name = 'Active'
-
-
-class AllocationUserFactory(DjangoModelFactory):
-    class Meta:
-        model = AllocationUser
-        django_get_or_create = ('allocation','user')
-    allocation = SubFactory(AllocationFactory)
-    user = SubFactory(UserFactory)
-    status = AllocationUserStatusChoiceFactory()
-    unit = 'GB'
-    usage = 100
-    usage_bytes = 100000000000
-
-
-class AllocationUserNoteFactory(DjangoModelFactory):
-    class Meta:
-        model = AllocationUserNote
-        django_get_or_create = ('allocation')
-    allocation = SubFactory(AllocationFactory)
-    author = SubFactory(AllocationUserFactory)
-    note = fake.sentence()
-
-
 
 
 ### Field of Science factories ###
@@ -123,9 +80,6 @@ class FieldOfScienceFactory(DjangoModelFactory):
         django_get_or_create = ('description',)
 
     description = fake.fieldofscience()
-
-
-
 
 
 ### Department factories ###
@@ -232,14 +186,133 @@ class PublicationSourceFactory(DjangoModelFactory):
 
 ### Resource factories ###
 
+class ResourceTypeFactory(DjangoModelFactory):
+    class Meta:
+        model = ResourceType
+        django_get_or_create = ('name',)
+    name = 'Storage'
+
 class ResourceFactory(DjangoModelFactory):
     class Meta:
         model = Resource
         django_get_or_create = ('name',)
     name = fake.unique.resource_name()
+
     description = fake.sentence()
+    resource_type = SubFactory(ResourceTypeFactory)
 
 
-class ResourceTypeFactory(DjangoModelFactory):
+
+
+
+### Allocation factories ###
+
+
+class AllocationStatusChoiceFactory(DjangoModelFactory):
     class Meta:
-        model = ResourceType
+        model = AllocationStatusChoice
+        django_get_or_create = ('name',)
+    name = 'Active'
+
+
+class AllocationFactory(DjangoModelFactory):
+    class Meta:
+        model = Allocation
+        django_get_or_create = ('project',)
+    justification = fake.sentence()
+    status = SubFactory(AllocationStatusChoiceFactory)
+    project = SubFactory(ProjectFactory)
+    # definition of the many-to-many "resources" field using the ResourceFactory
+    # to automatically generate one or more of the required Resource objects
+    @post_generation
+    def resources(self, create, extracted, **kwargs):
+        if not create:
+            return
+        if extracted:
+            for resource in extracted:
+                self.resources.add(resource)
+        else:
+            self.resources.add(ResourceFactory())
+
+
+class AAttributeTypeFactory(DjangoModelFactory):
+    class Meta:
+        model = AAttributeType
+        django_get_or_create = ('name',)
+    name='Int'
+
+class AllocationAttributeTypeFactory(DjangoModelFactory):
+    class Meta:
+        model = AllocationAttributeType
+        django_get_or_create = ('name',)
+    name = 'Test attribute type'
+    attribute_type = SubFactory(AAttributeTypeFactory)
+
+class AllocationAttributeFactory(DjangoModelFactory):
+    class Meta:
+        model = AllocationAttribute
+    allocation_attribute_type = SubFactory(AllocationAttributeTypeFactory)
+    value = 2048
+    allocation = SubFactory(AllocationFactory)
+
+
+class AllocationAttributeUsageFactory(AllocationAttributeFactory):
+    class Meta:
+        model = AllocationAttributeUsage
+    allocation_attribute = SubFactory(AllocationAttributeFactory)
+    value = 1024
+
+# inherited from AllocationAttributeFactory
+class AllocationQuotaFactory(AllocationAttributeUsageFactory):
+    allocation_attribute = SubFactory(
+        AllocationAttributeFactory, 
+            value=1073741824,
+            allocation_attribute_type=SubFactory(
+            AllocationAttributeTypeFactory, name='Storage_Quota_TB'
+        )
+    )
+    value = 10737418
+
+
+class AllocationChangeStatusChoiceFactory(DjangoModelFactory):
+    class Meta:
+        model = AllocationChangeStatusChoice
+        django_get_or_create = ('name',)
+    name = 'Pending'
+
+class AllocationChangeRequestFactory(DjangoModelFactory):
+    class Meta:
+        model = AllocationChangeRequest
+
+    allocation = SubFactory(AllocationFactory)
+    status = SubFactory(AllocationChangeStatusChoiceFactory)
+    justification = fake.sentence()
+
+class AllocationUserStatusChoiceFactory(DjangoModelFactory):
+    class Meta:
+        model = AllocationUserStatusChoice
+        django_get_or_create = ('name',)
+    name = 'Active'
+
+
+class AllocationUserFactory(DjangoModelFactory):
+    class Meta:
+        model = AllocationUser
+        django_get_or_create = ('allocation','user')
+    allocation = SubFactory(AllocationFactory)
+    user = SubFactory(UserFactory)
+    status = SubFactory(AllocationUserStatusChoiceFactory)
+    unit = 'GB'
+    usage = 100
+    usage_bytes = 100000000000
+
+
+class AllocationUserNoteFactory(DjangoModelFactory):
+    class Meta:
+        model = AllocationUserNote
+        django_get_or_create = ('allocation')
+    allocation = SubFactory(AllocationFactory)
+    author = SubFactory(AllocationUserFactory)
+    note = fake.sentence()
+
+

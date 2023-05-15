@@ -6,7 +6,11 @@ from django.contrib.auth import get_user_model
 
 from coldfront.config.env import ENV
 
-FIXTURES = [
+UTIL_FIXTURES = [
+        "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
+]
+
+FIXTURES = UTIL_FIXTURES + [
         'coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json',
         'coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json',
         'coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json',
@@ -25,8 +29,8 @@ class MonitorViewTest(TestCase):
         self.client = Client()
 
     def test_monitor_access(self):
-        '''Confirm that only admins can access the page
-        '''
+        """Confirm that only admins can access the page
+        """
         # check that login is required
         # utils.test_logged_out_redirect_to_login(self, '/monitor')
         response = self.client.get('/monitor')

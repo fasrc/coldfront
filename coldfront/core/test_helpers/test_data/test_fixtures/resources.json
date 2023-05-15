@@ -19,14 +19,13 @@
   }
 },
 {
-  "model": "ifxbilling.facility",
+  "model": "resource.resourcetype",
   "pk": 1,
   "fields": {
-    "name":"Research Computing Storage",
-    "application_username":"coldfront",
-    "credit_code": "CODE",
-    "invoice_prefix": "RC",
-    "object_code": 8250
+    "created": "2022-02-22T16:14:05.808Z",
+    "modified": "2022-02-22T16:14:05.809Z",
+    "name": "Storage",
+    "description": "Network Storage"
   }
 },
 {
@@ -55,4 +54,5 @@
     "facility_id": 1,
     "billable": 1
   }
-}]
+}
+]

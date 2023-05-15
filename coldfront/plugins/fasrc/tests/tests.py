@@ -1,9 +1,13 @@
-
 from django.test import TestCase
 
 from coldfront.plugins.fasrc.utils import (AllTheThingsConn, push_quota_data)
 
-FIXTURES = [
+
+UTIL_FIXTURES = [
+        "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
+]
+
+FIXTURES = UTIL_FIXTURES + [
         'coldfront/core/test_helpers/test_data/test_fixtures/resources.json',
         'coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json',
         'coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json',
@@ -15,7 +19,7 @@ FIXTURES = [
 
 
 class UploadTests(TestCase):
-    '''Catch issues that may cause database not to upload properly.'''
+    """Catch issues that may cause database not to upload properly."""
     pref = './coldfront/plugins/fasrc/tests/testdata/'
     fixtures = FIXTURES
 
