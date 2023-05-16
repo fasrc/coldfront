@@ -358,7 +358,7 @@ class ProjectCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
 
     def test_func(self):
         """ UserPassesTestMixin Tests"""
-        if self.request.user.is_superuser or self.request.user.userprofile.is_pi:
+        if self.request.user.is_superuser:
             return True
         return False
 
@@ -1052,15 +1052,14 @@ class ProjectAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, Create
 
         if self.request.user.is_superuser:
             return True
-
         if project_obj.pi == self.request.user:
             return True
-
         if project_obj.projectuser_set.filter(user=self.request.user, role__name='Manager', status__name='Active').exists():
             return True
 
         messages.error(
             self.request, 'You do not have permission to add project attributes.')
+        return False
 
     def get_initial(self):
         initial = super().get_initial()
