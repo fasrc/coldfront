@@ -27,6 +27,10 @@ Allocation Detail
   <div class="alert alert-warning" role="alert">
     This is an allocation from an archived project! You cannot make any changes.
   </div>
+{% elif allocation.status.name in 'Inactive,Denied' %}
+  <div class="alert alert-warning" role="alert">
+    This is an {{ allocation.status.name | lower }} allocation! You cannot make any changes.
+  </div>
 {% endif %}
 <div id = "allocation">
 <div class="mb-3">
