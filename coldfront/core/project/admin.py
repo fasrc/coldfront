@@ -5,13 +5,15 @@ from simple_history.admin import SimpleHistoryAdmin
 from django.utils.translation import gettext_lazy as _
 
 from coldfront.core.project.models import (Project, ProjectAdminComment,
-                                            ProjectReview, ProjectStatusChoice,
-                                            ProjectUser, ProjectUserMessage,
+                                            ProjectUser,
+                                            AttributeType,
+                                            ProjectReview,
+                                            ProjectAttribute,
+                                            ProjectUserMessage,
+                                            ProjectStatusChoice,
+                                            ProjectAttributeType,
                                             ProjectUserRoleChoice,
                                             ProjectUserStatusChoice,
-                                            ProjectAttribute,
-                                            ProjectAttributeType,
-                                            AttributeType,
                                             ProjectAttributeUsage)
 
 
@@ -85,7 +87,7 @@ class ProjectAdminCommentInline(admin.TabularInline):
 class ProjectUserMessageInline(admin.TabularInline):
     model = ProjectUserMessage
     extra = 0
-    fields = ('message', 'author', 'created')
+    fields = ('note', 'author', 'created')
     readonly_fields = ('author', 'created')
 
 
