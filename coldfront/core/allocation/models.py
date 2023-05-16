@@ -148,7 +148,7 @@ class Allocation(TimeStampedModel):
                         Q(allocation_attribute_type_id=8))
         if AllocationAttribute.objects.filter(attr_filter):
             return AllocationAttribute.objects.get(attr_filter).value
-        return ""
+        return ''
 
     @property
     def cost(self):
@@ -198,7 +198,6 @@ class Allocation(TimeStampedModel):
                     logger.error("Allocation attribute '%s' for allocation id %s == 0 but has a usage",
                                  attribute.allocation_attribute_type.name, self.pk)
 
-                # string = '{} : {}/{} ({} %) <br>'.format(
                 string = '{}: {}/{} ({} %) <br>'.format(
                     attribute.allocation_attribute_type.name,
                     # usage,
@@ -347,9 +346,6 @@ class Allocation(TimeStampedModel):
 
         project_perms = self.project.user_permissions(user)
 
-        if ProjectPermission.USER not in project_perms:
-            return []
-
         if ProjectPermission.PI in project_perms or ProjectPermission.MANAGER in project_perms:
             return [AllocationPermission.USER, AllocationPermission.MANAGER]
 
@@ -374,8 +370,8 @@ class Allocation(TimeStampedModel):
     def __str__(self):
         tmp = self.get_parent_resource
         if tmp is None:
-            return "no parent resource"
-        return "%s (%s)" % (self.get_parent_resource.name, self.project.pi)
+            return 'no parent resource'
+        return '%s (%s)' % (self.get_parent_resource.name, self.project.pi)
 
 class AllocationAdminNote(TimeStampedModel):
     """ An allocation admin note is a note that an admin makes on an allocation.
@@ -481,20 +477,19 @@ class AllocationAttribute(TimeStampedModel):
         """ Validates the allocation attribute and raises errors if the allocation attribute is invalid. """
 
         if self.allocation_attribute_type.is_unique and self.allocation.allocationattribute_set.filter(allocation_attribute_type=self.allocation_attribute_type).exclude(id=self.pk).exists():
-            raise ValidationError("'{}' attribute already exists for this allocation.".format(
-                self.allocation_attribute_type))
+            raise ValidationError(f"'{self.allocation_attribute_type}' attribute already exists for this allocation.")
 
         expected_value_type = self.allocation_attribute_type.attribute_type.name.strip()
         error = None
-        if expected_value_type == "Float" and not isinstance(literal_eval(self.value), (float,int)):
-            error = "Value must be a float."
-        elif expected_value_type == "Int" and not isinstance(literal_eval(self.value), int):
-            error = "Value must be an integer."
-        elif expected_value_type == "Yes/No" and self.value not in ["Yes", "No"]:
+        if expected_value_type == 'Float' and not isinstance(literal_eval(self.value), (float,int)):
+            error = 'Value must be a float.'
+        elif expected_value_type == 'Int' and not isinstance(literal_eval(self.value), int):
+            error = 'Value must be an integer.'
+        elif expected_value_type == 'Yes/No' and self.value not in ['Yes', 'No']:
             error = 'Allowed inputs are "Yes" or "No".'
-        elif expected_value_type == "Date":
+        elif expected_value_type == 'Date':
             try:
-                datetime.datetime.strptime(self.value.strip(), "%Y-%m-%d")
+                datetime.datetime.strptime(self.value.strip(), '%Y-%m-%d')
             except ValueError:
                 error = 'Date must be in format YYYY-MM-DD'
         if error:
@@ -616,15 +611,14 @@ class AllocationUser(TimeStampedModel):
     usage_bytes = models.BigIntegerField(blank=True, null=True)
     # usage = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     usage = models.FloatField(default = 0)
-    unit = models.TextField(max_length=20, default="N/A Unit")
-    allocation_group_quota = models.BigIntegerField(blank=True, null=True)
+    unit = models.TextField(max_length=20, default='N/A Unit')
 
     history = HistoricalRecords()
 
     def __str__(self):
         if (self.allocation.resources.first() is None):
-            return '%s (%s)' % (self.user, "None")
-        return '%s (%s)' % (self.user, self.allocation.resources.first().name)
+            return f'{self.user} (None)'
+        return f'{self.user} ({self.allocation.resources.first().name})'
 
     class Meta:
         verbose_name_plural = 'Allocation User Status'
@@ -695,7 +689,7 @@ class AllocationChangeRequest(TimeStampedModel):
         return self.allocation.resources.filter(is_allocatable=True).first()
 
     def __str__(self):
-        return "%s (%s)" % (self.get_parent_resource.name, self.allocation.project.pi)
+        return '%s (%s)' % (self.get_parent_resource.name, self.allocation.project.pi)
 
 class AllocationAttributeChangeRequest(TimeStampedModel):
     """ An allocation attribute change request represents a request from a PI/ manager to change their allocation attribute.
