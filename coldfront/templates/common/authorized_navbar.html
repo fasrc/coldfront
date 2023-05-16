@@ -23,7 +23,9 @@
             <a id="navbar-project" class="dropdown-item" href="{% url 'project-list' %}">Projects</a>
             <a id="navbar-allocation" class="dropdown-item" href="{% url 'allocation-list' %}">Allocations</a>
             <a id="navbar-resource" class="dropdown-item" href="{% url 'resource-list' %}">Resources</a>
-            <a id="navbar-resource" class="dropdown-item" href="{% url 'department-list' %}">Departments</a>
+            {% if 'coldfront.core.department' in settings.INSTALLED_APPS %}
+              <a id="navbar-resource" class="dropdown-item" href="{% url 'department-list' %}">Departments</a>
+            {% endif %}
             {% if settings.ALLOCATION_ACCOUNT_ENABLED  %}
               <a class="dropdown-item" href="{% url 'allocation-account-list' %}">Allocation Accounts</a>
             {% endif %}

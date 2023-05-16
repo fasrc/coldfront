@@ -165,7 +165,7 @@ if len(SITE_TEMPLATES) > 0:
         raise ImproperlyConfigured('SITE_TEMPLATES should be a path to a directory')
 
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
-SETTINGS_EXPORT = []
+SETTINGS_EXPORT = ['INSTALLED_APPS']
 
 STATIC_URL = '/static/'
 STATIC_ROOT = ENV.str('STATIC_ROOT', default=PROJECT_ROOT('static_root'))
