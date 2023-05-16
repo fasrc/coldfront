@@ -63,7 +63,8 @@ class AllocationViewBaseTest(TestCase):
         # allocations
         cls.proj_allocation = AllocationFactory(
                         project=ProjectFactory(pi=cls.pi_user),
-                        resources=(resource,)
+                        resources=(resource,),
+                        is_changeable=True,
                     )
 
         # relationships
@@ -199,7 +200,6 @@ class AllocationDetailViewTest(AllocationViewBaseTest):
         utils.test_user_cannot_access(self, self.proj_nonallocation_user, self.url) #nonallocation user can't access
         # check access for allocation user with "Removed" status
 
-
     def test_allocation_detail_template_value_render(self):
         """Confirm that quota_tb and usage_tb are correctly rendered in the
         generated AllocationDetailView
@@ -215,9 +215,47 @@ class AllocationDetailViewTest(AllocationViewBaseTest):
         self.proj_allocation.set_usage('Quota_In_Bytes', 10995116277760)
         self.client.force_login(self.admin_user,
                 backend="django.contrib.auth.backends.ModelBackend")
-        response = self.client.get('/allocation/1/')
+        response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         # check that allocation_quota_tb has value
         self.assertEqual(response.context['allocation_quota_bytes'], 109951162777600)
         # check that allocation_usage_tb has value
         self.assertEqual(response.context['allocation_usage_bytes'], 10995116277760)
+
+
+    def test_allocationdetail_requestchange_button(self):
+        """Test visibility of the "Request Change" button for different user types
+        """
+        # admin
+        utils.page_contains_for_user(self, self.admin_user, self.url, 'Request Change')
+        # pi
+        utils.page_contains_for_user(self, self.pi_user, self.url, 'Request Change')
+        # allocation user
+        utils.page_does_not_contain_for_user(self, self.proj_allocation_user, self.url, 'Request Change')
+
+
+    def test_allocationattribute_button_visibility(self):
+        """Test visibility of the "Add Attribute" button for different user types
+        """
+        # admin
+        utils.page_contains_for_user(self, self.admin_user, self.url, 'Add Allocation Attribute')
+        utils.page_contains_for_user(self, self.admin_user, self.url, 'Delete Allocation Attribute')
+        # pi
+        utils.page_does_not_contain_for_user(self, self.pi_user, self.url, 'Add Allocation Attribute')
+        utils.page_does_not_contain_for_user(self, self.pi_user, self.url, 'Delete Allocation Attribute')
+        # allocation user
+        utils.page_does_not_contain_for_user(self, self.proj_allocation_user, self.url, 'Add Allocation Attribute')
+        utils.page_does_not_contain_for_user(self, self.proj_allocation_user, self.url, 'Delete Allocation Attribute')
+
+    def test_allocationuser_button_visibility(self):
+        """Test visibility of the "Add/Remove Users" buttons for different user types
+        """
+        # admin
+        utils.page_contains_for_user(self, self.admin_user, self.url, 'Add Users')
+        utils.page_contains_for_user(self, self.admin_user, self.url, 'Remove Users')
+        # pi
+        utils.page_does_not_contain_for_user(self, self.pi_user, self.url, 'Add Users')
+        utils.page_does_not_contain_for_user(self, self.pi_user, self.url, 'Remove Users')
+        # allocation user
+        utils.page_does_not_contain_for_user(self, self.proj_allocation_user, self.url, 'Add Users')
+        utils.page_does_not_contain_for_user(self, self.proj_allocation_user, self.url, 'Remove Users')
