@@ -1,9 +1,8 @@
 import logging
 
 from django.db.models import Count
-from django.test import TestCase, Client
-from django.urls import reverse, reverse_lazy
-from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.urls import reverse
 
 from coldfront.core.test_helpers import utils
 from coldfront.core.allocation.models import (Allocation,

@@ -92,7 +92,7 @@ xxx@example.edu
 Phone: (xxx) xxx-xxx
 """
 
-ACCOUNT_CREATION_TEXT = '''University faculty can submit a help ticket to request an account.
+ACCOUNT_CREATION_TEXT = """University faculty can submit a help ticket to request an account.
 Please see <a href="#">instructions on our website</a>. Staff, students, and external collaborators must
 request an account through a university faculty member.
-'''
+"""

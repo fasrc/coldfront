@@ -1,4 +1,4 @@
-'''Department views'''
+"""Department views"""
 
 from django.conf import settings
 from django.contrib import messages
@@ -15,9 +15,9 @@ from coldfront.core.department.models import Department, DepartmentMember, Depar
 
 
 def return_department_roles(user, department):
-    '''Return list of a user's permissions for the specified department.
+    """Return list of a user's permissions for the specified department.
     possible roles are: manager, pi, or member.
-    '''
+    """
     member_conditions = (Q(active=1) & Q(user=user))
     if not department.useraffiliation_set.filter(member_conditions).exists():
         return ()
@@ -69,7 +69,7 @@ class DepartmentListView(ColdfrontListView):
 # class DepartmentInvoiceDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
 #
 #     def get_context_data(self, **kwargs):
-#         '''Create all the variables for allocation_invoice_detail.html'''
+#         """Create all the variables for allocation_invoice_detail.html"""
 #         pk = self.kwargs.get('pk')
 #         self.department = get_object_or_404(FieldOfScience, pk=pk)
 #
@@ -118,8 +118,8 @@ class DepartmentNoteUpdateView(NoteUpdateView):
         return reverse_lazy('department-detail', kwargs={'pk': self.object.department.pk})
 
 class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
-    '''Department Stats, Projects, Allocations, and invoice details.
-    '''
+    """Department Stats, Projects, Allocations, and invoice details.
+    """
     # should a user need to be a member of the department to see this?
     model = Department
     template_name = 'department/department_detail.html'
@@ -127,9 +127,9 @@ class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests.
+        """ UserPassesTestMixin Tests.
         Allow access if a department member with billing permission.
-        '''
+        """
         if self.request.user.is_superuser:
             return True
         pk = self.kwargs.get('pk')

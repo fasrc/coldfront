@@ -32,7 +32,7 @@ class PublicationSearchView(LoginRequiredMixin, UserPassesTestMixin, TemplateVie
     template_name = 'publication/publication_add_publication_search.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 
@@ -67,7 +67,7 @@ class PublicationSearchResultView(LoginRequiredMixin, UserPassesTestMixin, Templ
     template_name = 'publication/publication_add_publication_search_result.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 
@@ -175,7 +175,7 @@ class PublicationSearchResultView(LoginRequiredMixin, UserPassesTestMixin, Templ
 class PublicationAddView(LoginRequiredMixin, UserPassesTestMixin, View):
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 
@@ -253,7 +253,7 @@ class PublicationAddManuallyView(LoginRequiredMixin, UserPassesTestMixin, FormVi
     template_name = 'publication/publication_add_publication_manually.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 
@@ -309,7 +309,7 @@ class PublicationDeletePublicationsView(LoginRequiredMixin, UserPassesTestMixin,
     template_name = 'publication/publication_delete_publications.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 
@@ -395,7 +395,7 @@ class PublicationExportPublicationsView(LoginRequiredMixin, UserPassesTestMixin,
     template_name = 'publication/publication_export_publications.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 

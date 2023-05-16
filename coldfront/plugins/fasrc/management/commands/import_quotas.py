@@ -6,10 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-    '''
+    """
     Collect group-level quota and usage data from ATT and insert it into the
     Coldfront database.
-    '''
+    """
 
     def add_arguments(self, parser):
         parser.add_argument(

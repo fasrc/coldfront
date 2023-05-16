@@ -19,11 +19,11 @@ def produce_filter_parameter(key, value):
 
 # Create your views here.
 class ColdfrontListView(LoginRequiredMixin, ListView):
-    '''A ListView with definitions standard to complex ListView implementations in Coldfront
-    '''
+    """A ListView with definitions standard to complex ListView implementations in Coldfront
+    """
 
     def return_order(self):
-        '''standardize the method for the 'order_by' value used in get_queryset'''
+        """standardize the method for the 'order_by' value used in get_queryset"""
         order_by = self.request.GET.get('order_by', 'id')
         direction = self.request.GET.get('direction', '')
         if order_by != 'name':
@@ -87,7 +87,7 @@ class NoteUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
     fields = ('is_private', 'note',)
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         note_obj = get_object_or_404(self.model, pk=self.kwargs.get('pk'))
         is_author = self.request.user == note_obj.author
         if self.request.user.is_superuser or is_author:
@@ -100,7 +100,7 @@ class NoteCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
     fields = '__all__'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
         messages.error(
@@ -124,7 +124,7 @@ class NoteCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
         return initial
 
     def get_form(self, form_class=None):
-        '''Return an instance of the form to be used in this view.'''
+        """Return an instance of the form to be used in this view."""
         form = super().get_form(form_class)
         form.fields[self.form_obj].widget = forms.HiddenInput()
         form.fields['author'].widget = forms.HiddenInput()

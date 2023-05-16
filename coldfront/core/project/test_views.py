@@ -5,15 +5,15 @@ from django.test import TestCase, Client
 
 from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import (
-    FieldOfScienceFactory,
+    UserFactory,
     ProjectFactory,
+    ProjectUserFactory,
+    FieldOfScienceFactory,
     PAttributeTypeFactory,
     ProjectAttributeFactory,
-    ProjectUserFactory,
+    ProjectStatusChoiceFactory,
     ProjectAttributeTypeFactory,
     ProjectUserRoleChoiceFactory,
-    ProjectStatusChoiceFactory,
-    UserFactory,
     fake
 )
 from coldfront.core.project.models import ProjectUserStatusChoice

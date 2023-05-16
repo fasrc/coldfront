@@ -21,7 +21,7 @@ class ResourceDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     context_object_name = 'resource'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         return True
 
     def get_child_resources(self, resource_obj):
@@ -65,7 +65,7 @@ class ResourceAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, Creat
     template_name = 'resource_resourceattribute_create.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
 
         if self.request.user.is_superuser:
             return True
@@ -87,7 +87,7 @@ class ResourceAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, Creat
         return initial
 
     def get_form(self, form_class=None):
-        '''Return an instance of the form to be used in this view.'''
+        """Return an instance of the form to be used in this view."""
         form = super().get_form(form_class)
         form.fields['resource'].widget = forms.HiddenInput()
         return form
@@ -100,7 +100,7 @@ class ResourceAttributeDeleteView(LoginRequiredMixin, UserPassesTestMixin, Templ
     template_name = 'resource_resourceattribute_delete.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
         messages.error(

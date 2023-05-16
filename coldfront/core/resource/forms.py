@@ -4,8 +4,8 @@ from coldfront.core.resource.models import ResourceAttribute
 
 from django.db.models.functions import Lower
 class ResourceSearchForm(forms.Form):
-    ''' Search form for the Resource list page.
-    '''
+    """ Search form for the Resource list page.
+    """
     model = forms.CharField(
         label='Model', max_length=100, required=False)
     serialNumber = forms.CharField(

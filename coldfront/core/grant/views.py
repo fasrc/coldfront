@@ -21,7 +21,7 @@ class GrantCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
     template_name = 'grant/grant_create.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 
@@ -76,7 +76,7 @@ class GrantCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 
 class GrantUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 
@@ -104,7 +104,7 @@ class GrantDeleteGrantsView(LoginRequiredMixin, UserPassesTestMixin, TemplateVie
     template_name = 'grant/grant_delete_grants.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 
@@ -184,7 +184,7 @@ class GrantReportView(LoginRequiredMixin, UserPassesTestMixin, ListView):
     template_name = 'grant/grant_report_list.html'
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 
@@ -310,7 +310,7 @@ class GrantDownloadView(LoginRequiredMixin, UserPassesTestMixin, View):
     login_url = "/"
 
     def test_func(self):
-        ''' UserPassesTestMixin Tests'''
+        """ UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
 

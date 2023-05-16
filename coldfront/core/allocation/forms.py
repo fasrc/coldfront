@@ -18,9 +18,9 @@ ALLOCATION_CHANGE_REQUEST_EXTENSION_DAYS = import_from_settings(
 
 
 class AllocationForm(forms.Form):
-    DEFAULT_DESCRIPTION = '''
+    DEFAULT_DESCRIPTION = """
 We do not have information about your research. Please provide a detailed description of your work and update your field of science. Thank you!
-        '''
+        """
     resource = forms.ModelChoiceField(queryset=None, empty_label=None)
     quantity = forms.IntegerField(required=True)
     justification = forms.CharField(widget=forms.Textarea)

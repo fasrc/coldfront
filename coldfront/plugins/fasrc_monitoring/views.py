@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
 Views
-'''
+"""
 import os
 from datetime import datetime
 
@@ -21,12 +21,12 @@ if ENV.bool('PLUGIN_SFTOCF', default=False):
     from coldfront.plugins.sftocf.utils import STARFISH_SERVER, StarFishServer
 
 class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
-    '''
-    '''
+    """
+    """
     template_name = 'monitor.html'
 
     def test_func(self):
-        '''UserPassesTestMixin Tests'''
+        """UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
         raise Http404
