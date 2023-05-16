@@ -207,7 +207,6 @@ class ProjectListView(ColdfrontListView):
     context_object_name = 'item_list'
     paginate_by = 25
 
-
     def get_queryset(self):
         order_by = self.return_order()
 
@@ -276,7 +275,7 @@ class ProjectArchivedListView(ColdfrontListView):
 
         project_search_form = ProjectSearchForm(self.request.GET)
 
-        projects = Project.objects.prefetch_related('pi', 'field_of_science', 'status').filter(
+        projects = Project.objects.prefetch_related('pi', 'status').filter(
                     status__name__in=['Archived', ])
         if project_search_form.is_valid():
             data = project_search_form.cleaned_data
@@ -301,13 +300,12 @@ class ProjectArchivedListView(ColdfrontListView):
             if data.get('field_of_science'):
                 projects = projects.filter(
                     field_of_science__description__icontains=data.get('field_of_science'))
-
         else:
             projects = projects.filter(
                 Q(projectuser__user=self.request.user) &
                 Q(projectuser__status__name='Active')).order_by(order_by)
 
-        return projects
+        return projects.distinct()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(
