@@ -24,7 +24,7 @@ logging.disable(logging.CRITICAL)
 
 class ProjectViewTestBase(TestCase):
     """Base class for project view tests"""
-    
+
     @classmethod
     def setUpTestData(cls):
         """Set up users and project for testing"""
@@ -38,7 +38,7 @@ class ProjectViewTestBase(TestCase):
         pi_proj_user = ProjectUserFactory(project=cls.project, user=cls.pi_user,
                         role=manager_role)
         cls.normal_projuser = ProjectUserFactory(project=cls.project, user=cls.project_user)
- 
+
         attributetype = PAttributeTypeFactory(name='string')
         cls.projectattributetype = ProjectAttributeTypeFactory(attribute_type=attributetype)# ProjectAttributeType.objects.get(pk=1)
 
@@ -64,7 +64,7 @@ class ProjectDetailViewTest(ProjectViewTestBase):
     def setUpTestData(cls):
         """Set up users and project for testing"""
         super(ProjectDetailViewTest, cls).setUpTestData()
-        cls.projectattribute = ProjectAttributeFactory(value=36238, 
+        cls.projectattribute = ProjectAttributeFactory(value=36238,
                 proj_attr_type=cls.projectattributetype, project=cls.project)
         cls.url = f'/project/{cls.project.pk}/'
 
@@ -72,7 +72,7 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         self.client = Client()
 
 
-    def test_project_detail_access(self):
+    def test_projectdetail_access(self):
         """Test project detail page access"""
         # logged-out user gets redirected, admin can access create page
         self.project_access_tstbase(self.url)
@@ -83,7 +83,7 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         utils.test_user_cannot_access(self, self.nonproject_user, self.url)
 
 
-    def test_project_detail_permissions(self):
+    def test_projectdetail_permissions(self):
         """Test project detail page access permissions"""
         # admin has is_allowed_to_update_project set to True
         response = utils.login_and_get_page(self.client, self.admin_user, self.url)
@@ -98,26 +98,32 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         self.assertEqual(response.context['is_allowed_to_update_project'], False)
 
 
-    def test_project_detail_edit_button_visibility(self):
+    def test_projectdetail_edituser_button_visibility(self):
         """Test visibility of project detail edit button to different projectuser levels"""
-        # admin can see edit button
         response = utils.login_and_get_page(self.client, self.admin_user, self.url)
-        self.assertContains(response, 'fa-user-edit')
+        self.assertContains(response, 'fa-user-edit') # admin can see edit button
 
-        # pi can see edit button
         response = utils.login_and_get_page(self.client, self.pi_user, self.url)
-        self.assertContains(response, 'fa-user-edit')
+        self.assertContains(response, 'fa-user-edit')# pi can see edit button
 
-        # non-manager user cannot see edit button
         response = utils.login_and_get_page(self.client, self.project_user, self.url)
-        self.assertNotContains(response, 'fa-user-edit')
+        self.assertNotContains(response, 'fa-user-edit')# non-manager user cannot see edit button
 
+    def test_projectdetail_addattribute_button_visibility(self):
+        """Test visibility of project detail add attribute button to different projectuser levels"""
+        response = utils.login_and_get_page(self.client, self.admin_user, self.url)
+        self.assertContains(response, 'Add Attribute') # admin can see add attribute button
 
+        response = utils.login_and_get_page(self.client, self.pi_user, self.url)
+        self.assertNotContains(response, 'Add Attribute')# pi cannot see add attribute button
+
+        response = utils.login_and_get_page(self.client, self.project_user, self.url)
+        self.assertNotContains(response, 'Add Attribute')# non-manager user cannot see add attribute button
 
 
 class ProjectCreateTest(ProjectViewTestBase):
     """Tests for project create view"""
-    
+
     @classmethod
     def setUpTestData(cls):
         """Set up users and project for testing"""

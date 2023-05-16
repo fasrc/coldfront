@@ -266,7 +266,7 @@ Project Detail
   <div class="card-header">
     <h3 class="d-inline"><i class="fas fa-info-circle" aria-hidden="true"></i> Attributes</h3> <span class="badge badge-secondary">{{attributes.count}}</span>
     <div class="float-right">
-      {% if project.status.name != 'Archived' and is_allowed_to_update_project %}
+      {% if project.status.name != 'Archived' and request.user.is_superuser %}
         <a class="btn btn-success" href="{% url 'project-attribute-create' project.pk %}" role="button"><i class="fas fa-plus" aria-hidden="true"></i> Add Attribute</a>
         {% if attributes %}
           <a class="btn btn-danger" href="{% url 'project-attribute-delete' project.pk %}" role="button"><i class="fas fa-minus" aria-hidden="true"></i> Delete Attributes</a>
