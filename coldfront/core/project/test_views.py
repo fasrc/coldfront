@@ -8,7 +8,6 @@ from coldfront.core.test_helpers.factories import (
     UserFactory,
     ProjectFactory,
     ProjectUserFactory,
-    FieldOfScienceFactory,
     PAttributeTypeFactory,
     ProjectAttributeFactory,
     ProjectStatusChoiceFactory,
@@ -42,6 +41,14 @@ class ProjectViewTestBase(TestCase):
         attributetype = PAttributeTypeFactory(name='string')
         cls.projectattributetype = ProjectAttributeTypeFactory(attribute_type=attributetype)# ProjectAttributeType.objects.get(pk=1)
 
+        for status in ['Active', 'Inactive', 'New', 'Archived']:
+            ProjectStatusChoiceFactory(name=status)
+
+    def page_contains_for_user(self, user, url, text):
+        """Check that page contains text for user"""
+        response = utils.login_and_get_page(self.client, user, url)
+        self.assertContains(response, text)
+
     def project_access_tstbase(self, url):
         """Test basic access control for project views. For all project views:
         - if not logged in, redirect to login page
@@ -53,9 +60,31 @@ class ProjectViewTestBase(TestCase):
         utils.test_user_can_access(self, self.admin_user, url)
 
 
+class ArchivedProjectViewsTest(ProjectViewTestBase):
+    """tests for Views of an archived project"""
 
+    @classmethod
+    def setUpTestData(cls):
+        """Set up users and project for testing"""
+        super(ArchivedProjectViewsTest, cls).setUpTestData()
+        cls.project.status = ProjectStatusChoiceFactory(name='Archived')
+        cls.project.save()
 
+    def test_projectdetail_warning_visible(self):
+        """Test that warning is visible on archived project detail page"""
+        url = f'/project/{self.project.pk}/'
+        self.page_contains_for_user(self.pi_user, url, 'You cannot make any changes')
 
+    def test_projectlist_no_archived_projects(self):
+        """Test that archived projects are not visible on project list page"""
+        url = '/project/?show_all_projects=True&'
+        response = utils.login_and_get_page(self.client, self.pi_user, url)
+        self.assertNotContains(response, self.project.title)
+
+    def test_archived_projectlist(self):
+        """Test that archived projects are visible on archived project list page"""
+        url = '/project/archived/'#?show_all_projects=True&'
+        self.page_contains_for_user(self.pi_user, url, self.project.title)
 
 class ProjectDetailViewTest(ProjectViewTestBase):
     """tests for ProjectDetailView"""
@@ -67,9 +96,6 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         cls.projectattribute = ProjectAttributeFactory(value=36238,
                 proj_attr_type=cls.projectattributetype, project=cls.project)
         cls.url = f'/project/{cls.project.pk}/'
-
-    def setUp(self):
-        self.client = Client()
 
 
     def test_projectdetail_access(self):
@@ -97,28 +123,45 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         response = utils.login_and_get_page(self.client, self.project_user, self.url)
         self.assertEqual(response.context['is_allowed_to_update_project'], False)
 
+    def test_projectdetail_request_allocation_button_visibility(self):
+        """Test visibility of project detail request allocation button to different projectuser levels"""
+        self.page_contains_for_user(self.admin_user, self.url, 'Request New Allocation') # admin can see request allocation button
+
+        self.page_contains_for_user(self.pi_user, self.url, 'Request New Allocation') # pi can see request allocation button
+
+        response = utils.login_and_get_page(self.client, self.project_user, self.url)
+        self.assertNotContains(response, 'Request New Allocation') # non-manager user cannot see request allocation button
 
     def test_projectdetail_edituser_button_visibility(self):
         """Test visibility of project detail edit button to different projectuser levels"""
-        response = utils.login_and_get_page(self.client, self.admin_user, self.url)
-        self.assertContains(response, 'fa-user-edit') # admin can see edit button
+        self.page_contains_for_user(self.admin_user, self.url, 'fa-user-edit') # admin can see edit button
 
-        response = utils.login_and_get_page(self.client, self.pi_user, self.url)
-        self.assertContains(response, 'fa-user-edit')# pi can see edit button
+        self.page_contains_for_user(self.pi_user, self.url, 'fa-user-edit') # pi can see edit button
 
         response = utils.login_and_get_page(self.client, self.project_user, self.url)
         self.assertNotContains(response, 'fa-user-edit')# non-manager user cannot see edit button
 
     def test_projectdetail_addattribute_button_visibility(self):
         """Test visibility of project detail add attribute button to different projectuser levels"""
-        response = utils.login_and_get_page(self.client, self.admin_user, self.url)
-        self.assertContains(response, 'Add Attribute') # admin can see add attribute button
+        self.page_contains_for_user(self.admin_user, self.url, 'Add Attribute') # admin can see add attribute button
 
         response = utils.login_and_get_page(self.client, self.pi_user, self.url)
         self.assertNotContains(response, 'Add Attribute')# pi cannot see add attribute button
 
         response = utils.login_and_get_page(self.client, self.project_user, self.url)
         self.assertNotContains(response, 'Add Attribute')# non-manager user cannot see add attribute button
+
+    def test_projectdetail_addnotification_button_visibility(self):
+        """Test visibility of project detail add notification button to different projectuser levels"""
+        self.page_contains_for_user(self.admin_user, self.url, 'Add Notification') # admin can see add notification button
+
+        response = utils.login_and_get_page(self.client, self.pi_user, self.url)
+        self.assertNotContains(response, 'Add Notification')# pi cannot see add notification button
+
+        response = utils.login_and_get_page(self.client, self.project_user, self.url)
+        self.assertNotContains(response, 'Add Notification')# non-manager user cannot see add notification button
+
+
 
 
 class ProjectCreateTest(ProjectViewTestBase):
@@ -210,9 +253,6 @@ class ProjectAttributeUpdateTest(ProjectViewTestBase):
         super(ProjectAttributeUpdateTest, cls).setUpTestData()
         cls.projectattribute = ProjectAttributeFactory(value=36238, proj_attr_type=cls.projectattributetype, project=cls.project)
         cls.url = f'/project/{cls.project.pk}/project-attribute-update/{cls.projectattribute.pk}'
-
-    def setUp(self):
-        self.client = Client()
 
 
     def test_project_attribute_update_access(self):
