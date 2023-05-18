@@ -164,8 +164,9 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         except Exception as e:
             time_chart_data_error = e
             time_chart_data = None
-        if not time_chart_data['groups'][0]:
-            time_chart_data = None
+        if time_chart_data:
+            if not time_chart_data['groups'][0]:
+                time_chart_data = None
 
         context['notes'] = self.return_visible_notes()
 

@@ -195,7 +195,6 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         allocation_quota_tb = next((a for a in attributes_with_usage if \
             a.allocation_attribute_type.name == 'Storage Quota (TB)'), None)
         if allocation_quota_tb :
-            print("HERE", allocation_quota_tb)
             allocation_usage_tb = float(allocation_quota_tb.allocationattributeusage.value)
         allocation_quota_bytes, allocation_usage_bytes = return_allocation_bytes_values(
                         attributes_with_usage, allocation_obj.allocationuser_set.all())
@@ -380,7 +379,8 @@ class AllocationListView(ColdfrontListView):
                     # Q(project__projectuser__user=self.request.user) &
 
                     (
-                        Q(project__projectuser__role__name='Manager') |
+                        (Q(project__projectuser__role__name='Manager') &
+                        Q(project__projectuser__user=self.request.user) )|
                         Q(project__pi=self.request.user) |
                         (
                             Q(allocationuser__user=self.request.user) &
