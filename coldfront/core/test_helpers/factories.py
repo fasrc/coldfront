@@ -142,6 +142,7 @@ class ProjectUserStatusChoiceFactory(DjangoModelFactory):
 class ProjectUserFactory(DjangoModelFactory):
     class Meta:
         model = ProjectUser
+        django_get_or_create = ('project', 'user')
 
     project = SubFactory(ProjectFactory)
     user = SubFactory(UserFactory)
@@ -224,16 +225,18 @@ class AllocationFactory(DjangoModelFactory):
     project = SubFactory(ProjectFactory)
     # definition of the many-to-many "resources" field using the ResourceFactory
     # to automatically generate one or more of the required Resource objects
-    @post_generation
-    def resources(self, create, extracted, **kwargs):
-        if not create:
-            return
-        if extracted:
-            for resource in extracted:
-                self.resources.add(resource)
-        else:
-            self.resources.add(ResourceFactory())
+    # @post_generation
+    # def resources(self, create, extracted, **kwargs):
+    #     if not create:
+    #         return
+    #     if extracted:
+    #         for resource in extracted:
+    #             self.resources.add(resource)
+    #     else:
+    #         self.resources.add(ResourceFactory())
 
+
+### Allocation Attribute factories ###
 
 class AAttributeTypeFactory(DjangoModelFactory):
     class Meta:
@@ -256,23 +259,21 @@ class AllocationAttributeFactory(DjangoModelFactory):
     allocation = SubFactory(AllocationFactory)
 
 
-class AllocationAttributeUsageFactory(AllocationAttributeFactory):
+class AllocationAttributeUsageFactory(DjangoModelFactory):
     class Meta:
         model = AllocationAttributeUsage
     allocation_attribute = SubFactory(AllocationAttributeFactory)
     value = 1024
 
 # inherited from AllocationAttributeFactory
-class AllocationQuotaFactory(AllocationAttributeUsageFactory):
-    allocation_attribute = SubFactory(
-        AllocationAttributeFactory, 
-            value=1073741824,
-            allocation_attribute_type=SubFactory(
-            AllocationAttributeTypeFactory, name='Storage_Quota_TB'
-        )
-    )
-    value = 10737418
+class AllocationQuotaFactory(AllocationAttributeFactory):
+    value=1073741824
+    allocation_attribute_type=SubFactory(AllocationAttributeTypeFactory,
+                    name='Quota_In_Bytes')
+                    # name='Storage_Quota_TB')
 
+
+### Allocation Change Request factories ###
 
 class AllocationChangeStatusChoiceFactory(DjangoModelFactory):
     class Meta:
@@ -287,6 +288,9 @@ class AllocationChangeRequestFactory(DjangoModelFactory):
     allocation = SubFactory(AllocationFactory)
     status = SubFactory(AllocationChangeStatusChoiceFactory)
     justification = fake.sentence()
+
+
+### Allocation User factories ###
 
 class AllocationUserStatusChoiceFactory(DjangoModelFactory):
     class Meta:
@@ -316,3 +320,44 @@ class AllocationUserNoteFactory(DjangoModelFactory):
     note = fake.sentence()
 
 
+
+def setup_models(test_case):
+    """Set up models that we use in multiple tests"""
+
+    # users
+    test_case.admin_user = UserFactory(username='gvanrossum', is_staff=True, is_superuser=True)
+    # pi is a project admin but not an AllocationUser.
+    test_case.pi_user = UserFactory(username='sdpoisson',
+                                            is_staff=False, is_superuser=False)
+    test_case.proj_allocation_user = UserFactory(username='ljbortkiewicz',
+                                            is_staff=False, is_superuser=False)
+    test_case.proj_nonallocation_user = UserFactory(username='wkohn',
+                                            is_staff=False, is_superuser=False)
+    test_case.nonproj_allocation_user = UserFactory(username='jsaul',
+                                            is_staff=False, is_superuser=False)
+    test_case.project = ProjectFactory(pi=test_case.pi_user)
+
+    # allocations
+    test_case.proj_allocation = AllocationFactory(
+                    project=test_case.project,
+                    is_changeable=True,
+                )
+    test_case.proj_allocation.resources.add(ResourceFactory(name='holylfs10/tier1', id=1))
+
+
+    allocation_quota = AllocationQuotaFactory(allocation=test_case.proj_allocation, value=109951162777600)
+    AllocationAttributeUsageFactory(allocation_attribute=allocation_quota, value=10995116277760)
+    # relationships
+    AllocationUserFactory(user=test_case.proj_allocation_user, allocation=test_case.proj_allocation)
+    AllocationUserFactory(user=test_case.nonproj_allocation_user, allocation=test_case.proj_allocation)
+
+
+    manager_role = ProjectUserRoleChoiceFactory(name='Manager')
+
+    ProjectUserFactory(user=test_case.pi_user, project=test_case.project, role=manager_role)
+    test_case.normal_projuser = ProjectUserFactory(user=test_case.proj_allocation_user,
+                                                    project=test_case.project)
+    ProjectUserFactory(user=test_case.proj_nonallocation_user, project=test_case.project)
+
+    for status in ['Active', 'Inactive', 'New', 'Archived']:
+        ProjectStatusChoiceFactory(name=status)

@@ -7,18 +7,15 @@ from django.urls import reverse
 from coldfront.core.test_helpers import utils
 from coldfront.core.allocation.models import (Allocation,
                                 AllocationAttribute,
-                                AttributeType,
-                                AllocationAttributeType,
                                 AllocationChangeRequest)
-from coldfront.core.test_helpers.factories import (UserFactory,
-                                ProjectFactory,
+from coldfront.core.test_helpers.factories import (fake,
+                                setup_models,
                                 ResourceFactory,
+                                UserFactory,
+                                ProjectFactory,
                                 AllocationFactory,
-                                ProjectUserFactory,
-                                AllocationUserFactory,
                                 AllocationChangeRequestFactory
                                 )
-
 
 
 logging.disable(logging.CRITICAL)
@@ -50,29 +47,7 @@ class AllocationViewBaseTest(TestCase):
     def setUpTestData(cls):
         """Test Data setup for all allocation view tests.
         """
-        # users
-        cls.admin_user = UserFactory(username='gvanrossum', is_staff=True, is_superuser=True)
-        # pi is a project admin but not an AllocationUser.
-        cls.pi_user = UserFactory(username='sdpoisson', is_staff=False, is_superuser=False)
-        cls.proj_allocation_user = UserFactory(username='ljbortkiewicz', is_staff=False, is_superuser=False)
-        cls.nonproject_allocation_user = UserFactory(username='wkohn', is_staff=False, is_superuser=False)
-        cls.proj_nonallocation_user = UserFactory(username='jdoe', is_staff=False, is_superuser=False)
-        cls.nonproj_allocation_user = UserFactory(username='jdoe2', is_staff=False, is_superuser=False)
-
-        resource=ResourceFactory(name='holylfs10/tier1', pk=1)
-        # allocations
-        cls.proj_allocation = AllocationFactory(
-                        project=ProjectFactory(pi=cls.pi_user),
-                        resources=(resource,),
-                        is_changeable=True,
-                    )
-
-        # relationships
-        AllocationUserFactory(user=cls.proj_allocation_user, allocation=cls.proj_allocation)
-        AllocationUserFactory(user=cls.nonproj_allocation_user, allocation=cls.proj_allocation)
-        ProjectUserFactory(user=cls.pi_user, project=cls.proj_allocation.project)
-        ProjectUserFactory(user=cls.proj_allocation_user, project=cls.proj_allocation.project)
-        ProjectUserFactory(user=cls.proj_nonallocation_user, project=cls.proj_allocation.project)
+        setup_models(cls)
 
 
 
@@ -88,6 +63,25 @@ class AllocationViewBaseTest(TestCase):
 
 class AllocationListViewTest(AllocationViewBaseTest):
 
+
+    @classmethod
+    def setUpTestData(cls):
+        """Set up users and project for testing"""
+        super(AllocationListViewTest, cls).setUpTestData()
+        cls.additional_allocations = [
+                AllocationFactory(
+                    project=ProjectFactory(
+                        title=fake.unique.project_title(),
+                        pi=UserFactory(username=fake.unique.username())
+                        )
+                    )
+            for i in list(range(100))
+                             ]
+        for allocation in cls.additional_allocations:
+            allocation.resources.add(ResourceFactory(name='holylfs09/tier1', id=2))
+        cls.nonproj_nonallocation_user = UserFactory(username='rdrake',
+                    is_staff=False, is_superuser=False)
+
     def test_allocation_list_access_admin(self):
         """Confirm that AllocationList access control works for admin
         """
@@ -95,7 +89,7 @@ class AllocationListViewTest(AllocationViewBaseTest):
 
         # confirm that show_all_allocations=on enables admin to view all allocations
         response = self.client.get("/allocation/?show_all_allocations=on")
-        self.assertEqual(len(response.context['item_list']), 1)
+        self.assertEqual(len(response.context['item_list']), 25)
 
     def test_allocation_list_access_pi(self):
         """Confirm that AllocationList access control works for pi
@@ -127,6 +121,11 @@ class AllocationListViewTest(AllocationViewBaseTest):
         self.assertEqual(len(response.context['item_list']), 1)
         response = self.client.get("/allocation/?show_all_allocations=on")
         self.assertEqual(len(response.context['item_list']), 1)
+
+        # nonallocation user belonging to project can't see allocation
+        self.client.force_login(self.nonproj_nonallocation_user, backend="django.contrib.auth.backends.ModelBackend")
+        response = self.client.get("/allocation/?show_all_allocations=on")
+        self.assertEqual(len(response.context['item_list']), 0)
 
         # nonallocation user belonging to project can't see allocation
         self.client.force_login(self.proj_nonallocation_user, backend="django.contrib.auth.backends.ModelBackend")
@@ -188,7 +187,6 @@ class AllocationChangeViewTest(AllocationViewBaseTest):
         self.assertEqual(response.status_code, 200) #Admin can access
 
 
-
 class AllocationDetailViewTest(AllocationViewBaseTest):
 
     def setUp(self):
@@ -204,15 +202,6 @@ class AllocationDetailViewTest(AllocationViewBaseTest):
         """Confirm that quota_tb and usage_tb are correctly rendered in the
         generated AllocationDetailView
         """
-        # allocation attributes
-        quota = self.proj_allocation.allocationattribute_set.create(value=109951162777600,
-            allocation_attribute_type=AllocationAttributeType.objects.get_or_create(
-                        name='Quota_In_Bytes',
-                        attribute_type=AttributeType.objects.get_or_create(name='Int')[0],
-                        has_usage=True
-                    )[0]
-            )
-        self.proj_allocation.set_usage('Quota_In_Bytes', 10995116277760)
         self.client.force_login(self.admin_user,
                 backend="django.contrib.auth.backends.ModelBackend")
         response = self.client.get(self.url)

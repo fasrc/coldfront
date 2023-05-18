@@ -1,7 +1,6 @@
 import logging
 
-from django.core.exceptions import ValidationError
-from django.test import TestCase, Client
+from django.test import TestCase
 
 from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import (
@@ -11,6 +10,7 @@ from coldfront.core.test_helpers.factories import (
     PAttributeTypeFactory,
     ProjectAttributeFactory,
     ProjectStatusChoiceFactory,
+    setup_models,
     ProjectAttributeTypeFactory,
     ProjectUserRoleChoiceFactory,
     fake
@@ -21,28 +21,27 @@ logging.disable(logging.CRITICAL)
 
 
 
+UTIL_FIXTURES = [
+        "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
+]
+
 class ProjectViewTestBase(TestCase):
     """Base class for project view tests"""
+    fixtures = UTIL_FIXTURES
 
     @classmethod
     def setUpTestData(cls):
         """Set up users and project for testing"""
-        cls.admin_user = UserFactory(username='gvanrossum', is_staff=True, is_superuser=True)
-        cls.pi_user = UserFactory(username='sdpoisson', is_staff=False, is_superuser=False)
-        cls.project_user = UserFactory(username='ljbortkiewicz', is_staff=False, is_superuser=False)
-        cls.nonproject_user = UserFactory(username='wkohn', is_staff=False, is_superuser=False)
-        cls.project = ProjectFactory(pi=cls.pi_user)
-        manager_role = ProjectUserRoleChoiceFactory(name='Manager')
+        setup_models(cls)
+        cls.project_user = cls.proj_allocation_user
+        cls.nonproject_user = cls.nonproj_allocation_user
         # add pi_user and project_user to project_user
-        pi_proj_user = ProjectUserFactory(project=cls.project, user=cls.pi_user,
-                        role=manager_role)
+
         cls.normal_projuser = ProjectUserFactory(project=cls.project, user=cls.project_user)
 
         attributetype = PAttributeTypeFactory(name='string')
         cls.projectattributetype = ProjectAttributeTypeFactory(attribute_type=attributetype)# ProjectAttributeType.objects.get(pk=1)
 
-        for status in ['Active', 'Inactive', 'New', 'Archived']:
-            ProjectStatusChoiceFactory(name=status)
 
     def project_access_tstbase(self, url):
         """Test basic access control for project views. For all project views:
