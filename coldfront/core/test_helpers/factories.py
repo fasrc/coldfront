@@ -117,8 +117,8 @@ class ProjectFactory(DjangoModelFactory):
         model = Project
         django_get_or_create = ('title',)
 
-    title = fake.unique.project_title()
     pi = SubFactory(UserFactory)
+    title = fake.unique.project_title()
     description = fake.sentence()
     field_of_science = SubFactory(FieldOfScienceFactory)
     status = SubFactory(ProjectStatusChoiceFactory)
@@ -262,6 +262,7 @@ class AllocationAttributeFactory(DjangoModelFactory):
 class AllocationAttributeUsageFactory(DjangoModelFactory):
     class Meta:
         model = AllocationAttributeUsage
+        django_get_or_create = ('allocation_attribute',)
     allocation_attribute = SubFactory(AllocationAttributeFactory)
     value = 1024
 

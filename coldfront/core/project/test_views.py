@@ -90,7 +90,13 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         cls.projectattribute = ProjectAttributeFactory(value=36238,
                 proj_attr_type=cls.projectattributetype, project=cls.project)
         cls.url = f'/project/{cls.project.pk}/'
+        cls.no_allocation_project = ProjectFactory(title=fake.unique.project_title(),
+                                pi=UserFactory(username=fake.unique.user_name()))
 
+    def test_projectdetail_render(self):
+        # test rendering for project with no allocation
+        no_allocation_proj_url = f'/project/{self.no_allocation_project.pk}/'
+        utils.test_user_can_access(self, self.admin_user, no_allocation_proj_url)
 
     def test_projectdetail_access(self):
         """Test project detail page access"""
@@ -101,6 +107,7 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         utils.test_user_can_access(self, self.project_user, self.url)
         # user not belonging to project cannot access
         utils.test_user_cannot_access(self, self.nonproject_user, self.url)
+
 
 
     def test_projectdetail_permissions(self):
