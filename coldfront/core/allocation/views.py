@@ -1218,19 +1218,17 @@ class AllocationInvoiceDetailView(LoginRequiredMixin, UserPassesTestMixin, Templ
         context['is_allowed_to_update_project'] = allocation_obj.project.has_perm(
                                     self.request.user, ProjectPermission.UPDATE)
         context['allocation_users'] = allocation_users
+        context['note_update_link'] = 'allocation-note-update'
 
-        if self.request.user.is_superuser:
-            notes = allocation_obj.allocationusernote_set.all()
-        else:
-            notes = allocation_obj.allocationusernote_set.filter(is_private=False)
-
-        context['notes'] = notes
+        context['notes'] = self.return_visible_notes(allocation_obj)
         context['ALLOCATION_ENABLE_ALLOCATION_RENEWAL'] = ALLOCATION_ENABLE_ALLOCATION_RENEWAL
         return context
 
-
-        messages.error(self.request, 'You do not have permission to view invoices.')
-        return False
+    def return_visible_notes(self, allocation_obj):
+        notes = allocation_obj.allocationusernote_set.all()
+        if not self.request.user.is_superuser:
+            notes = notes.filter(is_private=False)
+        return notes
 
 
     def get(self, request, *args, **kwargs):
@@ -1387,14 +1385,6 @@ class AllocationDeleteInvoiceNoteView(LoginRequiredMixin, UserPassesTestMixin, T
 
         return HttpResponseRedirect(reverse_lazy('allocation-invoice-detail', kwargs={'pk': allocation_obj.pk}))
 
-def render_to_pdf(template_src, context_dict={}):
-    template = get_template(template_src)
-    html  = template.render(context_dict)
-    result = BytesIO()
-    pdf = pisa.pisaDocument(BytesIO(html.encode('ISO-8859-1')), result)
-    if not pdf.err:
-        return HttpResponse(result.getvalue(), content_type='application/pdf')
-    return None
 
 class AllocationAccountCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
     model = AllocationAccount
@@ -1443,13 +1433,20 @@ data = {
     'website': 'billing@rc.fas.harvard.edu',
     }
 
+
+def render_to_pdf(template_src, context_dict={}):
+    template = get_template(template_src)
+    html  = template.render(context_dict)
+    result = BytesIO()
+    pdf = pisa.pisaDocument(BytesIO(html.encode('ISO-8859-1')), result)
+    if not pdf.err:
+        return HttpResponse(result.getvalue(), content_type='application/pdf')
+    return None
+
 class ViewPDF(View):
 
     def get(self, request, *args, **kwargs):
-        # one_allocation_users = AllocationUser.objects.filter(allocation__pk = kwargs)
-        # print('line 1775 one_allocation_user',one_allocation_users)
         print('line magic 1773',kwargs)
-        # pdf = render_to_pdf('allocation/pdf_template.html', one_allocation_users)
         pdf = render_to_pdf('allocation/pdf_template.html', data)
         return HttpResponse(pdf, content_type='application/pdf')
 
@@ -1457,7 +1454,6 @@ class ViewPDF(View):
 #Automaticly downloads to PDF file
 class DownloadPDF(View):
     def get(self, request, *args, **kwargs):
-
         pdf = render_to_pdf('allocation/pdf_template.html', data)
 
         response = HttpResponse(pdf, content_type='allocation/pdf')
@@ -1465,10 +1461,6 @@ class DownloadPDF(View):
         content = f"attachment; filename='{filename}'"
         response['Content-Disposition'] = content
         return response
-
-# class PDFUserDetailView(PDFTemplateResponseMixin, DetailView):
-#     template_name = 'allocation/pdf_detail.html'
-#     context_object_name = data
 
     def index(self, request):
         context = {}
