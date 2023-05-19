@@ -4,34 +4,24 @@ from django.test import TestCase
 
 from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import setup_models
+from coldfront.core.test_helpers.fasrc_factories import setup_departments
 from coldfront.core.department.models import Department, DepartmentMember
 
 UTIL_FIXTURES = [
         "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
 ]
 
-FIXTURES = UTIL_FIXTURES + [
-            "coldfront/core/test_helpers/test_data/test_fixtures/resources.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/department.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/kohn_fixtures.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/gordon_fixtures.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/field_of_science.json",
-            "coldfront/core/test_helpers/test_data/test_fixtures/project_choices.json",
-            ]
-
 logging.disable(logging.ERROR)
 
 class DepartmentViewTest(TestCase):
-    fixtures = FIXTURES
+    fixtures = UTIL_FIXTURES
 
     @classmethod
     def setUpTestData(cls):
         """Test Data setup for all allocation view tests.
         """
         setup_models(cls)
+        setup_departments(cls)
 
 class DepartmentListViewTest(DepartmentViewTest):
 
@@ -69,14 +59,11 @@ class DepartmentDetailViewTest(DepartmentViewTest):
 
     def setUp(self):
         self.department = Department.objects.first()
-        self.dept_manager_user = DepartmentMember.objects.get(
-                                        role="approver",
-                                        organization_id=self.department.id
-                                        ).member
-        self.dept_member_user = DepartmentMember.objects.get(
-                                        role="user",
-                                        organization_id=self.department.id
-                                        ).member
+        # self.dept_member_user = DepartmentMember.objects.get(
+        #                                 role="user",
+        #                                 organization_id=self.department.id
+        #                                 ).member
+        self.dept_manager_user = get_user_model().objects.get(username='eostrom')
         self.nondept_user = self.pi_user
         self.url = f"/department/{self.department.pk}/"
 
@@ -92,7 +79,11 @@ class DepartmentDetailViewTest(DepartmentViewTest):
         # manager user belonging to department can access
         utils.test_user_can_access(self, self.dept_manager_user, self.url)
         # non-manager user belonging to department can access
-        utils.test_user_can_access(self, self.dept_member_user, self.url)
+        dept = Department.objects.get(name="Computational Chemistry")
+        url = f"/department/{dept.pk}/"
+
+        utils.test_user_can_access(self, self.admin_user, url)
+        utils.test_user_can_access(self, self.dept_member_user, url)
 
         # user not belonging to department cannot access
         response = utils.login_and_get_page(self.client, self.nondept_user, self.url)
@@ -103,13 +94,18 @@ class DepartmentDetailViewTest(DepartmentViewTest):
         """Check content of department detail pages.
         """
         response = utils.login_and_get_page(self.client, self.admin_user, self.url)
-        # print("response ADMIN:", response.context, "\n\n")
+        # print("response ADMIN:", [f'{i}\n' for i in response.context], "\n\n")
         # confirm that all projects are visible
         self.assertEqual(len(response.context['projects']), 2)
 
         # department members who are not administrators cannot update department details
         # or review bills
-        response = utils.login_and_get_page(self.client, self.dept_member_user, self.url)
-        # print("response USER:", response.context, "\n\n")
+
+    def test_department_detail_content_dept_member(self):
+        dept = Department.objects.get(name="Computational Chemistry")
+        url = f"/department/{dept.pk}/"
+        response = utils.login_and_get_page(self.client, self.dept_member_user, url)
+        #print("response USER:", response.context, "\n\n")
         # confirm that only the user's projects are visible
         self.assertEqual(len(response.context['projects']), 1)
+
