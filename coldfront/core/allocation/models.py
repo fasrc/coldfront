@@ -144,8 +144,9 @@ class Allocation(TimeStampedModel):
 
     @property
     def path(self):
+        subdir_attribute = AllocationAttributeType.objects.get(name='Subdirectory')
         attr_filter = ( Q(allocation_id=self.id) &
-                        Q(allocation_attribute_type_id=8))
+                        Q(allocation_attribute_type_id=subdir_attribute.pk))
         if AllocationAttribute.objects.filter(attr_filter):
             return AllocationAttribute.objects.get(attr_filter).value
         return ''
