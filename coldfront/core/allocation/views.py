@@ -537,7 +537,8 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             return self.form_invalid(form)
 
         usernames = form_data.get('users')
-        # usernames = []
+        if not usernames:
+            usernames = []
         usernames.append(project_obj.pi.username)
         usernames = list(set(usernames))
 
@@ -590,6 +591,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                                     'email/new_allocation_request.txt',
                                     domain_url=get_domain_url(self.request),
                                     other_vars={'justification':justification, 'quantity':quantity})
+        return super().form_valid(form)
 
     def get_success_url(self):
         return reverse('project-detail', kwargs={'pk': self.kwargs.get('project_pk')})
