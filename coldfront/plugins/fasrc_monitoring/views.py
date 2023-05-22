@@ -9,7 +9,6 @@ from datetime import datetime
 import pandas as pd
 from django.http import Http404
 from django.db.models import Count
-from django.shortcuts import render
 from django.views.generic.base import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 

@@ -592,7 +592,7 @@ def match_allocations_with_usage_entries(allocations, user_usage, allocation_usa
 
     total_sort_key = itemgetter('path','vol_name')
     allocation_usage_grouped = return_dict_of_groupings(allocation_usage, total_sort_key)
-    missing_allocations = [a for k, a in allocation_usage_grouped if k not in allocation_list]
+    missing_allocations = [(k,a) for k, a in allocation_usage_grouped if k not in allocation_list]
 
     user_usage = [user for user in user_usage if user['lab_path'] is not None]
     user_sort_key = itemgetter('lab_path','vol_name')
