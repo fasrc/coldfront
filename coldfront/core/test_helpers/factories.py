@@ -329,6 +329,8 @@ def setup_models(test_case):
         ProjectStatusChoiceFactory(name=status)
     for attribute_type in ['Date', 'Int', 'Float', 'Text', 'Boolean']:
         AAttributeTypeFactory(name=attribute_type)
+    for status in ['Pending', 'Approved', 'Denied']:
+        AllocationChangeStatusChoiceFactory(name=status)
     # users
     test_case.admin_user = UserFactory(username='gvanrossum', is_staff=True, is_superuser=True)
     # pi is a project admin but not an AllocationUser.
