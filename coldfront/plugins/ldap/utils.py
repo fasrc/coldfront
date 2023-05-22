@@ -336,7 +336,7 @@ def collect_update_project_status_membership():
             present_project_ifxusers, missing_users = id_present_missing_users(ad_users_not_added)
             logger.debug('present_project_ifxusers - ADUsers who have ifxuser accounts:\n%s', ad_users_not_added)
 
-            log_missing('users', missing_users) # log missing IFXusers
+            log_missing('user', missing_users) # log missing IFXusers
 
             # If user is missing because status was changed to 'removed', update status
             present_projectusers = group.project.projectuser_set.filter(user__in=present_project_ifxusers)
