@@ -956,7 +956,6 @@ class AllocationNoteUpdateView(NoteUpdateView):
 
 class AllocationRequestListView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     template_name = 'allocation/allocation_request_list.html'
-    login_url = '/'
 
     def test_func(self):
         """ UserPassesTestMixin Tests"""
@@ -1718,7 +1717,6 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
 
 class AllocationChangeListView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     template_name = 'allocation/allocation_change_list.html'
-    login_url = '/'
 
     def test_func(self):
         """ UserPassesTestMixin Tests"""
@@ -1901,7 +1899,6 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 
 
 class AllocationChangeDeleteAttributeView(LoginRequiredMixin, UserPassesTestMixin, View):
-    login_url = '/'
 
     def test_func(self):
         """ UserPassesTestMixin Tests"""

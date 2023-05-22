@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from coldfront.core.test_helpers import utils
 from coldfront.core.allocation.models import (Allocation,
+                                AllocationUserNote,
                                 AllocationAttribute,
                                 AllocationChangeRequest)
 from coldfront.core.test_helpers.factories import (fake,
@@ -48,7 +49,6 @@ class AllocationViewBaseTest(TestCase):
         """Test Data setup for all allocation view tests.
         """
         setup_models(cls)
-
 
 
     def allocation_access_tstbase(self, url):
@@ -248,3 +248,78 @@ class AllocationDetailViewTest(AllocationViewBaseTest):
         # allocation user
         utils.page_does_not_contain_for_user(self, self.proj_allocation_user, self.url, 'Add Users')
         utils.page_does_not_contain_for_user(self, self.proj_allocation_user, self.url, 'Remove Users')
+
+
+class AllocationCreateViewTest(AllocationViewBaseTest):
+    """Tests for the AllocationCreateView"""
+    def setUp(self):
+        self.url = f'/allocation/project/{self.project.pk}/create' #url for AllocationCreateView
+
+    def test_allocationcreateview_access(self):
+        """Test access to the AllocationCreateView"""
+        self.allocation_access_tstbase(self.url)
+        # add test to determine if PI can access this view
+        utils.test_user_cannot_access(self, self.proj_nonallocation_user, self.url)
+
+
+
+class AllocationAddUsersViewTest(AllocationViewBaseTest):
+    """Tests for the AllocationAddUsersView"""
+    def setUp(self):
+        self.url = f'/allocation/{self.proj_allocation.pk}/add-users'
+
+    def test_allocationaddusersview_access(self):
+        self.allocation_access_tstbase(self.url)
+
+
+class AllocationRemoveUsersViewTest(AllocationViewBaseTest):
+    """Tests for the AllocationRemoveUsersView"""
+    def setUp(self):
+        self.url = f'/allocation/{self.proj_allocation.pk}/remove-users'
+
+    def test_allocationremoveusersview_access(self):
+        self.allocation_access_tstbase(self.url)
+
+
+class AllocationRequestListViewTest(AllocationViewBaseTest):
+    """Tests for the AllocationRequestListView"""
+    def setUp(self):
+        self.url = '/allocation/request-list'
+
+    def test_allocationrequestlistview_access(self):
+        self.allocation_access_tstbase(self.url)
+
+
+
+class AllocationChangeListViewTest(AllocationViewBaseTest):
+    """Tests for the AllocationChangeListView"""
+    def setUp(self):
+        self.url = '/allocation/change-list'
+
+    def test_allocationchangelistview_access(self):
+        self.allocation_access_tstbase(self.url)
+
+
+
+class AllocationNoteCreateViewTest(AllocationViewBaseTest):
+    """Tests for the AllocationNoteCreateView"""
+    def setUp(self):
+        self.url = f'/allocation/{self.proj_allocation.pk}/allocationnote/add'
+
+    def test_allocationnotecreateview_access(self):
+        self.allocation_access_tstbase(self.url)
+
+
+
+class AllocationNoteUpdateViewTest(AllocationViewBaseTest):
+    """Tests for the AllocationNoteUpdateView"""
+    def setUp(self):
+        self.proj_allocation_note = AllocationUserNote.objects.create(
+            allocation=self.proj_allocation,
+            note='test note',
+            author=self.admin_user,
+            )
+        self.url = f'/allocation/allocation-note/{self.proj_allocation_note.pk}/update'
+
+    def test_allocationnoteupdateview_access(self):
+        self.allocation_access_tstbase(self.url)
