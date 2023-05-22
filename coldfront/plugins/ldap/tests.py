@@ -9,20 +9,12 @@ from coldfront.plugins.ldap.utils import (format_template_assertions,
                                         LDAPConn,
                                         GroupUserCollection,
                                         add_new_projects)
+from coldfront.core.test_helpers.factories import setup_models
 
 
 UTIL_FIXTURES = [
         "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
 ]
-
-FIXTURES = UTIL_FIXTURES + [
-        'coldfront/core/test_helpers/test_data/test_fixtures/resources.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/field_of_science.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/project_choices.json',
-        ]
 
 class UtilFunctionTests(TestCase):
 
@@ -94,9 +86,12 @@ class LDAPConnTest(TestCase):
 
 class GroupUserCollectionTests(TestCase):
     """Tests for GroupUserCollection class"""
-    fixtures = FIXTURES
+    fixtures = UTIL_FIXTURES
+
 
     def setUp(self):
+        setup_models(self)
+
         group_name = 'bortkiewicz_lab'
         self.currentuser_accountExpires = [datetime(9999, 12, 31, 23, 59, 59, 999999, tzinfo=OffsetTzInfo(offset=0, name='UTC'))]
         self.expireduser_accountExpires = [datetime(1601, 12, 31, 23, 59, 59, 999999, tzinfo=OffsetTzInfo(offset=0, name='UTC'))]

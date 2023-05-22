@@ -5,7 +5,7 @@ from django.test import TestCase
 from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import setup_models
 from coldfront.core.test_helpers.fasrc_factories import setup_departments
-from coldfront.core.department.models import Department, DepartmentMember
+from coldfront.core.department.models import Department
 
 UTIL_FIXTURES = [
         "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
@@ -108,4 +108,3 @@ class DepartmentDetailViewTest(DepartmentViewTest):
         #print("response USER:", response.context, "\n\n")
         # confirm that only the user's projects are visible
         self.assertEqual(len(response.context['projects']), 1)
-

@@ -1,7 +1,5 @@
 import factory
-from factory import SubFactory, RelatedFactory, post_generation
-from faker import Faker
-from faker.providers import BaseProvider, DynamicProvider
+from factory import SubFactory
 from factory.django import DjangoModelFactory
 from ifxbilling.models import Product, Facility
 from ifxuser.models import Organization, OrgRelation, UserAffiliation

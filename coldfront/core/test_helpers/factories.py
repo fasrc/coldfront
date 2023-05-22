@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 
 import factory
-from factory import SubFactory, RelatedFactory, post_generation
+from factory import SubFactory
 from faker import Faker
 from faker.providers import BaseProvider, DynamicProvider
 from factory.django import DjangoModelFactory
@@ -325,6 +325,10 @@ class AllocationUserNoteFactory(DjangoModelFactory):
 def setup_models(test_case):
     """Set up models that we use in multiple tests"""
 
+    for status in ['Active', 'Inactive', 'New', 'Archived']:
+        ProjectStatusChoiceFactory(name=status)
+    for attribute_type in ['Date', 'Int', 'Float', 'Text', 'Boolean']:
+        AAttributeTypeFactory(name=attribute_type)
     # users
     test_case.admin_user = UserFactory(username='gvanrossum', is_staff=True, is_superuser=True)
     # pi is a project admin but not an AllocationUser.
@@ -336,7 +340,7 @@ def setup_models(test_case):
                                             is_staff=False, is_superuser=False)
     test_case.nonproj_allocation_user = UserFactory(username='jsaul',
                                             is_staff=False, is_superuser=False)
-    test_case.project = ProjectFactory(pi=test_case.pi_user)
+    test_case.project = ProjectFactory(pi=test_case.pi_user, title="poisson_lab")
 
     # allocations
     test_case.proj_allocation = AllocationFactory(
@@ -359,6 +363,3 @@ def setup_models(test_case):
     test_case.normal_projuser = ProjectUserFactory(user=test_case.proj_allocation_user,
                                                     project=test_case.project)
     ProjectUserFactory(user=test_case.proj_nonallocation_user, project=test_case.project)
-
-    for status in ['Active', 'Inactive', 'New', 'Archived']:
-        ProjectStatusChoiceFactory(name=status)
