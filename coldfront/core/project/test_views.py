@@ -361,3 +361,84 @@ class ProjectListViewTest(ProjectViewTestBase):
         url = self.url + '?show_all_projects=on'
         self.client.force_login(self.admin_user, backend='django.contrib.auth.backends.ModelBackend')
         response = self.client.get(url)
+
+
+
+class ProjectRemoveUsersViewTest(ProjectViewTestBase):
+    """Tests for ProjectRemoveUsersView"""
+    def setUp(self):
+        """set up users and project for testing"""
+        self.url = f'/project/{self.project.pk}/remove-users/'
+
+    def test_projectremoveusersview_access(self):
+        """test access to project remove users page"""
+        self.project_access_tstbase(self.url)
+
+
+
+class ProjectUpdateViewTest(ProjectViewTestBase):
+    """Tests for ProjectUpdateView"""
+    def setUp(self):
+        """set up users and project for testing"""
+        self.url = f'/project/{self.project.pk}/update/'
+
+    def test_projectupdateview_access(self):
+        """test access to project update page"""
+        self.project_access_tstbase(self.url)
+
+
+class ProjectReviewListViewTest(ProjectViewTestBase):
+    """Tests for ProjectReviewListView"""
+    def setUp(self):
+        """set up users and project for testing"""
+        self.url = f'/project/project-review-list'
+
+    def test_projectreviewlistview_access(self):
+        """test access to project review list page"""
+        self.project_access_tstbase(self.url)
+
+
+class ProjectArchivedListViewTest(ProjectViewTestBase):
+    """Tests for ProjectArchivedListView"""
+    def setUp(self):
+        """set up users and project for testing"""
+        self.url = f'/project/archived/'
+
+    def test_projectarchivedlistview_access(self):
+        """test access to project archived list page"""
+        self.project_access_tstbase(self.url)
+
+
+class ProjectNoteCreateViewTest(ProjectViewTestBase):
+    """Tests for ProjectNoteCreateView"""
+    def setUp(self):
+        """set up users and project for testing"""
+        self.url = f'/project/{self.project.pk}/projectnote/add'
+
+    def test_projectnotecreateview_access(self):
+        """test access to project note create page"""
+        self.project_access_tstbase(self.url)
+
+
+
+class ProjectAddUsersSearchView(ProjectViewTestBase):
+    """Tests for ProjectAddUsersSearchView"""
+    def setUp(self):
+        """set up users and project for testing"""
+        self.url = f'/project/{self.project.pk}/add-users-search/'
+
+    def test_projectadduserssearchview_access(self):
+        """test access to project add users search page"""
+        self.project_access_tstbase(self.url)
+
+
+
+class ProjectUserDetailViewTest(ProjectViewTestBase):
+    """Tests for ProjectUserDetailView"""
+    def setUp(self):
+        """set up users and project for testing"""
+        self.url = f'/project/{self.project.pk}/user-detail/{self.project_user.pk}'
+
+    def test_projectuserdetailview_access(self):
+        """test access to project user detail page"""
+        self.project_access_tstbase(self.url)
