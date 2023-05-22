@@ -12,11 +12,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
 
-        for attribute_type in ('Date', 'Float', 'Int', 'Text', 'Yes/No',
+        for attribute_type in ('Date', 'Float', 'Int', 'Text', 'Yes/No', 'No',
             'Attribute Expanded Text'):
             AttributeType.objects.get_or_create(name=attribute_type)
 
-        for choice in ('Active', 'Inactive', 
+        for choice in ('Active', 'Inactive',
                       'Paid', 'Ready for Review',
                        'Payment Requested',
                       ):
@@ -31,6 +31,13 @@ class Command(BaseCommand):
         for name, attribute_type, has_usage, is_private in (
             ('Storage Quota (TB)', 'Float', True, False),
             ('Storage Usage (bytes)', 'Float', True, False),
+            ('Cloud Account Name', 'Text', False, False),
+            ('CLOUD_USAGE_NOTIFICATION', 'Yes/No', False, True),
+            ('Core Usage (Hours)', 'Int', True, False),
+            ('Accelerator Usage (Hours)', 'Int', True, False),
+            ('EXPIRE NOTIFICATION', 'Yes/No', False, True),
+            ('freeipa_group', 'Text', False, False),
+            ('Is Course?', 'Yes/No', False, True),
             ('Paid', 'Float', False, False),
             ('Paid Cloud Support (Hours)', 'Float', True, True),
             ('Paid Network Support (Hours)', 'Float', True, True),

@@ -96,13 +96,13 @@ def center_summary(request):
 
             resource_allocations = resource.allocation_set.filter(status__name='Active')
 
-            allocation_sizes = [float(allocation.size) for allocation in resource_allocations]
+            allocation_sizes = [float(allocation.size) for allocation in resource_allocations if allocation.size]
             # volume['avgsize'] = allocation_sizes
             volume['avgsize'] = round(sum(allocation_sizes)/len(allocation_sizes), 2)
 
             project_ids = set(resource_allocations.values_list('project'))
             volume['lab_count'] = len(project_ids)
-            user_ids = {user.pk for allocation in resource_allocations for user in allocation.allocation_users}
+            user_ids = {user.pk for allocation in resource_allocations for user in allocation.allocationuser_set.all()}
             volume['user_count'] = len(user_ids)
 
         context['volumes'] = volumes
