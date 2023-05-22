@@ -501,6 +501,12 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                     if attr_name == 'eula':
                         resources_with_eula[resource.id] = value
 
+        # create list of resources for which the project already has an allocation
+        project_allocations = project_obj.allocation_set.all()
+        resources_with_allocations = {str(allocation.get_parent_resource.id):allocation.pk
+                                      for allocation in project_allocations}
+
+        context['resources_with_allocations'] = resources_with_allocations
         context['resources_form_default_quantities'] = resources_form_default_quantities
         context['resources_form_label_texts'] = resources_form_label_texts
         context['resources_with_eula'] = resources_with_eula
@@ -540,11 +546,10 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             users.append(project_obj.pi)
 
         if INVOICE_ENABLED and resource_obj.requires_payment:
-            allocation_status_obj = AllocationStatusChoice.objects.get(
-                name=INVOICE_DEFAULT_STATUS)
+            statusname = INVOICE_DEFAULT_STATUS
         else:
-            allocation_status_obj = AllocationStatusChoice.objects.get(
-                name='New')
+            statusname = 'New'
+        allocation_status_obj = AllocationStatusChoice.objects.get(name=statusname)
 
         allocation_obj = Allocation.objects.create(
             project=project_obj,
@@ -1097,8 +1102,7 @@ class AllocationRenewView(LoginRequiredMixin, UserPassesTestMixin, TemplateView)
                             allocation_remove_user.send(
                                 sender=self.__class__, allocation_user_pk=allocation_user_obj.pk)
 
-                        project_user_obj = ProjectUser.objects.get(
-                            project=allocation_obj.project,
+                        project_user_obj = allocation_obj.project.projectuser_set.get(
                             user=user_obj)
                         project_user_obj.status = project_user_remove_status_choice
                         project_user_obj.save()
