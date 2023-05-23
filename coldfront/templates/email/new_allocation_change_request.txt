@@ -1,5 +1,6 @@
 An allocation change request for has been made for {{pi}} - {{resource}}.
-Requested size: {{quantity}} TB.
+Requested total size: {{quantity}} TB.
+From the current size of {{current_size}} TB.
 Justification:
 {{justification}}
 Please review the change request:

@@ -1886,6 +1886,7 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         email_vars = {'justification':justification}
         if quantity:
             email_vars['quantity'] = quantity[0][1]
+            email_vars['current_size'] = allocation_obj.size
 
         messages.success(
             request, 'Allocation change request successfully submitted.')
