@@ -240,8 +240,11 @@ class AllocationDetailViewTest(AllocationViewBaseTest):
         """Test visibility of the "Add/Remove Users" buttons for different user types
         """
         # admin
-        utils.page_contains_for_user(self, self.admin_user, self.url, 'Add Users')
-        utils.page_contains_for_user(self, self.admin_user, self.url, 'Remove Users')
+        # utils.page_contains_for_user(self, self.admin_user, self.url, 'Add Users')
+        # utils.page_contains_for_user(self, self.admin_user, self.url, 'Remove Users')
+        # we're removing these buttons for everybody, to avoid confusion re: procedure for user addition/removal
+        utils.page_does_not_contain_for_user(self, self.admin_user, self.url, 'Add Users')
+        utils.page_does_not_contain_for_user(self, self.admin_user, self.url, 'Remove Users')
         # pi
         utils.page_does_not_contain_for_user(self, self.pi_user, self.url, 'Add Users')
         utils.page_does_not_contain_for_user(self, self.pi_user, self.url, 'Remove Users')
