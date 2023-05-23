@@ -16,7 +16,7 @@ class Command(BaseCommand):
             'Attribute Expanded Text'):
             AttributeType.objects.get_or_create(name=attribute_type)
 
-        for choice in ('Active', 'Inactive',
+        for choice in ('Active', 'New', 'Inactive',
                       'Paid', 'Ready for Review',
                        'Payment Requested',
                       ):
