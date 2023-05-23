@@ -169,6 +169,22 @@ body > main > div > div.card.border-primary > div.card-body > form > div.alert.a
 .btn-danger {
   background-color:#ffc107 !important;
 }
+
+/* status-triggered button styles */
+.btn-pending {
+  background-color:#ffc107 !important;
+}
+
+.btn-approved {
+  background-color:#28a745 !important;
+}
+
+.btn-denied {
+  background-color:#dc3545 !important;
+}
+
+
+
 #expand_button {
   color:#A51C30 !important;
 }
