@@ -62,18 +62,23 @@
                   class="badge badge-light">{{allocation.expires_in}}</span> day{{allocation.expires_in|pluralize }}</a>
             </td>
             {% elif allocation.expires_in > 30 and allocation.expires_in <= 90 %}
-            <td><a href="{% url 'allocation-detail' allocation.id %}" class="btn btn-warning btn-block">Expires in <span
-                  class="badge badge-light">{{allocation.expires_in}}</span> day{{allocation.expires_in|pluralize }}</a>
+            <td><a href="{% url 'allocation-detail' allocation.id %}">
+              <button class="btn btn-warning btn-block">Expires in <span
+                  class="badge badge-light">{{allocation.expires_in}}</span> day{{allocation.expires_in|pluralize }}</button>
+                </a>
             </td>
             {% elif allocation.status.name == "Pending" %}
-            <td><a href="{% url 'allocation-detail' allocation.id %}"
-                class="btn btn-info btn-block">{{allocation.status}}</a></td>
+            <td><a href="{% url 'allocation-detail' allocation.id %}">
+              <button class="btn btn-info btn-block">{{allocation.status}}</button>
+            </a></td>
             {% elif allocation.status.name == "Active" %}
-            <td><a href="{% url 'allocation-detail' allocation.id %}"
-                class="btn btn-success btn-block">{{allocation.status}}</a></td>
+            <td><a href="{% url 'allocation-detail' allocation.id %}">
+              <button class="btn btn-success btn-block">{{allocation.status}}</button>
+            </a></td>
             {% else %}
-            <td><a href="{% url 'allocation-detail' allocation.id %}"
-                class="btn btn-info btn-block">{{allocation.status}}</a></td>
+            <td><a href="{% url 'allocation-detail' allocation.id %}">
+              <button class="btn btn-info btn-block">{{allocation.status}}</button>
+            </a></td>
             {% endif %}
           </tr>
           {% endfor %}
