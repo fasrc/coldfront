@@ -2,7 +2,7 @@ An allocation change request for has been made for {{pi}} - {{resource}}.
 
 {% if quantity %}
 Requested total size: {{quantity}} TB.
-This will require adding {{quantity - current_size}} TB to the current size of {{current_size}} TB.
+This will require adding {{difference}} TB to the current size of {{current_size}} TB.
 {% endif %}
 
 Justification:
