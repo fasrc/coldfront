@@ -56,8 +56,8 @@ class AllocationViewBaseTest(TestCase):
         - if not logged in, redirect to login page
         - if logged in as admin, can access page
         """
-        utils.test_logged_out_redirect_to_login(self, url) # If not logged in, can't see page; redirect to login page.
-        utils.test_user_can_access(self, self.admin_user, url) # after login, pi and admin can access create page
+        utils.test_logged_out_redirect_to_login(self, url) # If not logged in, redirect to login page.
+        utils.test_user_can_access(self, self.admin_user, url) # after login, pi & admin can access create page
 
 
 
@@ -180,11 +180,21 @@ class AllocationChangeViewTest(AllocationViewBaseTest):
                 backend="django.contrib.auth.backends.ModelBackend")
 
     def test_allocationchangeview_access(self):
-        """
-        """
+        """Test get request"""
         kwargs={'pk':1, }
         response = self.client.get('/allocation/1/change-request', kwargs=kwargs)
         self.assertEqual(response.status_code, 200) #Admin can access
+
+    def test_allocationchangeview_post(self):
+        """Test post request"""
+
+        # post a request to change the allocation size to 1000 TB
+        data = {'justification': 'just a test',
+                'end_date_extension': 90,
+                }
+        response = self.client.post('/allocation/1/change-request', data=data, follow=True)
+        # print(response.__dict__)
+        self.assertEqual(response.status_code, 200)
 
 
 class AllocationDetailViewTest(AllocationViewBaseTest):
@@ -215,11 +225,8 @@ class AllocationDetailViewTest(AllocationViewBaseTest):
     def test_allocationdetail_requestchange_button(self):
         """Test visibility of the "Request Change" button for different user types
         """
-        # admin
         utils.page_contains_for_user(self, self.admin_user, self.url, 'Request Change')
-        # pi
         utils.page_contains_for_user(self, self.pi_user, self.url, 'Request Change')
-        # allocation user
         utils.page_does_not_contain_for_user(self, self.proj_allocation_user, self.url, 'Request Change')
 
 
