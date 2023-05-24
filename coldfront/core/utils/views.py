@@ -5,8 +5,6 @@ from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.views.generic.edit import CreateView, UpdateView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from coldfront.core.allocation.models import AllocationUserNote
-from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 
 def produce_filter_parameter(key, value):
     if isinstance(value, list):
@@ -63,18 +61,6 @@ class ColdfrontListView(LoginRequiredMixin, ListView):
 
         if filter_parameters:
             context['expand_accordion'] = 'show'
-
-        item_list = context.get('item_list')
-        paginator = Paginator(item_list, self.paginate_by)
-
-        page = self.request.GET.get('page')
-
-        try:
-            item_list = paginator.page(page)
-        except PageNotAnInteger:
-            item_list = paginator.page(1)
-        except EmptyPage:
-            item_list = paginator.page(paginator.num_pages)
 
         context['search_form'] = search_form
         context['filter_parameters'] = filter_parameters

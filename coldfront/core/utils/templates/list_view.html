@@ -43,9 +43,10 @@ Item List
 <strong>{% block list_title %}List Title{% endblock %}</strong>
 
   <div class="table-responsive">
-    <table class="table table-sm">
+    <table id="itemtable" class="table table-sm">
       {% block table_contents %}{% endblock %}
     </table>
+
     {% if is_paginated %} Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
       <ul class="pagination float-right mr-3">
         {% if page_obj.has_previous %}
@@ -70,6 +71,8 @@ Item List
     Nothing to display!
   </div>
 {% endif %}
+<script type="text/javascript" src="https://cdn.datatables.net/v/dt/jszip-2.5.0/dt-1.10.24/af-2.3.5/b-1.7.0/b-colvis-1.7.0/b-html5-1.7.0/b-print-1.7.0/cr-1.5.3/date-1.0.2/fc-3.3.2/kt-2.6.1/r-2.2.7/rg-1.1.2/rr-1.2.7/sl-1.3.2/datatables.min.js"></script>
+<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/dt/jszip-2.5.0/dt-1.10.24/af-2.3.5/b-1.7.0/b-colvis-1.7.0/b-html5-1.7.0/b-print-1.7.0/cr-1.5.3/date-1.0.2/fc-3.3.2/kt-2.6.1/r-2.2.7/rg-1.1.2/rr-1.2.7/sl-1.3.2/datatables.min.css"/>
 
 <script>
   $("#navbar-main > ul > li.active").removeClass("active");
@@ -90,5 +93,32 @@ Item List
     $form.find('input:text, input:password, input:file, select, textarea').val('');
     $form.find('input:radio, input:checkbox').removeAttr('checked').removeAttr('selected');
   };
+
+
+  $(document).ready(
+  function () {
+  $('#itemtable').DataTable({
+    lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
+    pageLength: 25,
+    // ordering: false,
+    dom: 'B<"clear">lrtip',
+    order: [[ 3, "desc" ]],
+    {% if user.is_superuser %}
+    buttons: [
+      {
+        name: 'primary',
+        extend: 'collection',
+        background: false,
+        autoClose: true,
+        text: 'Export',
+        buttons: [ 'csv', 'excel', 'pdf' ]
+
+        }
+    ]
+    {% endif %}
+  }
+  );
+
+  } );
 </script>
 {% endblock %}
