@@ -58,7 +58,7 @@ from coldfront.core.allocation.signals import (allocation_activate,
                                                allocation_change_approved,)
 from coldfront.core.allocation.utils import (generate_guauge_data_from_usage,
                                              get_user_resources)
-from coldfront.core.project.models import (Project, ProjectUser, ProjectPermission,
+from coldfront.core.project.models import (Project, ProjectPermission,
                                            ProjectUserStatusChoice)
 from coldfront.core.resource.models import Resource
 from coldfront.core.utils.common import get_domain_url, import_from_settings
@@ -1807,16 +1807,19 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         return render(request, self.template_name, context)
 
     def post(self, request, *args, **kwargs):
-        change_requested = False
         attribute_changes_to_make = set({})
-
         pk = self.kwargs.get('pk')
         allocation_obj = get_object_or_404(Allocation, pk=pk)
 
         form = AllocationChangeForm(**self.get_form_kwargs())
-
         allocation_attributes_to_change = self.get_allocation_attributes_to_change(
             allocation_obj)
+
+        # find errors
+        validation_errors = []
+
+        if not form.is_valid():
+            validation_errors.extend(list(form.errors))
 
         if allocation_attributes_to_change:
             formset = formset_factory(self.formset_class, max_num=len(
@@ -1824,44 +1827,38 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             formset = formset(
                 request.POST, initial=allocation_attributes_to_change, prefix='attributeform')
 
-            if not form.is_valid() or not formset.is_valid():
+            if not formset.is_valid():
                 attribute_errors = ''
-                for error in form.errors:
-                    messages.error(request, error)
                 for error in formset.errors:
-                    if error: attribute_errors += error.get('__all__')
-                messages.error(request, attribute_errors)
-                return HttpResponseRedirect(reverse('allocation-change', kwargs={'pk': pk}))
-            form_data = form.cleaned_data
+                    if error:
+                        attribute_errors += error.get('__all__')
+                validation_errors.append(attribute_errors)
 
-            if form_data.get('end_date_extension') != 0:
-                change_requested = True
+        if validation_errors:
+            for error in validation_errors:
+                messages.error(request, error)
+            return HttpResponseRedirect(reverse('allocation-change', kwargs={'pk': pk}))
 
+        # ID changes
+        change_requested = False
+
+        form_data = form.cleaned_data
+
+        if form_data.get('end_date_extension') != 0:
+            change_requested = True
+        if allocation_attributes_to_change:
             for entry in formset:
                 formset_data = entry.cleaned_data
 
                 new_value = formset_data.get('new_value')
-
                 if new_value != '':
                     change_requested = True
                     allocation_attribute = AllocationAttribute.objects.get(pk=formset_data.get('pk'))
                     attribute_changes_to_make.add((allocation_attribute, new_value))
 
-            if not change_requested:
-                messages.error(request, 'You must request a change.')
-                return HttpResponseRedirect(reverse('allocation-change', kwargs={'pk': pk}))
-
-        else:
-            if not form.is_valid():
-                for error in form.errors:
-                    messages.error(request, error)
-                return HttpResponseRedirect(reverse('allocation-change', kwargs={'pk': pk}))
-
-            form_data = form.cleaned_data
-
-            if form_data.get('end_date_extension') == 0:
-                messages.error(request, 'You must request a change.')
-                return HttpResponseRedirect(reverse('allocation-change', kwargs={'pk': pk}))
+        if not change_requested:
+            messages.error(request, 'You must request a change.')
+            return HttpResponseRedirect(reverse('allocation-change', kwargs={'pk': pk}))
 
         end_date_extension = form_data.get('end_date_extension')
         justification = form_data.get('justification')
@@ -1882,14 +1879,14 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                 new_value=attribute[1]
                 )
 
+        messages.success(
+            request, 'Allocation change request successfully submitted.')
+
         quantity = [a for a in attribute_changes_to_make if a[0].allocation_attribute_type.name == 'Storage Quota (TB)']
         email_vars = {'justification':justification}
         if quantity:
             email_vars['quantity'] = quantity[0][1]
             email_vars['current_size'] = allocation_obj.size
-
-        messages.success(
-            request, 'Allocation change request successfully submitted.')
 
         send_allocation_admin_email(allocation_obj,
                                     'New Allocation Change Request',
