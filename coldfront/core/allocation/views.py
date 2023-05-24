@@ -1887,7 +1887,7 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         if quantity:
             email_vars['quantity'] = quantity[0][1]
             email_vars['current_size'] = allocation_obj.size
-            email_vars['difference'] = quantity[0][1] - allocation_obj.size
+            email_vars['difference'] = int(quantity[0][1]) - int(allocation_obj.size)
 
         send_allocation_admin_email(allocation_obj,
                                     'New Allocation Change Request',
