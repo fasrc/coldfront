@@ -110,7 +110,6 @@ def setup_departments(test_case):
         )
     ProjectFactory(title=fake.unique.project_title())
     for project in Project.objects.all():
-        print("project:", project)
         project_title = project.title
         org = OrganizationFactory(name=project_title,
                                             rank='lab',

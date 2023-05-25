@@ -89,7 +89,7 @@ class AllocationListViewTest(AllocationViewBaseTest):
 
         # confirm that show_all_allocations=on enables admin to view all allocations
         response = self.client.get("/allocation/?show_all_allocations=on")
-        self.assertEqual(len(response.context['item_list']), 25)
+        self.assertEqual(len(response.context['item_list']), 101)
 
     def test_allocation_list_access_pi(self):
         """Confirm that AllocationList access control works for pi
@@ -178,23 +178,64 @@ class AllocationChangeViewTest(AllocationViewBaseTest):
     def setUp(self):
         self.client.force_login(self.admin_user,
                 backend="django.contrib.auth.backends.ModelBackend")
+        self.post_data = {'justification': 'just a test',
+                'attributeform-0-new_value': '',
+                'attributeform-INITIAL_FORMS': '1',
+                'attributeform-MAX_NUM_FORMS': '1',
+                'attributeform-MIN_NUM_FORMS': '0',
+                'attributeform-TOTAL_FORMS': '1',
+                'end_date_extension': 0,
+                }
+        self.url = '/allocation/1/change-request'
 
     def test_allocationchangeview_access(self):
         """Test get request"""
         kwargs={'pk':1, }
-        response = self.client.get('/allocation/1/change-request', kwargs=kwargs)
-        self.assertEqual(response.status_code, 200) #Admin can access
+        self.allocation_access_tstbase(self.url)
 
-    def test_allocationchangeview_post(self):
-        """Test post request"""
 
-        # post a request to change the allocation size to 1000 TB
-        data = {'justification': 'just a test',
-                'end_date_extension': 90,
-                }
-        response = self.client.post('/allocation/1/change-request', data=data, follow=True)
-        # print(response.__dict__)
+    def test_allocationchangeview_post_extension(self):
+        """Test post request to extend end date"""
+
+        self.post_data['end_date_extension'] = 90
+        self.assertEqual(len(AllocationChangeRequest.objects.all()), 0)
+        response = self.client.post('/allocation/1/change-request', data=self.post_data, follow=True)
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Allocation change request successfully submitted.")
+        self.assertEqual(len(AllocationChangeRequest.objects.all()), 1)
+
+
+    def test_allocationchangeview_post_no_change(self):
+        """Post request with no change should not go through"""
+
+        self.assertEqual(len(AllocationChangeRequest.objects.all()), 0)
+
+        response = self.client.post('/allocation/1/change-request', data=self.post_data, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "You must request a change")
+        self.assertEqual(len(AllocationChangeRequest.objects.all()), 0)
+
+    def test_allocationchangeview_post_more_tb(self):
+        """Post request with more TB should go through"""
+
+        self.post_data['attributeform-0-new_value'] = '1000'
+        self.assertEqual(len(AllocationChangeRequest.objects.all()), 0)
+        response = self.client.post('/allocation/1/change-request', data=self.post_data, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Allocation change request successfully submitted.")
+        self.assertEqual(len(AllocationChangeRequest.objects.all()), 1)
+
+
+    def test_allocationchangeview_post_more_tb_decimal(self):
+        """Post request for more TB with decimal should not go through"""
+
+        self.post_data['attributeform-0-new_value'] = '1000.1'
+        self.assertEqual(len(AllocationChangeRequest.objects.all()), 0)
+        response = self.client.post('/allocation/1/change-request', data=self.post_data, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Value must be an integer.")
+        self.assertEqual(len(AllocationChangeRequest.objects.all()), 0)
+
 
 
 class AllocationDetailViewTest(AllocationViewBaseTest):
@@ -264,12 +305,35 @@ class AllocationCreateViewTest(AllocationViewBaseTest):
     """Tests for the AllocationCreateView"""
     def setUp(self):
         self.url = f'/allocation/project/{self.project.pk}/create' #url for AllocationCreateView
+        self.client.force_login(self.pi_user)
+        self.post_data = {
+            'justification': 'test justification',
+            'quantity': '1',
+            'resource': f'{self.proj_allocation.resources.first().pk}',
+        }
 
     def test_allocationcreateview_access(self):
         """Test access to the AllocationCreateView"""
         self.allocation_access_tstbase(self.url)
-        # add test to determine if PI can access this view
+        utils.test_user_can_access(self, self.pi_user, self.url)
         utils.test_user_cannot_access(self, self.proj_nonallocation_user, self.url)
+
+    def test_allocationcreateview_post(self):
+        """Test POST to the AllocationCreateView"""
+        self.assertEqual(len(self.project.allocation_set.all()), 1)
+        response = self.client.post(self.url, data=self.post_data, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Allocation requested.")
+        self.assertEqual(len(self.project.allocation_set.all()), 2)
+
+    def test_allocationcreateview_post_zeroquantity(self):
+        """Test POST to the AllocationCreateView"""
+        self.post_data['quantity'] = '0'
+        self.assertEqual(len(self.project.allocation_set.all()), 1)
+        response = self.client.post(self.url, data=self.post_data, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Allocation requested.")
+        self.assertEqual(len(self.project.allocation_set.all()), 2)
 
 
 

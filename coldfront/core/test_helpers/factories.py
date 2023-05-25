@@ -29,6 +29,7 @@ from coldfront.core.allocation.models import (Allocation,
                                             AllocationChangeStatusChoice,
                                             AllocationAttributeUsage,
                                             AllocationUserStatusChoice,
+                                            AllocationAttributeChangeRequest,
                                             AttributeType as AAttributeType
                                         )
 from coldfront.core.grant.models import GrantFundingAgency, GrantStatusChoice
@@ -290,6 +291,13 @@ class AllocationChangeRequestFactory(DjangoModelFactory):
     status = SubFactory(AllocationChangeStatusChoiceFactory)
     justification = fake.sentence()
 
+class AllocationAttributeChangeRequestFactory(DjangoModelFactory):
+    class Meta:
+        model = AllocationAttributeChangeRequest
+
+    allocation_change_request = SubFactory(AllocationChangeRequestFactory)
+    allocation_attribute = SubFactory(AllocationAttributeFactory)
+    new_value = 1000
 
 ### Allocation User factories ###
 
@@ -325,12 +333,16 @@ class AllocationUserNoteFactory(DjangoModelFactory):
 def setup_models(test_case):
     """Set up models that we use in multiple tests"""
 
+    for status in ['Active', 'New', 'Inactive', 'Paid', 'Ready for Review']:
+        AllocationStatusChoiceFactory(name=status)
     for status in ['Active', 'Inactive', 'New', 'Archived']:
         ProjectStatusChoiceFactory(name=status)
     for attribute_type in ['Date', 'Int', 'Float', 'Text', 'Boolean']:
         AAttributeTypeFactory(name=attribute_type)
     for status in ['Pending', 'Approved', 'Denied']:
         AllocationChangeStatusChoiceFactory(name=status)
+    for allocation_attribute_type in ['Storage Quota (TB)']:
+        AllocationAttributeTypeFactory(name=allocation_attribute_type, is_private=False, is_changeable=True)
     # users
     test_case.admin_user = UserFactory(username='gvanrossum', is_staff=True, is_superuser=True)
     # pi is a project admin but not an AllocationUser.
@@ -351,9 +363,15 @@ def setup_models(test_case):
                 )
     test_case.proj_allocation.resources.add(ResourceFactory(name='holylfs10/tier1', id=1))
 
-
+    # make a quota_bytes allocation attribute
     allocation_quota = AllocationQuotaFactory(allocation=test_case.proj_allocation, value=109951162777600)
     AllocationAttributeUsageFactory(allocation_attribute=allocation_quota, value=10995116277760)
+    # make a quota TB allocation attribute
+    allocation_quota_tb = AllocationAttributeFactory(allocation=test_case.proj_allocation,
+        value = 100,
+        allocation_attribute_type=AllocationAttributeTypeFactory(name='Storage Quota (TB)'),
+                     )
+    AllocationAttributeUsageFactory(allocation_attribute=allocation_quota_tb, value=10)
     # relationships
     AllocationUserFactory(user=test_case.proj_allocation_user, allocation=test_case.proj_allocation)
     AllocationUserFactory(user=test_case.nonproj_allocation_user, allocation=test_case.proj_allocation)

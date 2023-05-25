@@ -327,7 +327,7 @@ class ProjectListViewTest(ProjectViewTestBase):
         url = self.url + '?show_all_projects=on'
         self.client.force_login(self.admin_user, backend='django.contrib.auth.backends.ModelBackend')
         response = self.client.get(url)
-        self.assertGreaterEqual(25, len(response.context['object_list']))
+        self.assertGreaterEqual(101, len(response.context['object_list']))
 
     def test_project_list_displayall_permission_pi(self):
         """Test that the projectlist displayall option displays only the pi's projects to the pi"""
