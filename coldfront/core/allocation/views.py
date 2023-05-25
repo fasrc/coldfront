@@ -529,6 +529,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         form_data = form.cleaned_data
         project_obj = get_object_or_404(
             Project, pk=self.kwargs.get('project_pk'))
+
         resource_obj = form_data.get('resource')
         justification = form_data.get('justification')
         quantity = form_data.get('quantity', 1)
@@ -590,11 +591,15 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         for user in users:
             AllocationUser.objects.create(allocation=allocation_obj, user=user,
                                             status=allocation_user_active_status)
+
+        # if requested resource is on NESE, add to vars
+        nese = bool(allocation_obj.resources.filter(name__contains="nesetape"))
+
         send_allocation_admin_email(allocation_obj,
                                     'New Allocation Request',
                                     'email/new_allocation_request.txt',
                                     domain_url=get_domain_url(self.request),
-                                    other_vars={'justification':justification, 'quantity':quantity})
+                                    other_vars={'justification':justification, 'quantity':quantity, 'nese': nese})
         return super().form_valid(form)
 
     def get_success_url(self):
@@ -1887,11 +1892,16 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             request, 'Allocation change request successfully submitted.')
 
         quantity = [a for a in attribute_changes_to_make if a[0].allocation_attribute_type.name == 'Storage Quota (TB)']
+        # if requested resource is on NESE, add to vars
+        nese = bool(allocation_obj.resources.filter(name__contains="nesetape"))
+
         email_vars = {'justification':justification}
         if quantity:
             email_vars['quantity'] = quantity[0][1]
+            email_vars['nese'] = nese
             email_vars['current_size'] = allocation_obj.size
             email_vars['difference'] = int(float(quantity[0][1])) - int(float(allocation_obj.size))
+
 
         send_allocation_admin_email(allocation_obj,
                                     'New Allocation Change Request',
