@@ -476,6 +476,12 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 
         return super().dispatch(request, *args, **kwargs)
 
+    def post(self, request, *args, **kwargs):
+        post = super().post(request, *args, **kwargs)
+        messages.success(self.request,
+                    'Allocation requested. It will be available once it is approved.')
+        return post
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         project_obj = get_object_or_404(
@@ -1779,7 +1785,7 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                 'pk': attribute.pk,
                 'name': attribute.allocation_attribute_type.name,
                 'value': attribute.value,
-             }
+            }
             for attribute in attributes_to_change
         ]
         return attributes_to_change
