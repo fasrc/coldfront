@@ -333,15 +333,15 @@ class AllocationUserNoteFactory(DjangoModelFactory):
 def setup_models(test_case):
     """Set up models that we use in multiple tests"""
 
-    for status in ('Active', 'New', 'Inactive', 'Paid', 'Ready for Review'):
+    for status in ['Active', 'New', 'Inactive', 'Paid', 'Ready for Review']:
         AllocationStatusChoiceFactory(name=status)
-    for status in ('Active', 'Inactive', 'New', 'Archived'):
+    for status in ['Active', 'Inactive', 'New', 'Archived']:
         ProjectStatusChoiceFactory(name=status)
-    for attribute_type in ('Date', 'Int', 'Float', 'Text', 'Boolean'):
+    for attribute_type in ['Date', 'Int', 'Float', 'Text', 'Boolean']:
         AAttributeTypeFactory(name=attribute_type)
-    for status in ('Pending', 'Approved', 'Denied'):
+    for status in ['Pending', 'Approved', 'Denied']:
         AllocationChangeStatusChoiceFactory(name=status)
-    for allocation_attribute_type in ('Storage Quota (TB)'):
+    for allocation_attribute_type in ['Storage Quota (TB)']:
         AllocationAttributeTypeFactory(name=allocation_attribute_type, is_private=False, is_changeable=True)
     # users
     test_case.admin_user = UserFactory(username='gvanrossum', is_staff=True, is_superuser=True)
