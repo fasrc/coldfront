@@ -1,5 +1,3 @@
-import os
-from inspect import Attribute
 from django.core.management.base import BaseCommand
 
 from coldfront.core.project.models import (ProjectAttributeType,
@@ -30,6 +28,7 @@ class Command(BaseCommand):
             AttributeType.objects.get_or_create(name=attribute_type)
 
         for name, attribute_type, has_usage, is_private in (
+            # UBCCR defaults
             ('Project ID', 'Text', False, False),
             ('Account Number', 'Int', False, True),
         ):
