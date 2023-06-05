@@ -153,7 +153,7 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
         allocations = Allocation.objects.prefetch_related('resources').filter(
             Q(project=self.object)
-            & Q(status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested'])
+            # & Q(status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested'])
         )
         if not self.request.user.is_superuser and not self.request.user.has_perm(
             'allocation.can_view_all_allocations'
