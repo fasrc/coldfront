@@ -103,6 +103,29 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         messages.error(self.request, err)
         return False
 
+    def return_status_change_records(self, allocations):
+        """For the allocations, return the historical record
+        that shows when the status was changed to the current status.
+        """
+        status_change_records = []
+        for allocation in allocations:
+            # get most recent record with status different from current allocation
+            allocation_prechange = allocation.history.filter(
+                ~Q(status=allocation.status)
+            ).order_by('-history_date').first()
+            if allocation_prechange:
+                # get history record with same status as current allocation that
+                # occurred right after the allocation_prechange entry
+                allocation_status_changed = allocation.history.filter(
+                    status=allocation.status,
+                    history_date__gt=allocation_prechange.history_date,
+                ).order_by('history_date').first()
+            else:
+                allocation_status_changed = allocation.history.last()
+            status_change_records.append((allocation, allocation_status_changed))
+
+        return status_change_records
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # Can the user update the project?
@@ -153,8 +176,9 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
         allocations = Allocation.objects.prefetch_related('resources').filter(
             Q(project=self.object)
-            # & Q(status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested'])
         )
+        allocation_history_records = self.return_status_change_records(allocations)
+
         if not self.request.user.is_superuser and not self.request.user.has_perm(
             'allocation.can_view_all_allocations'
         ):
@@ -166,7 +190,9 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
                     allocations = allocations.filter(
                         Q(allocationuser__user=self.request.user)
                     )
-        allocations = allocations.distinct().order_by('-end_date')
+        allocations = allocations.filter(
+            status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested']
+        ).distinct().order_by('-end_date')
         allocation_total = {'allocation_user_count': 0, 'size': 0, 'cost': 0}
         for allocation in allocations:
             allocation_total['cost'] += allocation.cost
@@ -187,6 +213,7 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
         context['notes'] = self.return_visible_notes()
 
+        context['allocation_history_records'] = allocation_history_records
         context['note_update_link'] = 'project-note-update'
         context['time_chart_data'] = time_chart_data
         context['time_chart_data_error'] = time_chart_data_error
@@ -206,7 +233,6 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         context['attributes_with_usage'] = attributes_with_usage
         context['project_users'] = project_users
         context['ALLOCATION_ENABLE_ALLOCATION_RENEWAL'] = ALLOCATION_ENABLE_ALLOCATION_RENEWAL
-
         try:
             context['ondemand_url'] = settings.ONDEMAND_URL
         except AttributeError:
@@ -238,16 +264,14 @@ class ProjectListView(ColdfrontListView):
         )
         if project_search_form.is_valid():
             data = project_search_form.cleaned_data
-            if data.get('show_all_projects') and (
+            if not data.get('show_all_projects') or not (
                 self.request.user.is_superuser
                 or self.request.user.has_perm('project.can_view_all_projects')
             ):
-                projects = projects.order_by(order_by)
-            else:
                 projects = projects.filter(
                     Q(projectuser__user=self.request.user)
                     & Q(projectuser__status__name='Active')
-                ).order_by(order_by)
+                )
 
             # Last Name
             if data.get('last_name'):
@@ -277,12 +301,11 @@ class ProjectListView(ColdfrontListView):
 #  'field_of_science',
         else:
             projects = projects.filter(
-                Q(allocationuser__user=self.request.user)
-                & Q(projectuser__user=self.request.user)
+                Q(projectuser__user=self.request.user)
                 & Q(projectuser__status__name='Active')
-            ).order_by(order_by)
+            )
 
-        return projects.distinct()
+        return projects.distinct().order_by(order_by)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(SearchFormClass=ProjectSearchForm, **kwargs)

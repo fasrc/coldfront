@@ -165,7 +165,7 @@ Project Detail
 <div class="card mb-3">
   <div class="card-header">
     <h3 class="d-inline"><i class="fas fa-file-invoice-dollar" aria-hidden="true"></i> Allocation History</h3>
-    <span class="badge badge-secondary">{{allocations.count}}</span>
+    <span class="badge badge-secondary">{{allocation_history_records.count}}</span>
   </div>
   <div class="card-body">
     <div class="table-responsive">
@@ -178,11 +178,13 @@ Project Detail
             <th scope="col">User Count</th>
             <th scope="col">Total Space (TB)</th>
             <th scope="col">Status</th>
+            <th scope="col">Created</th>
+            <th scope="col">Deactivated</th>
             <!-- <th scope="col" class="nosort">Actions</th> -->
           </tr>
         </thead>
         <tbody>
-          {% for allocation in allocations %}
+          {% for allocation, record in allocation_history_records %}
           <tr style="background-color:#FFFFFF">
             <td>{{ allocation.get_parent_resource.name }}</td>
             <td>{{ allocation.get_parent_resource.resource_type.name }}</td>
@@ -190,37 +192,25 @@ Project Detail
             <td>{{ allocation.allocationuser_set.count }}</td>
             <td>{{ allocation.size|floatformat:1 }}</td>
 
-            {% if allocation.status.name in 'Active,New' %}
+            {% if allocation.status.name == 'New' %}
+              <td class="text-info">{{ Requested }}</td>
+            {% elif allocation.status.name == 'Active' %}
               <td class="text-success">{{ allocation.status.name }}</td>
             {% elif allocation.status.name in 'Denied,Inactive' %}
               <td class="text-danger">Inactive</td>
             {% else %}
               <td class="text-info">{{ allocation.status.name }}</td>
             {% endif %}
-            <!-- <td>
-              <a href="{% url 'allocation-detail' allocation.pk %}">
-              <span class="badge badge-success"><i class="fas fa-search" aria-hidden="true"></i>
-                View Details
-              </span>
-              </a>
-              {% if is_allowed_to_update_project and allocation.status.name == 'Active' %}
-                <a href="{% url 'allocation-change' allocation.pk %}">
-                <span class="badge badge-info"><i class="fas fa-sync" aria-hidden="true"></i>
-                Request Allocation Change
-                </span>
-                </a>
+            <td>
+              {% if allocation.status.name not in 'New,Denied' %}
+                {{ allocation.start_date|date }}
               {% endif %}
-              {% if is_allowed_to_update_project and ALLOCATION_ENABLE_ALLOCATION_RENEWAL and allocation.status.name == 'Active' and allocation.expires_in <= 60 and allocation.expires_in >= 0 %}
-                <a href="{% url 'allocation-renew' allocation.pk %}">
-                <span class="badge badge-warning"><i class="fas fa-redo-alt" aria-hidden="true"></i>
-                Expires in {{allocation.expires_in}} day{{allocation.expires_in|pluralize}} <br> Click to renew
-                </span>
-                </a>
+            </td>
+            <td>
+              {% if allocation.status.name == 'Inactive' %}
+                {{ record.history_date|date }}
               {% endif %}
-              {% if allocation.get_parent_resource.get_ondemand_status == 'Yes' and ondemand_url %}
-              <a href = "{{ ondemand_url }}" target="_blank"> <img src="/static/core/portal/imgs/ondemand.png" alt="ondemand cta" width="25" height="25"></a>
-            {% endif %}
-            </td> -->
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -233,7 +223,7 @@ Project Detail
 
 
 <!-- Start Invoice History Chart -->
-{% if time_chart_data %}
+<!-- {% if time_chart_data %}
 <div class="html2pdf__page-break"></div>
 <div class="card mb-3">
   <div class="card-header">
@@ -246,7 +236,7 @@ Project Detail
 
   </div>
 </div>
-{% endif %}
+{% endif %} -->
 <!-- End Invoice History Chart -->
 
 
