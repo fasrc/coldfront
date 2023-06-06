@@ -10,7 +10,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.db.models import Q
 from django.forms import formset_factory
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import (HttpResponse,
+                         HttpResponseRedirect)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views import View
@@ -65,6 +66,11 @@ from coldfront.core.utils.mail import send_email, send_email_template
 
 
 ALLOCATION_ENABLE_ALLOCATION_RENEWAL = import_from_settings(
+    'ALLOCATION_ENABLE_ALLOCATION_RENEWAL', True)
+ALLOCATION_DEFAULT_ALLOCATION_LENGTH = import_from_settings(
+    'ALLOCATION_DEFAULT_ALLOCATION_LENGTH', 365)
+
+ALLOCATION_ENABLE_ALLOCATION_RENEWAL = import_from_settings(
     'ALLOCATION_ENABLE_ALLOCATION_RENEWAL', True
 )
 ALLOCATION_DEFAULT_ALLOCATION_LENGTH = import_from_settings(
@@ -81,6 +87,7 @@ def produce_filter_parameter(key, value):
         return ''.join([f'{key}={ele}&' for ele in value])
     return f'{key}={value}&'
 
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -282,6 +289,11 @@ class ProjectListView(ColdfrontListView):
             # Last Name
             if data.get('title'):
                 projects = projects.filter(title__icontains=data.get('title'))
+
+            # Last Name
+            if data.get('title'):
+                projects = projects.filter(
+                    title__icontains=data.get('title'))
 
             # Username
             if data.get('username'):
@@ -1254,9 +1266,7 @@ class ProjectAttributeDeleteView(LoginRequiredMixin, UserPassesTestMixin, Templa
                 form_data = form.cleaned_data
                 if form_data['selected']:
                     attributes_deleted_count += 1
-
                     proj_attr = ProjectAttribute.objects.get(pk=form_data['pk'])
-
                     proj_attr.delete()
 
             msg = f'Deleted {attributes_deleted_count} attributes from project.'
@@ -1321,9 +1331,8 @@ class ProjectAttributeUpdateView(LoginRequiredMixin, UserPassesTestMixin, Templa
             )
 
             if project_obj.status.name not in ['Active', 'New']:
-                messages.error(
-                    request, 'You cannot update an attribute in an archived project.'
-                )
+                err = 'You cannot update an attribute in an archived project.'
+                messages.error(request, err)
                 return HttpResponseRedirect(
                     reverse(
                         'project-attribute-update',
