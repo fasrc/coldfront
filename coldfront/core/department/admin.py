@@ -1,6 +1,7 @@
 from django.contrib import admin
 from simple_history.admin import SimpleHistoryAdmin
 
+from ifxuser.models import UserAffiliation
 from coldfront.core.department.models import (
     Department,
     DepartmentMember,
@@ -15,7 +16,6 @@ STATUS_FIELD = 'active'
 
 class DepartmentParentsInline(admin.TabularInline):
     """Department parents inline"""
-
     model = Department.parents.through
     extra = 1
     fk_name = 'child'
@@ -23,12 +23,24 @@ class DepartmentParentsInline(admin.TabularInline):
 
 
 class DepartmentChildrenInline(admin.TabularInline):
-    """Department parents inline"""
-
-    model = Department.parents.through
+    """Department children inline"""
+    model = Department.children.through
     extra = 1
     fk_name = 'parent'
     autocomplete_fields = ('child',)
+
+class UserAffiliationInlineAdmin(admin.TabularInline):
+    """Inline of affiliations to be used with the Person form"""
+    model = UserAffiliation
+    autocomplete_fields = ('user', 'organization')
+    extra = 1
+
+
+class DepartmentContactsInline(admin.TabularInline):
+    """Inline for contacts in the department admin"""
+    model = Department.contacts.through
+    extra = 1
+    autocomplete_fields = ('contact', 'organization')
 
 
 @admin.register(Department)
@@ -37,7 +49,12 @@ class DepartmentAdmin(SimpleHistoryAdmin):
     fields_change = ('name', 'rank')
     list_display = ('pk', 'name', 'rank')
     search_fields = ('name', 'rank')
-    inlines = [DepartmentParentsInline, DepartmentChildrenInline]
+    inlines = [
+        DepartmentParentsInline,
+        DepartmentChildrenInline,
+        DepartmentContactsInline,
+        UserAffiliationInlineAdmin,
+    ]
 
     def get_fields(self, request, obj):
         if obj is None:
