@@ -13,7 +13,7 @@
       <ul class="list-group">
         {% for project in project_list %}
           <li class="list-group-item">
-            <a href="{% url 'project-detail' project.pk %}"><i class="fa fa-folder fa-lg" aria-hidden="true"></i>{{project.title}}</a>
+            <a href="{% url 'project-detail' project.pk %}"><i class="fa fa-folder fa-lg" aria-hidden="true"></i> {{project.title}}</a>
             {% if project.needs_review %}
               <a href="{% url 'project-review' project.pk %}"><span class="badge badge-warning">Needs Review</span></a>
             {% endif %}
@@ -90,6 +90,27 @@
       </div>
     {% endif %}
   </div>
+
+  {% if department_list %}
+    <div class="col-lg-6 mt-2">
+      <h2><a href="{% url 'department-list' %}" >Departments &raquo;</a></h2>
+      <hr>
+
+        <ul class="list-group">
+          {% for department in department_list %}
+            <li class="list-group-item">
+              <a href="{% url 'department-detail' department.pk %}"><i class="fa fa-folder fa-lg" aria-hidden="true"></i> ;{{department.name}}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="alert alert-info" role="alert"><i class="fa fa-info-circle" aria-hidden="true"></i> There are no departments to display.</div>
+        {% if user.is_superuser %}
+          <a class="btn btn-primary btn-block " style = "background-color:#A51C30; border-color: white" href="{% url 'department-create' %}" role="button">Add a department</a>
+          <hr>
+        {% endif %}
+    </div>
+  {% endif %}
 
   {% if allocation_request_list %}
   <div class="col-lg-6 mt-2">
