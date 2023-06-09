@@ -2,11 +2,7 @@ from django.contrib import admin
 from simple_history.admin import SimpleHistoryAdmin
 
 from ifxuser.models import UserAffiliation
-from coldfront.core.department.models import (
-    Department,
-    DepartmentMember,
-    DepartmentProject,
-)
+from coldfront.core.department.models import Department, DepartmentMember
 
 
 MEMBER_FIELD = 'user'
@@ -47,8 +43,9 @@ class DepartmentContactsInline(admin.TabularInline):
 class DepartmentAdmin(SimpleHistoryAdmin):
     readonly_fields_change = ('created', 'modified')
     fields_change = ('name', 'rank')
-    list_display = ('pk', 'name', 'rank')
-    search_fields = ('name', 'rank')
+    list_display = ('pk', 'name', 'rank', 'org_tree')
+    search_fields = ('name', 'rank', 'slug', 'org_tree')
+    list_filter = ('org_tree', 'rank')
     inlines = [
         DepartmentParentsInline,
         DepartmentChildrenInline,
@@ -77,7 +74,7 @@ class DepartmentMemberAdmin(SimpleHistoryAdmin):
     readonly_fields_change = ('created', 'modified')
     fields_change = (MEMBER_FIELD, DEPARTMENT_FIELD, 'role', STATUS_FIELD)
     list_display = ('pk', MEMBER_FIELD, DEPARTMENT_FIELD, STATUS_FIELD)
-    list_filter = (DEPARTMENT_FIELD, STATUS_FIELD)
+    list_filter = ('role', STATUS_FIELD)
     search_fields = (MEMBER_FIELD, DEPARTMENT_FIELD)
     raw_id_fields = (DEPARTMENT_FIELD, MEMBER_FIELD)
 
@@ -96,10 +93,3 @@ class DepartmentMemberAdmin(SimpleHistoryAdmin):
         if obj is None:
             return []
         return super().get_inline_instances(request)
-
-
-@admin.register(DepartmentProject)
-class DepartmentProjectAdmin(SimpleHistoryAdmin):
-    readonly_fields_change = ('created', 'modified')
-    list_display = (DEPARTMENT_FIELD, 'project')
-    list_filter = (DEPARTMENT_FIELD,)
