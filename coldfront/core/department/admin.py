@@ -25,6 +25,7 @@ class DepartmentChildrenInline(admin.TabularInline):
     fk_name = 'parent'
     autocomplete_fields = ('child',)
 
+
 class UserAffiliationInlineAdmin(admin.TabularInline):
     """Inline of affiliations to be used with the Person form"""
     model = UserAffiliation
