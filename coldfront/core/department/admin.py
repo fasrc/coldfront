@@ -5,11 +5,6 @@ from ifxuser.models import UserAffiliation
 from coldfront.core.department.models import Department, DepartmentMember
 
 
-MEMBER_FIELD = 'user'
-DEPARTMENT_FIELD = 'organization'
-STATUS_FIELD = 'active'
-
-
 class DepartmentParentsInline(admin.TabularInline):
     """Department parents inline"""
     model = Department.parents.through
@@ -73,11 +68,13 @@ class DepartmentAdmin(SimpleHistoryAdmin):
 @admin.register(DepartmentMember)
 class DepartmentMemberAdmin(SimpleHistoryAdmin):
     readonly_fields_change = ('created', 'modified')
-    fields_change = (MEMBER_FIELD, DEPARTMENT_FIELD, 'role', STATUS_FIELD)
-    list_display = ('pk', MEMBER_FIELD, DEPARTMENT_FIELD, STATUS_FIELD)
-    list_filter = ('role', STATUS_FIELD)
-    search_fields = (MEMBER_FIELD, DEPARTMENT_FIELD)
-    raw_id_fields = (DEPARTMENT_FIELD, MEMBER_FIELD)
+    fields_change = ('user', 'organization', 'role', 'active')
+    list_display = ('pk', 'user', 'organization', 'active')
+    list_filter = ('role', 'active', 'organization__org_tree')
+    search_fields = ('organization__name', 'user__full_name', 'user__username')
+    raw_id_fields = ('organization', 'user')
+
+
 
     def get_fields(self, request, obj):
         if obj is None:
