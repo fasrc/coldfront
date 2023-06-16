@@ -11,23 +11,23 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
 
         for attribute_type in (
-            'Float',
             'Active/Inactive', 'Date', 'Int',
-            'Public/Private', 'Text', 'Yes/No', 'Attribute Expanded Text'
+            'Public/Private', 'Text', 'Yes/No', 'Attribute Expanded Text',
+            'Float',
         ):
             AttributeType.objects.get_or_create(name=attribute_type)
 
         for resource_attribute_type, attribute_type in (
             ('capacity_tb', 'Float'),
-            ('used_physical_tb', 'Float'),
-            ('file_count', 'Int')
+            ('free_tb', 'Float'),
+            ('file_count', 'Int'),
             # ('Core Count', 'Int'),
             # ('expiry_time', 'Int'),
             # ('fee_applies', 'Yes/No'),
             # ('Node Count', 'Int'),
             # ('Owner', 'Text'),
-            # ('quantity_default_value', 'Int'),
-            # ('quantity_label', 'Text'),
+            ('quantity_default_value', 'Int'),
+            ('quantity_label', 'Text'),
             # ('eula', 'Text'),
             # ('OnDemand','Yes/No'),
             # ('ServiceEnd', 'Date'),
