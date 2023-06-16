@@ -35,6 +35,36 @@ class DepartmentContactsInline(admin.TabularInline):
     autocomplete_fields = ('contact', 'organization')
 
 
+
+class DepartmentParentsInline(admin.TabularInline):
+    """Department parents inline"""
+    model = Department.parents.through
+    extra = 1
+    fk_name = 'child'
+    autocomplete_fields = ('parent',)
+
+
+class DepartmentChildrenInline(admin.TabularInline):
+    """Department children inline"""
+    model = Department.children.through
+    extra = 1
+    fk_name = 'parent'
+    autocomplete_fields = ('child',)
+
+class UserAffiliationInlineAdmin(admin.TabularInline):
+    """Inline of affiliations to be used with the Person form"""
+    model = UserAffiliation
+    autocomplete_fields = ('user', 'organization')
+    extra = 1
+
+
+class DepartmentContactsInline(admin.TabularInline):
+    """Inline for contacts in the department admin"""
+    model = Department.contacts.through
+    extra = 1
+    autocomplete_fields = ('contact', 'organization')
+
+
 @admin.register(Department)
 class DepartmentAdmin(SimpleHistoryAdmin):
     readonly_fields_change = ('created', 'modified')
@@ -73,7 +103,6 @@ class DepartmentMemberAdmin(SimpleHistoryAdmin):
     list_filter = ('role', 'active', 'organization__org_tree')
     search_fields = ('organization__name', 'user__full_name', 'user__username')
     raw_id_fields = ('organization', 'user')
-
 
 
     def get_fields(self, request, obj):
