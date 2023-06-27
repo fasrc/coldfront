@@ -5,7 +5,7 @@ Justification:
 {{justification}}
 {% if used_percentage %}
 
-{{resource}} was last recorded as {{used_percentage}}% full.
+{{resource}} was last recorded as {{used_percentage}}% allocated.
 {% endif %}
 
 {% if nese %}

@@ -168,7 +168,7 @@ Request new or update existing allocation
       }
       if (overfull_resources.hasOwnProperty(resource)) {
         let used_percentage = overfull_resources[resource];
-          message = `<div class="alert alert-warning" role="alert">Warning: the selected resource is ${used_percentage} percent full. Requests for allocations on this resource are likely to be rejected. If possible, consider choosing a different resource.</div>`
+          message = `<div class="alert alert-warning" role="alert">Warning: the selected resource is ${used_percentage} percent allocated. Requests for allocations on this resource may be subject to delay. If possible, consider choosing a different resource.</div>`
           messages.push(message);
          // $('#resource_message').html(message);
       }
