@@ -213,7 +213,9 @@ class AllTheThingsConn:
         logger.debug(resp_json)
         return resp_json
 
+
 def matched_dict_processing(allocation, data_dicts, paired_allocs, log_message):
+    logger = logging.getLogger('import_quotas')
     if len(data_dicts) == 1:
         logger.debug(log_message)
         paired_allocs[allocation] = data_dicts[0]
@@ -222,14 +224,15 @@ def matched_dict_processing(allocation, data_dicts, paired_allocs, log_message):
     return paired_allocs
 
 def pair_allocations_data(project, quota_dicts):
-    """pair allocations with usage dicts
-    """
+    """pair allocations with usage dicts"""
+    logger = logging.getLogger('import_quotas')
     unpaired_allocs = project.allocation_set.filter(status__name='Active')
     paired_allocs = {}
     # first, pair allocations with those that have same
     for allocation in unpaired_allocs:
         dicts = [
-            d for d in quota_dicts if allocation.path.lower() == d['fs_path'].lower()
+            d for d in quota_dicts
+            if d['fs_path'] and allocation.path.lower() == d['fs_path'].lower()
         ]
         if dicts:
             log_message = f'Path-based match: {allocation}, {allocation.path}, {dicts[0]}'
@@ -245,6 +248,12 @@ def pair_allocations_data(project, quota_dicts):
         if dicts:
             log_message = f'Resource-based match: {allocation}, {dicts[0]}'
             paired_allocs = matched_dict_processing(allocation, dicts, paired_allocs, log_message)
+    unpaired_allocs = [
+        a for a in unpaired_allocs if a not in paired_allocs
+    ]
+    unpaired_dicts = [d for d in unpaired_dicts if d not in paired_allocs.values()]
+    if unpaired_dicts or unpaired_allocs:
+        logger.warning("WARNING: unpaired allocation data: %s %s", unpaired_allocs, unpaired_dicts)
     return paired_allocs
 
 
