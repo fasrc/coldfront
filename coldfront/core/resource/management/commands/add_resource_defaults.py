@@ -67,24 +67,43 @@ class Command(BaseCommand):
 
 
         storage_tier = ResourceType.objects.get(name='Storage Tier')
+        storage = ResourceType.objects.get(name='Storage')
 
         for name, desc, is_public, rtype, parent_name in (
             ('Tier 0', 'Bulk - Lustre', True, storage_tier, None),
             ('Tier 1', 'Enterprise - Isilon', True, storage_tier, None),
+            # ('Tier 2', '', True, storage_tier, None),
             ('Tier 3', 'Attic Storage - Tape', True, storage_tier, None),
-            ('holylfs04/tier0', 'Lustre storage in Holyoke data center', True, 'Tier 0'),
-            ('holylfs05/tier0', 'Lustre storage in Holyoke data center', True, 'Tier 0'),
-            ('nesetape/tier3', 'Cold storage for past projects', True, 'Tier 3'),
-            ('holy-isilon/tier1', 'Tier1 storage with snapshots and disaster recovery copy', True, 'Tier 1'),
-            ('bos-isilon/tier1', 'Tier1 storage server in Boston in case storage needs to be mounted on campus', True, 'Tier 1'),
-            ('holystore01/tier0', 'Luster storage under Tier0', True, 'Tier 0'),
+            ('holylfs04/tier0', 'Lustre storage in Holyoke data center', True, storage, 'Tier 0'),
+            ('holylfs05/tier0', 'Lustre storage in Holyoke data center', True, storage, 'Tier 0'),
+            ('nesetape/tier3', 'Cold storage for past projects', True, storage, 'Tier 3'),
+            ('holy-isilon/tier1', 'Tier1 storage with snapshots and disaster recovery copy', True, storage, 'Tier 1'),
+            ('bos-isilon/tier1', 'Tier1 server in Boston for on-campus mounted storage', True, storage, 'Tier 1'),
+            ('holystore01/tier0', 'Luster storage under Tier0', True, storage, 'Tier 0'),
+            # ('h-nfs11-p/tier2', 'Holyoke Tier 2 vol 11', True, storage, 'Tier 2'),
+            ('h-nfs11-p/tier2', 'Holyoke Tier 2 vol 11', True, storage, None),
+            # ('h-nfs12-p/tier2', 'Holyoke Tier 2 vol 12', True, storage, 'Tier 2'),
+            ('h-nfs12-p/tier2', 'Holyoke Tier 2 vol 12', True, storage, None),
+            # ('h-nfs13-p/tier2', 'Holyoke Tier 2 vol 13', True, storage, 'Tier 2'),
+            ('h-nfs13-p/tier2', 'Holyoke Tier 2 vol 13', True, storage, None),
+            # ('h-nfs14-p/tier2', 'Holyoke Tier 2 vol 14', True, storage, 'Tier 2'),
+            ('h-nfs14-p/tier2', 'Holyoke Tier 2 vol 14', True, storage, None),
+            # ('h-nfs15-p/tier2', 'Holyoke Tier 2 vol 15', True, storage, 'Tier 2'),
+            ('h-nfs15-p/tier2', 'Holyoke Tier 2 vol 15', True, storage, None),
+            # ('h-nfs16-p/tier2', 'Holyoke Tier 2 vol 16', True, storage, 'Tier 2'),
+            ('h-nfs16-p/tier2', 'Holyoke Tier 2 vol 16', True, storage, None),
+            # ('h-nfs17-p/tier2', 'Holyoke Tier 2 vol 17', True, storage, 'Tier 2'),
+            ('h-nfs17-p/tier2', 'Holyoke Tier 2 vol 17', True, storage, None),
+            # ('h-nfs18-p/tier2', 'Holyoke Tier 2 vol 18', True, storage, 'Tier 2'),
+            ('h-nfs18-p/tier2', 'Holyoke Tier 2 vol 18', True, storage, None),
+            # ('h-nfs19-p/tier2', 'Holyoke Tier 2 vol 19', True, storage, 'Tier 2'),
+            ('h-nfs19-p/tier2', 'Holyoke Tier 2 vol 19', True, storage, None),
+            # ('h-nfs20-p/tier2', 'Holyoke Tier 2 vol 20', True, storage, 'Tier 2'),
+            ('h-nfs20-p/tier2', 'Holyoke Tier 2 vol 20', True, storage, None),
         ):
-            Resource.objects.update_or_create(
-                name=name,
-                defaults={
-                    'description':desc,
-                    'is_public':is_public,
-                    'resource_type':rtype,
-                    'parent_resource': Resource.objects.get(name=parent_name)
-                }
-            )
+            defaults = {
+                'description':desc, 'is_public':is_public, 'resource_type':rtype,
+            }
+            if parent_name:
+                defaults['parent_resource'] = Resource.objects.get(name=parent_name)
+            Resource.objects.update_or_create(name=name, defaults=defaults)

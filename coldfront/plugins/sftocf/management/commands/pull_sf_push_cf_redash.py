@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from coldfront.plugins.sftocf.utils import pull_sf_push_cf_redash
+from coldfront.plugins.sftocf.utils import RedashDataPipeline
 
 class Command(BaseCommand):
     """
@@ -12,4 +12,8 @@ class Command(BaseCommand):
 
         Only Projects that are already in Coldfront will get updated.
         """
-        pull_sf_push_cf_redash()
+
+        data_pull = RedashDataPipeline()
+
+        allocationquerymatch_objs, user_models = data_pull.clean_collected_data()
+        data_pull.update_coldfront_objects(allocationquerymatch_objs, user_models)
