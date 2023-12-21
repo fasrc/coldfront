@@ -478,7 +478,7 @@ class UsageDataPipelineBase:
 
             for userdict in obj.user_usage_entries:
                 user = next(
-                    u for u in user_models if userdict['user_name'].lower() == u.username.lower()
+                    u for u in user_models if userdict['username'].lower() == u.username.lower()
                 )
                 logger.debug('entering for user: %s', user.username)
                 usage_bytes = int(userdict['size_sum'])
