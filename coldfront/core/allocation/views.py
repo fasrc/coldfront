@@ -288,6 +288,22 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             allocation_obj.is_changeable = form_data.get('is_changeable')
             allocation_obj.status = form_data.get('status')
 
+        # check if corresponding Account for expense code exists
+        if 'ifxbilling' in settings.INSTALLED_APPS:
+            # pull up the person corresponding to the PI
+            person = FiineAPI.readPerson(ifxid=allocation_obj.project.pi.ifxid)
+            if allocation_obj not in [a.account.code for a in person.facility_accounts]:
+                account = FiineAPI.listAccounts(code=allocation_obj.expense_code)[0]
+                if not matched_fiineaccts:
+                    account = FiineAPI.createAccount(**account_data)
+
+                facility_account_dict = {
+                'facility': 'Research Computing Storage',
+                'account': { 'id': account.id },
+                }
+                person.facility_accounts.append(facility_account_dict)
+                FiineAPI.updatePerson(ifxid=allocation_obj.project.pi.ifxid, **person.to_dict())
+
         if 'approve' in action:
             err = None
             # ensure that Tier gets swapped out for storage volume
