@@ -294,7 +294,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             person = FiineAPI.readPerson(ifxid=allocation_obj.project.pi.ifxid)
             if allocation_obj not in [a.account.code for a in person.facility_accounts]:
                 account = FiineAPI.listAccounts(code=allocation_obj.expense_code)[0]
-                if not matched_fiineaccts:
+                if not account:
                     account = FiineAPI.createAccount(**account_data)
 
                 facility_account_dict = {
