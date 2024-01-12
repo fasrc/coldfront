@@ -227,7 +227,7 @@ class StarFishRedash:
         """
         """
         result = self.submit_query(query)
-        if result['query_result']:
+        if 'query_result' in result and result['query_result']:
             data = result['query_result']['data']['rows']
         else:
             print('no query_result value found:\n', result)
@@ -590,7 +590,8 @@ class RESTDataPipeline(UsageDataPipelineBase):
                 continue
             if self.volume and resource != self.volume:
                 continue
-            labs_resources[proj_name].append((vol_name, allocation.path))
+            if allocation.path:
+                labs_resources[proj_name].append((vol_name, allocation.path))
         return labs_resources
 
     def check_volume_collection(self, lr):
