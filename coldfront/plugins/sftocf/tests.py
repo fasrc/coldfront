@@ -7,7 +7,6 @@ from django.contrib.auth import get_user_model
 from coldfront.core.utils.fasrc import read_json
 from coldfront.plugins.sftocf.utils import (
     StarFishServer,
-    StarfishRedash,
     AsyncQuery,
     AllocationQueryMatch,
     RedashDataPipeline,
