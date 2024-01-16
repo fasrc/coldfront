@@ -292,30 +292,28 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         if 'ifxbilling' in settings.INSTALLED_APPS:
             # pull up the person corresponding to the PI
             person = FiineAPI.readPerson(ifxid=allocation_obj.project.pi.ifxid)
-            pid = person.id
             if allocation_obj not in [a.account.code for a in person.facility_accounts]:
                 try:
                     account = FiineAPI.listAccounts(code=allocation_obj.expense_code)[0]
                 except IndexError:
-
-                    account_data = {'code':allocation_obj.expense_code,
-                            'account_type': 'Expense Code',
-                            'name': 'name_placeholder',
-                            'active': 'true',
-                            'organization':
-                            ProjectOrganization.objects.get(project=allocation_obj.project).organization.name,
-                            }
+                    account_data = {
+                        'code':allocation_obj.expense_code,
+                        'account_type': 'Expense Code',
+                        'name': 'name_placeholder',
+                        'active': 'true',
+                        'organization':
+                        ProjectOrganization.objects.get(project=allocation_obj.project).organization.name,
+                    }
                     account = FiineAPI.createAccount(**account_data)
 
                 facility_account_dict = {
-                'facility': 'Research Computing Storage',
-                'account': { 'id': account.id },
+                    'facility': 'Research Computing Storage',
+                    'account': { 'id': account.id },
                 }
                 person.facility_accounts.append(facility_account_dict)
                 ifxid = str(allocation_obj.project.pi.ifxid)
                 pdict = person.to_dict()
-                # pdict.pop('ifxid')
-                FiineAPI.updatePerson(id=person.ifxid, **pdict)
+                FiineAPI.updatePerson(**pdict)
 
         if 'approve' in action:
             err = None
