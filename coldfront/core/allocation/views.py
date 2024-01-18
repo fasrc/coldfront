@@ -308,7 +308,8 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
 
                 facility_account_dict = {
                     'facility': 'Research Computing Storage',
-                    'account': { 'id': account.id },
+                    'account': account.code,
+                    'is_valid': True,
                 }
                 person.facility_accounts.append(facility_account_dict)
                 ifxid = str(allocation_obj.project.pi.ifxid)
