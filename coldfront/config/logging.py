@@ -28,7 +28,8 @@ LOGGING = {
         },
         'django-q': {
             'class': 'logging.FileHandler',
-            'filename': 'django-q.log',
+            'filename': 'logs/django-q.log',
+            'formatter': 'key-events',
             'level': 'DEBUG',
         },
         'key-events': {
