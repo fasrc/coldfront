@@ -60,4 +60,6 @@ class Command(BaseCommand):
             allocation.allocationattribute_set.update_or_create(
                 allocation_attribute_type_id=8, defaults={'value': subdir_value}
             )
+        for error in errors:
+            logger.error(error)
         make_error_csv("subdirs_to_add", errors)
