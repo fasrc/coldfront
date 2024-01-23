@@ -18,7 +18,7 @@ LOGGING = {
     'formatters': {
         'key-events': {
             "()": "django.utils.log.ServerFormatter",
-            "format": "[{server_time}] {levelname} {message}",
+            "format": "[{server_time}] {module} {levelname} {message}",
             "style": "{",
         }
     },
@@ -29,12 +29,14 @@ LOGGING = {
         'django-q': {
             'class': 'logging.FileHandler',
             'filename': 'django-q.log',
+            'level': 'DEBUG',
         },
         'key-events': {
             'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': 'logs/key-events.log',
             'when': 'D',
             'formatter': 'key-events',
+            'level': 'WARNING',
         },
         # 'file': {
         #     'class': 'logging.FileHandler',
@@ -52,18 +54,21 @@ LOGGING = {
             'level': 'INFO',
         },
         'django-q': {
-            'handlers': ['django-q'],
-            'level': 'DEBUG',
+            'handlers': ['django-q', 'key-events'],
         },
         'ifx': {
-            'handlers': ['console'],
+            'handlers': ['console', 'key-events'],
             'level': 'INFO',
         },
         'ifxbilling': {
-            'handlers': ['console'],
+            'handlers': ['console', 'key-events'],
             'level': 'INFO',
         },
         'coldfront.core.project': {
+            'handlers': ['key-events'],
+            'level': 'INFO',
+        },
+        'coldfront.core.department': {
             'handlers': ['key-events'],
             'level': 'INFO',
         },

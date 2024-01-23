@@ -22,9 +22,9 @@ LOGGING['handlers']['sftocf'] = {
             'when': 'D',
             'backupCount': 30, # how many backup files to keep
             'formatter': 'sftocf',
+            'level': 'DEBUG',
         }
 
 LOGGING['loggers']['sftocf'] = {
-            'handlers': ['sftocf'],
-            'level': 'DEBUG',
+            'handlers': ['sftocf', 'key-events'],
         }

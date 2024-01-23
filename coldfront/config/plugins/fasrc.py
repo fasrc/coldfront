@@ -19,6 +19,7 @@ LOGGING['handlers']['fasrc'] = {
             'backupCount': 10,
             'when': 'midnight',
             'formatter': 'fasrc',
+            'level': 'DEBUG',
         }
 
 LOGGING['handlers']['import_quotas'] = {
@@ -27,6 +28,7 @@ LOGGING['handlers']['import_quotas'] = {
             'backupCount': 10,
             'when': 'midnight',
             'formatter': 'fasrc',
+            'level': 'DEBUG',
         }
 
 LOGGING['handlers']['add_allocations'] = {
@@ -35,19 +37,17 @@ LOGGING['handlers']['add_allocations'] = {
             'backupCount': 10,
             'when': 'midnight',
             'formatter': 'fasrc',
+            'level': 'DEBUG',
         }
 
 LOGGING['loggers']['coldfront.plugins.fasrc'] = {
-            'handlers': ['fasrc'],
-            'level': 'DEBUG',
+            'handlers': ['fasrc', 'key-events'],
         }
 
 LOGGING['loggers']['import_quotas'] = {
-            'handlers': ['import_quotas'],
-            'level': 'DEBUG',
+            'handlers': ['import_quotas', 'key-events'],
         }
 
 LOGGING['loggers']['coldfront.plugins.fasrc.management.commands.id_import_new_allocations'] = {
-            'handlers': ['add_allocations'],
-            'level': 'DEBUG',
+            'handlers': ['add_allocations', 'key-events'],
         }

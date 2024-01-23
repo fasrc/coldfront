@@ -23,7 +23,7 @@ AUTH_LDAP_GROUP_SEARCH_BASE = ENV.str('AUTH_LDAP_GROUP_SEARCH_BASE')
 
 LOGGING['formatters']['ldap_fasrc'] = {
             "()": "django.utils.log.ServerFormatter",
-            "format": "[{server_time}] {message}",
+            "format": "[{server_time}] {levelname} {message}",
             "style": "{",
         }
 
@@ -33,9 +33,9 @@ LOGGING['handlers']['ldap_fasrc'] = {
             'backupCount': 10,
             'when': 'midnight',
             'formatter': 'ldap_fasrc',
+            'level': 'DEBUG',
         }
 
 LOGGING['loggers']['coldfront.plugins.ldap'] = {
-            'handlers': ['ldap_fasrc'],
-            'level': 'DEBUG',
+            'handlers': ['ldap_fasrc', 'key-events'],
         }

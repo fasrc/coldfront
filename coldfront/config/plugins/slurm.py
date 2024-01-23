@@ -24,9 +24,9 @@ LOGGING['handlers']['slurm'] = {
             'when': 'D',
             'backupCount': 30, # how many backup files to keep
             'formatter': 'slurm',
+            'level': 'DEBUG',
         }
 
 LOGGING['loggers']['slurm'] = {
-            'handlers': ['slurm'],
-            'level': 'INFO',
+            'handlers': ['slurm', 'key-events'],
         }

@@ -26,9 +26,9 @@ LOGGING['handlers']['xdmod'] = {
             'when': 'D',
             'backupCount': 30, # how many backup files to keep
             'formatter': 'xdmod',
+            'level': 'INFO',
         }
 
 LOGGING['loggers']['xdmod'] = {
-            'handlers': ['xdmod'],
-            'level': 'INFO',
+            'handlers': ['xdmod', 'key-events'],
         }
