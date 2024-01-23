@@ -33,8 +33,7 @@ DATESTR = datetime.today().strftime('%Y%m%d')
 DATAPATH = "./coldfront/plugins/sftocf/data/"
 logger = logging.getLogger('sftocf')
 
-if ENV.bool('PLUGIN_SFTOCF', default=False):
-    STARFISH_SERVER = import_from_settings('STARFISH_SERVER')
+STARFISH_SERVER = import_from_settings('STARFISH_SERVER', '')
 
 svp = read_json('coldfront/plugins/sftocf/servers.json')
 
