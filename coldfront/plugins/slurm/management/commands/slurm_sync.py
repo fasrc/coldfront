@@ -71,6 +71,7 @@ class Command(BaseCommand):
                     project_obj = Project.objects.get(title=name)
                 except Project.DoesNotExist:
                     print(f'no project with title {name} detected.')
+                    logger.warning('no project with title %s detected.', name)
                     continue
 
                 allocation_objs = project_obj.allocation_set.filter(
@@ -87,6 +88,10 @@ class Command(BaseCommand):
                     allocation_obj = allocation_objs.first()
                 elif len(allocation_objs) > 1:
                     print('Too many allocations:', allocation_objs)
+                    logger.warning(
+                        'multiple allocations returned for project %s resource %s',
+                        project_obj.title, resource.name
+                    )
                     continue
                 # used in XDMOD to correspond with pi_filter, I think
                 # 'slurm_account_name'? XDMOD_ACCOUNT_ATTRIBUTE_NAME

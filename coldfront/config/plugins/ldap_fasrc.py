@@ -37,5 +37,5 @@ LOGGING['handlers']['ldap_fasrc'] = {
         }
 
 LOGGING['loggers']['coldfront.plugins.ldap'] = {
-            'handlers': ['ldap_fasrc', 'key-events'],
+            'handlers': ['ldap_fasrc'],
         }

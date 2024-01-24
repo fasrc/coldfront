@@ -29,6 +29,6 @@ LOGGING['handlers']['xdmod'] = {
             'level': 'INFO',
         }
 
-LOGGING['loggers']['xdmod'] = {
-            'handlers': ['xdmod', 'key-events'],
+LOGGING['loggers']['coldfront.plugins.xdmod'] = {
+            'handlers': ['xdmod'],
         }

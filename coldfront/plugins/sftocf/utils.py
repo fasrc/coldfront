@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 import requests
 from django.utils import timezone
 
-from coldfront.config.env import ENV
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.fasrc import (
     read_json,
@@ -31,15 +30,15 @@ from coldfront.core.allocation.models import (
 
 DATESTR = datetime.today().strftime('%Y%m%d')
 DATAPATH = "./coldfront/plugins/sftocf/data/"
-logger = logging.getLogger('sftocf')
-
 STARFISH_SERVER = import_from_settings('STARFISH_SERVER', '')
+
+logger = logging.getLogger(__name__)
 
 svp = read_json('coldfront/plugins/sftocf/servers.json')
 
 username_ignore_list = import_from_settings('username_ignore_list', [])
 
-locate_or_create_dirpath('./coldfront/plugins/sftocf/data/')
+locate_or_create_dirpath(DATAPATH)
 
 def record_process(func):
     """Wrapper function for logging"""
@@ -317,6 +316,7 @@ class AllocationQueryMatch:
             message = f'too many total_usage_entries for allocation {allocation_data}; investigation required'
         if message:
             print(message)
+            logger.warning(message)
             slate_for_check([{
                 'error': message,
                 'program': 'pull_sf_push_cf_redash',

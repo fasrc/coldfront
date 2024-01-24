@@ -18,7 +18,7 @@ LOGGING = {
     'formatters': {
         'key-events': {
             "()": "django.utils.log.ServerFormatter",
-            "format": "[{server_time}] {name} {levelname} {message}",
+            "format": "[{server_time}] {name} {process} {levelname} {message}",
             "style": "{",
         }
     },
@@ -68,15 +68,7 @@ LOGGING = {
             'handlers': ['console', 'key-events'],
             'level': 'INFO',
         },
-        'coldfront.core.project': {
-            'handlers': ['key-events'],
-            'level': 'INFO',
-        },
-        'coldfront.core.department': {
-            'handlers': ['key-events'],
-            'level': 'INFO',
-        },
-        'coldfront.core.allocation': {
+        'coldfront': {
             'handlers': ['key-events'],
             'level': 'INFO',
         }

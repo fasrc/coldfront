@@ -41,13 +41,13 @@ LOGGING['handlers']['add_allocations'] = {
         }
 
 LOGGING['loggers']['coldfront.plugins.fasrc'] = {
-            'handlers': ['fasrc', 'key-events'],
+            'handlers': ['fasrc'],
         }
 
-LOGGING['loggers']['import_quotas'] = {
-            'handlers': ['import_quotas', 'key-events'],
+LOGGING['loggers']['coldfront.import_quotas'] = {
+            'handlers': ['import_quotas'],
         }
 
 LOGGING['loggers']['coldfront.plugins.fasrc.management.commands.id_import_new_allocations'] = {
-            'handlers': ['add_allocations', 'key-events'],
+            'handlers': ['add_allocations'],
         }

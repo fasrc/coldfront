@@ -22,11 +22,11 @@ LOGGING['handlers']['slurm'] = {
             'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': 'logs/slurm.log',
             'when': 'D',
-            'backupCount': 30, # how many backup files to keep
+            'backupCount': 10, # how many backup files to keep
             'formatter': 'slurm',
             'level': 'DEBUG',
         }
 
-LOGGING['loggers']['slurm'] = {
-            'handlers': ['slurm', 'key-events'],
+LOGGING['loggers']['coldfront.plugins.slurm'] = {
+            'handlers': ['slurm'],
         }

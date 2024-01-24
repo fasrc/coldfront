@@ -20,11 +20,11 @@ LOGGING['handlers']['sftocf'] = {
             'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': 'logs/sftocf.log',
             'when': 'D',
-            'backupCount': 30, # how many backup files to keep
+            'backupCount': 10, # how many backup files to keep
             'formatter': 'sftocf',
             'level': 'DEBUG',
         }
 
-LOGGING['loggers']['sftocf'] = {
-            'handlers': ['sftocf', 'key-events'],
+LOGGING['loggers']['coldfront.plugins.sftocf'] = {
+            'handlers': ['sftocf'],
         }
