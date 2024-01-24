@@ -326,7 +326,7 @@ def push_quota_data(result_file):
                 # 5. AllocationAttribute
                 allocation.allocationattribute_set.update_or_create(
                     allocation_attribute_type=allocation_attribute_type_payment,
-                    defaults={'value':True}
+                    defaults={'value': True}
                 )
                 counts['complete'] += 1
             except Exception as exc:
