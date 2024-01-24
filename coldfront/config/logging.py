@@ -18,7 +18,7 @@ LOGGING = {
     'formatters': {
         'key-events': {
             "()": "django.utils.log.ServerFormatter",
-            "format": "[{server_time}] {module} {levelname} {message}",
+            "format": "[{server_time}] {name} {levelname} {message}",
             "style": "{",
         }
     },
