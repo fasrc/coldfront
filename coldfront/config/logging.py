@@ -29,13 +29,16 @@ LOGGING = {
         'django-q': {
             'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': 'logs/django-q.log',
+            'when': 'midnight',
+            'backupCount': 10,
             'formatter': 'key-events',
             'level': 'DEBUG',
         },
         'key-events': {
             'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': 'logs/key-events.log',
-            'when': 'D',
+            'when': 'midnight',
+            'backupCount': 10,
             'formatter': 'key-events',
             'level': 'WARNING',
         },

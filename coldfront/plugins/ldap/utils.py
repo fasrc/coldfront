@@ -286,7 +286,7 @@ class GroupUserCollection:
             logger.debug('(%s of %s users valid)', len(self.current_ad_users), len(self.members))
             ad_users = [u['sAMAccountName'][0] for u in self.current_ad_users]
         else:
-            logger.warning('WARNING: NO AD USERS RETURNED FOR %s', self.project.title)
+            logger.warning('NO AD USERS FOUND FOR %s', self.project.title)
             ad_users = []
         proj_usernames = [
             pu.user.username for pu in self.project.projectuser_set.filter(

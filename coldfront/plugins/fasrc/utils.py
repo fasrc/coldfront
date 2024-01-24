@@ -242,7 +242,10 @@ def matched_dict_processing(allocation, data_dicts, paired_allocs, log_message):
 def pair_allocations_data(project, quota_dicts):
     """pair allocations with usage dicts"""
     logger = logging.getLogger('import_quotas')
-    unpaired_allocs = project.allocation_set.filter(status__name='Active')
+    unpaired_allocs = project.allocation_set.filter(
+        status__name='Active',
+        resources__resource_type__name='Storage'
+    )
     paired_allocs = {}
     # first, pair allocations with those that have same
     for allocation in unpaired_allocs:
@@ -270,7 +273,7 @@ def pair_allocations_data(project, quota_dicts):
     unpaired_dicts = [d for d in unpaired_dicts if d not in paired_allocs.values()]
     if unpaired_dicts or unpaired_allocs:
         logger.warning(
-            "WARNING: unpaired allocation data: %s %s", unpaired_allocs, unpaired_dicts
+            "unpaired allocation data: %s %s", unpaired_allocs, unpaired_dicts
         )
     return paired_allocs
 
@@ -363,7 +366,6 @@ def pull_push_quota_data(volumes=None):
     result_file = 'local_data/att_nese_quota_data.json'
     save_json(result_file, resp_json_by_lab)
     push_quota_data(result_file)
-    logger.debug("This shows here")
 
 
 def generate_headers(token):

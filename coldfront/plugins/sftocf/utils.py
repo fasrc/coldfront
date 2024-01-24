@@ -53,7 +53,10 @@ def record_process(func):
 
 
 # Define filter for allocations to be slated for collection here as you see fit
-ALLOCATIONS_FOR_COLLECTION = Allocation.objects.filter(status__name__in=['Active'])
+ALLOCATIONS_FOR_COLLECTION = Allocation.objects.filter(
+    status__name__in=['Active'],
+    resources__resource_type__name='Storage'
+)
 
 
 class StarFishServer:
@@ -452,7 +455,7 @@ class UsageDataPipelineBase:
         return allocationquerymatch_objects, user_models
 
     def update_coldfront_objects(self, allocationquerymatch_objects, user_models):
-        
+
         allocation_attribute_types = AllocationAttributeType.objects.all()
 
         quota_bytes_attributetype = allocation_attribute_types.get(name='Quota_In_Bytes')
