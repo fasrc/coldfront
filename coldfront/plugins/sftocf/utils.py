@@ -37,6 +37,8 @@ STARFISH_SERVER = import_from_settings('STARFISH_SERVER', '')
 
 svp = read_json('coldfront/plugins/sftocf/servers.json')
 
+username_ignore_list = import_from_settings('username_ignore_list', [])
+
 locate_or_create_dirpath('./coldfront/plugins/sftocf/data/')
 
 def record_process(func):
@@ -442,6 +444,7 @@ class UsageDataPipelineBase:
                     'path': d.get('path', None),
                 }
                 for d in obj.users_in_list(missing_username_list)
+                if d['username'] not in username_ignore_list
             ]
             log_missing('user', missing_unames_metadata)
             for i in obj.users_in_list(missing_username_list):

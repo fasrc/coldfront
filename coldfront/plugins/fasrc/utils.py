@@ -342,7 +342,10 @@ def match_entries_with_projects(result_json):
     # produce lists of present labs & labs w/o projects
     lablist = list(set(k for k in result_json))
     proj_models, missing_projs = id_present_missing_projects(lablist)
+
     log_missing('project', missing_projs)
+    if missing_projs:
+        logger.warning('missing projects: %s', missing_projs)
     # remove them from result_json
     missing_proj_titles = [list(p.values())[0] for p in missing_projs]
     [result_json.pop(t) for t in missing_proj_titles]

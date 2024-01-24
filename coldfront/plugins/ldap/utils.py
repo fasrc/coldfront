@@ -30,6 +30,7 @@ from coldfront.core.project.models import (
 
 logger = logging.getLogger(__name__)
 
+username_ignore_list = import_from_settings('username_ignore_list', [])
 
 class LDAPConn:
     """
@@ -531,7 +532,9 @@ def add_new_projects(groupusercollections, errortracker):
     ]
     missing_pi_groups = [g for g in groupusercollections if g not in active_present_pi_groups]
     missing_pis = [
-        {'username': g.pi['sAMAccountName'][0], 'group': g.name} for g in missing_pi_groups
+        {'username': g.pi['sAMAccountName'][0], 'group': g.name}
+        for g in missing_pi_groups
+        if g.pi['sAMAccountName'][0] not in username_ignore_list
     ]
     log_missing('user', missing_pis)
     # record and remove projects where pis aren't available
@@ -545,7 +548,10 @@ def add_new_projects(groupusercollections, errortracker):
         # collect group membership entries
         member_usernames = {u['sAMAccountName'][0] for u in group.current_ad_users} - missing_usernames
         missing_members = [
-            {'username': m['sAMAccountName'][0], 'group': group.name} for m in group.members
+            {'username': m['sAMAccountName'][0], 'group': group.name}
+            for m in group.members
+            if m['sAMAccountName'][0] in missing_usernames
+            and m['sAMAccountName'][0] not in username_ignore_list
         ]
         log_missing('user', missing_members)
 
