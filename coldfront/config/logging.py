@@ -51,7 +51,7 @@ LOGGING = {
             'handlers': ['console', ],
         },
         'django': {
-            'handlers': ['console'],
+            'handlers': ['console', 'key-events'],
             'level': 'INFO',
         },
         'django-q': {
