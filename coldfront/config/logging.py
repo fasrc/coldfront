@@ -27,7 +27,7 @@ LOGGING = {
             'class': 'logging.StreamHandler',
         },
         'django-q': {
-            'class': 'logging.FileHandler',
+            'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': 'logs/django-q.log',
             'formatter': 'key-events',
             'level': 'DEBUG',
