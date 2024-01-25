@@ -224,6 +224,7 @@ class Command(BaseCommand):
                 continue
             except XdmodNoRowsError:
                 no_xdmodrows.append([s, account_name, resources])
+                continue
 
             logger.warning(
                 "Total Accelerator hours = %s for allocation %s account %s gpu_hours %s resource %s",
@@ -284,6 +285,7 @@ class Command(BaseCommand):
                 continue
             except XdmodNoRowsError:
                 no_xdmodrows.append([s, account_name, resources])
+                continue
 
 
             logger.info(
