@@ -338,7 +338,8 @@ def push_quota_data(result_file):
                 errored_allocations[allocation_name] = exc
     log_missing('allocation', missing_allocations)
     logger.warning('error counts: %s', counts)
-    logger.warning('errored_allocations:\n%s', errored_allocations)
+    if errored_allocations:
+        logger.warning('errored_allocations:\n%s', errored_allocations)
 
 
 def match_entries_with_projects(result_json):
