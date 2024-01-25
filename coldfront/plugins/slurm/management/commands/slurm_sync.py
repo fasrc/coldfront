@@ -66,12 +66,13 @@ class Command(BaseCommand):
         for resource, cluster in slurm_clusters.items():
 
             # create an allocation for each account
+            undetected_projs = []
             for name, account in cluster.accounts.items():
                 try:
                     project_obj = Project.objects.get(title=name)
                 except Project.DoesNotExist:
                     print(f'no project with title {name} detected.')
-                    logger.warning('no project with title %s detected.', name)
+                    undetected_projs.append(name)
                     continue
 
                 allocation_objs = project_obj.allocation_set.filter(
@@ -149,3 +150,8 @@ class Command(BaseCommand):
                                 allocationuser_attribute_type=attr_type,
                                 defaults={'value': user_val}
                             )
+            if undetected_projs:
+                logger.warning(
+                    '%s Accounts without corresponding projects detected: %s',
+                    resource, undetected_projs
+                )

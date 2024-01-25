@@ -235,7 +235,8 @@ def matched_dict_processing(allocation, data_dicts, paired_allocs, log_message):
         logger.debug(log_message)
         paired_allocs[allocation] = data_dicts[0]
     else:
-        logger.warning('too many matches for allocation %s: %s', allocation, data_dicts)
+        logger.warning('too many matches for allocation %s %s: %s',
+            allocation.pk, allocation, data_dicts)
     return paired_allocs
 
 
@@ -273,7 +274,7 @@ def pair_allocations_data(project, quota_dicts):
     unpaired_dicts = [d for d in unpaired_dicts if d not in paired_allocs.values()]
     if unpaired_dicts or unpaired_allocs:
         logger.warning(
-            "unpaired allocation data: %s %s", unpaired_allocs, unpaired_dicts
+            "unpaired allocation data. Allocation: %s | Dict: %s", unpaired_allocs, unpaired_dicts
         )
     return paired_allocs
 

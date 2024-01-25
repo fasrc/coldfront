@@ -14,18 +14,12 @@ XDMOD_PASS = ENV.str('XDMOD_PASS', default='')
 XDMOD_API_URL = ENV.str('XDMOD_API_URL')
 
 
-LOGGING['formatters']['xdmod'] = {
-            "()": "django.utils.log.ServerFormatter",
-            "format": "[{server_time}] {levelname} {message}",
-            "style": "{",
-        }
-
 LOGGING['handlers']['xdmod'] = {
             'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': 'logs/xdmod.log',
             'when': 'D',
             'backupCount': 30, # how many backup files to keep
-            'formatter': 'xdmod',
+            'formatter': 'default',
             'level': 'INFO',
         }
 

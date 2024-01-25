@@ -18,9 +18,14 @@ LOGGING = {
     'formatters': {
         'key-events': {
             "()": "django.utils.log.ServerFormatter",
-            "format": "[{server_time}] {name} {process} {levelname} {message}",
+            "format": "[{server_time}] {name} {levelname} {message}",
             "style": "{",
-        }
+        },
+        'default': {
+            "()": "django.utils.log.ServerFormatter",
+            "format": "[{server_time}] {name} {levelname} {message}",
+            "style": "{",
+        },
     },
     'handlers': {
         'console': {

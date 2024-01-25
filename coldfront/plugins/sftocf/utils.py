@@ -14,7 +14,6 @@ from coldfront.core.utils.fasrc import (
     read_json,
     save_json,
     log_missing,
-    slate_for_check,
     determine_size_fmt,
     id_present_missing_users,
     locate_or_create_dirpath,
@@ -308,7 +307,9 @@ def generate_headers(token):
 class AllocationQueryMatch:
     """class to hold Allocations and related query results together."""
     def __new__(cls, allocation, total_usage_entries, user_usage_entries):
-        allocation_data = (allocation.pk, allocation.project.title)
+        allocation_data = (
+            allocation.pk, allocation.project.title, allocation.resources.first()
+        )
         message = None
         if not total_usage_entries:
             message = f'No starfish allocation usage result for allocation {allocation_data}; deactivation suggested'
@@ -317,11 +318,6 @@ class AllocationQueryMatch:
         if message:
             print(message)
             logger.warning(message)
-            slate_for_check([{
-                'error': message,
-                'program': 'pull_sf_push_cf_redash',
-                'urls': f'/allocation/{allocation.pk}/'
-            }])
             return None
         return super().__new__(cls)
 
