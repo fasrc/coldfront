@@ -61,8 +61,7 @@ class Command(BaseCommand):
         added_projects, errortracker = add_new_projects(groupusercollections, errortracker)
         print(f"added {len(added_projects)} projects: ", [a[0] for a in added_projects])
         print("errs: ", errortracker)
-        for error in errortracker:
-            logger.warning(error)
+        logger.warning(errortracker)
         not_added = [
             {'title': i, 'info': k} for k, v in errortracker.items() for i in v
         ]

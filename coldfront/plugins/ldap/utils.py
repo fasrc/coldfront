@@ -17,7 +17,6 @@ from coldfront.core.field_of_science.models import FieldOfScience
 from coldfront.core.utils.fasrc import (
     id_present_missing_users,
     log_missing,
-    slate_for_check,
     sort_by,
 )
 from coldfront.core.project.models import (
@@ -60,8 +59,13 @@ class LDAPConn:
         self.LDAP_GROUP_SEARCH_BASE = import_from_settings(AUTH_LDAP_GROUP_SEARCH_BASE, None)
         self.LDAP_CONNECT_TIMEOUT = import_from_settings(LDAP_CONNECT_TIMEOUT, 20)
         self.LDAP_USE_SSL = import_from_settings(AUTH_LDAP_USE_SSL, False)
-        self.server = Server(self.LDAP_SERVER_URI, use_ssl=self.LDAP_USE_SSL, connect_timeout=self.LDAP_CONNECT_TIMEOUT)
-        self.conn = Connection(self.server, self.LDAP_BIND_DN, self.LDAP_BIND_PASSWORD, auto_bind=True)
+        self.server = Server(
+            self.LDAP_SERVER_URI,
+            use_ssl=self.LDAP_USE_SSL, connect_timeout=self.LDAP_CONNECT_TIMEOUT
+        )
+        self.conn = Connection(
+            self.server, self.LDAP_BIND_DN, self.LDAP_BIND_PASSWORD, auto_bind=True
+        )
 
     def search(self, attr_search_dict, search_base, attributes=ALL_ATTRIBUTES):
         """Run an LDAP search.
@@ -568,14 +572,7 @@ def add_new_projects(groupusercollections, errortracker):
             errortracker['no_fos'].append(group.name)
             message = f'no department for AD group {group.name}, will not add unless fixed'
             logger.warning(message)
-            print(f'HALTING: {message}')
-            issue = {
-                'error': message,
-                'program': 'ldap.utils.add_new_projects',
-                'url': 'NA; AD issue',
-            }
-            slate_for_check([issue])
-            print(group.pi)
+            print(f'HALTING: {message} | group pi: {group.pi}')
             continue
 
         ### CREATE PROJECT ###
