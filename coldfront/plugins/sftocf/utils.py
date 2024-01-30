@@ -19,6 +19,7 @@ from coldfront.core.utils.fasrc import (
     locate_or_create_dirpath,
 )
 from coldfront.core.resource.models import Resource, ResourceAttributeType
+from coldfront.core.project.models import Project
 from coldfront.core.allocation.models import (
     Allocation,
     AllocationUser,
@@ -92,6 +93,24 @@ class StarFishServer:
         volnames = [i['name'] for i in response['items']]
         return volnames
 
+    def get_zones(self, zone_id=None):
+        """Get all zones from the API, or one specific zone if an ID is provided"""
+        url = self.api_url + f'zone/{zone_id}'
+        response = return_get_json(url, self.headers)
+        return response
+
+    def create_zone(self, zone_name, paths, managers, managing_groups):
+        """Create a zone via the API"""
+        url = self.api_url + 'zone/'
+        data = {
+            "name": zone_name,
+            "paths": paths,
+            "managers": managers,
+            "managing_groups": managing_groups,
+        }
+        response = return_post_json(url, params=data, headers=self.headers)
+        return response
+
     def get_volumes_in_coldfront(self):
         resource_volume_list = [r.name.split('/')[0] for r in Resource.objects.all()]
         return [v for v in self.volumes if v in resource_volume_list]
@@ -124,7 +143,8 @@ class StarFishServer:
         volumes = self.get_volumes_in_coldfront()
         for volume in volumes:
             latest_time = max(
-                s['creation_time'] for s in scans['scans'] if s['volume'] == volume
+                s['creation_time'] for s in scans['scans']
+                if s['volume'] == volume
             )
             latest_scan = next(
                 s for s in scans['scans']
@@ -269,8 +289,7 @@ class AsyncQuery:
             'humanize_nested': 'false',
             'mount_agent': 'None',
         }
-        r = requests.post(query_url, params=params, headers=self.headers)
-        response = r.json()
+        response = return_post_json(query_url, params=params, headers=self.headers)
         logger.debug('response: %s', response)
         return response['query_id']
 
@@ -292,6 +311,10 @@ class AsyncQuery:
 
 def return_get_json(url, headers):
     response = requests.get(url, headers=headers)
+    return response.json()
+
+def return_post_json(url, params=None, headers=None):
+    response = requests.post(url, params=params, headers=headers)
     return response.json()
 
 def generate_headers(token):
@@ -642,10 +665,12 @@ class RESTDataPipeline(UsageDataPipelineBase):
         """Clean sequence for the data produced from the usage query.
         """
         data = [d for d in data if d['username'] != 'root']
+        items_to_pop = ['physical_nlinks_size_sum', 'rec_aggrs', 'fn', 'count',
+            'physical_nlinks_size_sum_hum', 'size_sum_hum', 'volume_display_name']
         for entry in data:
             # entry['size_sum'] = entry['rec_aggrs']['size']
             # entry['full_path'] = entry['parent_path']+'/'+entry['fn']
-            for item in ['physical_nlinks_size_sum', 'rec_aggrs', 'fn', 'count', 'physical_nlinks_size_sum_hum', 'size_sum_hum', 'volume_display_name']:
+            for item in items_to_pop:
                 entry.pop(item, None)
         # remove any directory that is a subdirectory of a directory owned by the same user
         return data
@@ -716,6 +741,8 @@ class RESTDataPipeline(UsageDataPipelineBase):
         vol_set = {i[1] for i in lab_res}
         vols = [vol for vol in vol_set if vol in svp['volumes']]
         entries = []
+        items_to_remove = ['size_sum_hum', 'rec_aggrs', 'physical_nlinks_size_sum',
+            'physical_nlinks_size_sum_hum', 'volume_display_name', 'count', 'fn']
         for volume in vols:
             volumepath = svp["volumes"][volume]
             projects = [t for t in lab_res if t[1] == volume]
@@ -753,7 +780,7 @@ class RESTDataPipeline(UsageDataPipelineBase):
                         'project': p,
                         'date': DATESTR,
                     })
-                    for item in ['count', 'size_sum_hum','rec_aggrs','fn', 'volume_display_name', 'physical_nlinks_size_sum', 'physical_nlinks_size_sum_hum']:
+                    for item in items_to_remove:
                         entry.pop(item)
                     entries.append(entry)
         return entries
