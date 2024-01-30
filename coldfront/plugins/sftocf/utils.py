@@ -135,7 +135,7 @@ class StarFishServer:
         volnames = [i['name'] for i in response['items']]
         return volnames
 
-    def get_zones(self, zone_id=None):
+    def get_zones(self, zone_id=''):
         """Get all zones from the API, or one specific zone if an ID is provided"""
         url = self.api_url + f'zone/{zone_id}'
         response = return_get_json(url, self.headers)
