@@ -9,7 +9,8 @@ from datetime import datetime, timedelta
 import requests
 from django.utils import timezone
 
-from coldfront.core.utils.common import import_from_settings
+from coldfront.core.utils.common import (
+    import_from_settings, uniques_and_intersection)
 from coldfront.core.utils.fasrc import (
     read_json,
     save_json,
@@ -30,7 +31,7 @@ from coldfront.core.allocation.models import (
 
 DATESTR = datetime.today().strftime('%Y%m%d')
 DATAPATH = "./coldfront/plugins/sftocf/data/"
-STARFISH_SERVER = import_from_settings('STARFISH_SERVER', '')
+STARFISH_SERVER = import_from_settings('STARFISH_SERVER', 'starfish')
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,47 @@ ALLOCATIONS_FOR_COLLECTION = Allocation.objects.filter(
     status__name__in=['Active'],
     resources__resource_type__name='Storage'
 )
+
+
+def zone_report():
+    """Check of SF zone alignment with pipeline specs.
+    Report on:
+        Coldfront projects with storage allocations vs. SF zones
+        AD groups that correspond to SF zones but don't belong to the AD group starfish_groups
+        SF zones have all allocations that correspond to Coldfront project allocations
+        SF zones that don’t have groups
+        SF zones that have users as opposed to groups
+    """
+    report = {
+        'projects_with_allocations_no_zones': [],
+        'zones_with_no_projects': [],
+        'zones_with_no_groups': [],
+        'zones_with_users': [],
+    }
+    # start by getting all zones
+    server = StarFishServer(STARFISH_SERVER)
+    # get list of all zones in server
+    zones = server.get_zones()
+
+    # get all projects with at least one storage allocation
+    projects = Project.objects.filter(
+        allocations__status__name__in=['Active'],
+        allocations__resources__resource_type__name='Storage'
+    ).distinct()
+    # check which of these projects have zones
+    project_titles = [p.title for p in projects]
+    zone_names = [z['name'] for z in zones['items']]
+    projs_no_zones, projs_w_zones, zones_no_projs = uniques_and_intersection(project_titles, zone_names)
+    report['projects_with_allocations_no_zones'] = projs_no_zones
+    report['zones_with_no_projects'] = zones_no_projs
+    no_group_zones = [z['name'] for z in zones if not z['managing_groups']]
+    report['zones_with_no_groups'] = no_group_zones
+    user_zones = [z for z in zones if z['managing_users']]
+    report['zones_with_users'] = [
+        f'{z["name"]}: {z["managers"]}' for z in user_zones
+    ]
+    print(report)
+    logger.warning(report)
 
 
 class StarFishServer:
