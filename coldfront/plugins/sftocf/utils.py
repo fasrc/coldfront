@@ -81,23 +81,26 @@ def zone_report():
 
     # get all projects with at least one storage allocation
     projects = Project.objects.filter(
-        allocations__status__name__in=['Active'],
-        allocations__resources__resource_type__name='Storage'
+        allocation__status__name__in=['Active'],
+        allocation__resources__resource_type__name='Storage'
     ).distinct()
     # check which of these projects have zones
     project_titles = [p.title for p in projects]
-    zone_names = [z['name'] for z in zones['items']]
+    zone_names = [z['name'] for z in zones]
     projs_no_zones, projs_w_zones, zones_no_projs = uniques_and_intersection(project_titles, zone_names)
     report['projects_with_allocations_no_zones'] = projs_no_zones
     report['zones_with_no_projects'] = zones_no_projs
     no_group_zones = [z['name'] for z in zones if not z['managing_groups']]
     report['zones_with_no_groups'] = no_group_zones
-    user_zones = [z for z in zones if z['managing_users']]
+    user_zones = [z for z in zones if z['managers']]
     report['zones_with_users'] = [
-        f'{z["name"]}: {z["managers"]}' for z in user_zones
+        f'{z['name']}: {z['managers']}' for z in user_zones
     ]
+    report_nums = {k: len(v) for k, v in report.items()}
     print(report)
+    print(report_nums)
     logger.warning(report)
+    logger.warning(report_nums)
 
 
 class StarFishServer:
@@ -152,6 +155,14 @@ class StarFishServer:
         }
         response = return_post_json(url, params=data, headers=self.headers)
         return response
+
+    def zone_from_project(self, project_obj):
+        """Create a zone from a project object"""
+        zone_name = project_obj.title
+        paths = [project_obj.path]
+        managers = [f'{project_obj.pi.email}']
+        managing_groups = [project_obj.title]
+        return self.create_zone(zone_name, paths, managers, managing_groups)
 
     def get_volumes_in_coldfront(self):
         resource_volume_list = [r.name.split('/')[0] for r in Resource.objects.all()]
@@ -828,21 +839,40 @@ class RESTDataPipeline(UsageDataPipelineBase):
         return entries
 
 
-def pull_resource_data():
+def pull_resource_data(source='rest_api'):
     """Pull data from starfish and save to ResourceAttribute objects"""
-    starfish_redash = StarFishRedash(STARFISH_SERVER)
-    volumes = starfish_redash.get_vol_stats()
-    volumes = [
-        {
-            'name': vol['volume_name'],
-            'attrs': {
-                'capacity_tb': vol['capacity_TB'],
-                'free_tb': vol['free_TB'],
-                'file_count': vol['regular_files'],
+    if source == 'rest_api':
+        sf = StarFishServer(STARFISH_SERVER)
+        volumes = sf.get_volume_attributes()
+        volumes = [
+            {
+                'name': vol['vol'],
+                'attrs': {
+                    'capacity_tb': vol['total_capacity']/(1024**4),
+                    'free_tb': vol['free_space']/(1024**4),
+                    'file_count': vol['number_of_files'],
+                }
             }
-        }
-        for vol in volumes
-    ]
+            for vol in volumes
+        ]
+
+    elif source == 'redash':
+        sf = StarFishRedash(STARFISH_SERVER)
+        volumes = sf.get_vol_stats()
+        volumes = [
+            {
+                'name': vol['volume_name'],
+                'attrs': {
+                    'capacity_tb': vol['capacity_TB'],
+                    'free_tb': vol['free_TB'],
+                    'file_count': vol['regular_files'],
+                }
+            }
+            for vol in volumes
+        ]
+    else:
+        raise ValueError('source must be "rest_api" or "redash"')
+
     # collect user and lab counts, allocation sizes for each volume
     res_attr_types = ResourceAttributeType.objects.all()
 
@@ -850,8 +880,9 @@ def pull_resource_data():
         resource = Resource.objects.get(name__contains=volume['name'])
 
         for attr_name, attr_val in volume['attrs'].items():
-            attr_type_obj = res_attr_types.get(name=attr_name)
-            resource.resourceattribute_set.update_or_create(
-                resource_attribute_type=attr_type_obj,
-                defaults={'value': attr_val}
-            )
+            if attr_val:
+                attr_type_obj = res_attr_types.get(name=attr_name)
+                resource.resourceattribute_set.update_or_create(
+                    resource_attribute_type=attr_type_obj,
+                    defaults={'value': attr_val}
+                )
