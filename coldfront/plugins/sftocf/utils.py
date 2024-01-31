@@ -1,12 +1,15 @@
 import re
+import operator
 from operator import itemgetter
 from itertools import groupby
+from functools import reduce
 import time
 import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 
 import requests
+from django.db.models import Q
 from django.utils import timezone
 
 from coldfront.core.utils.common import (
@@ -52,13 +55,6 @@ def record_process(func):
     return call
 
 
-# Define filter for allocations to be slated for collection here as you see fit
-ALLOCATIONS_FOR_COLLECTION = Allocation.objects.filter(
-    status__name__in=['Active'],
-    resources__resource_type__name='Storage'
-)
-
-
 def zone_report():
     """Check of SF zone alignment with pipeline specs.
     Report on:
@@ -82,6 +78,7 @@ def zone_report():
     # get all projects with at least one storage allocation
     projects = Project.objects.filter(
         allocation__status__name__in=['Active'],
+        allocation__resources__in=server.get_corresponding_coldfront_resources(),
         allocation__resources__resource_type__name='Storage'
     ).distinct()
     # check which of these projects have zones
@@ -94,13 +91,12 @@ def zone_report():
     report['zones_with_no_groups'] = no_group_zones
     user_zones = [z for z in zones if z['managers']]
     report['zones_with_users'] = [
-        f'{z['name']}: {z['managers']}' for z in user_zones
+        f"{z['name']}: {z['managers']}" for z in user_zones
     ]
     report_nums = {k: len(v) for k, v in report.items()}
-    print(report)
-    print(report_nums)
-    logger.warning(report)
-    logger.warning(report_nums)
+    for r in [report, report_nums]:
+        print(r)
+        logger.warning(r)
 
 
 class StarFishServer:
@@ -133,9 +129,8 @@ class StarFishServer:
     def get_volume_names(self):
         """Generate a list of the volumes available on the server.
         """
-        url = self.api_url + 'storage/'
-        response = return_get_json(url, self.headers)
-        volnames = [i['name'] for i in response['items']]
+        response = self.get_volume_attributes()
+        volnames = [i['vol'] for i in response]
         return volnames
 
     def get_zones(self, zone_id=''):
@@ -150,19 +145,37 @@ class StarFishServer:
         data = {
             "name": zone_name,
             "paths": paths,
-            "managers": managers,
+        #    "managers": managers,
             "managing_groups": managing_groups,
         }
-        response = return_post_json(url, params=data, headers=self.headers)
+        print(data)
+        response = return_post_json(url, data=data, headers=self.headers)
+        print(response)
+        if response['status_code'] == 409:
+            print('409', response['error'],response['error_message'])
+        elif response['status_code'] == 400:
+            print('400', response['error'],response['error_message'])
         return response
 
     def zone_from_project(self, project_obj):
         """Create a zone from a project object"""
         zone_name = project_obj.title
-        paths = [project_obj.path]
-        managers = [f'{project_obj.pi.email}']
-        managing_groups = [project_obj.title]
+        paths = [
+            f"{a.resources.first().name.split('/')[0]}:{a.path}" for a in project_obj.allocation_set.filter(
+                status__name='Active',
+                resources__resource_type__name='Storage',
+                resources__in=self.get_corresponding_coldfront_resources()
+            )
+        ]
+        managers = [f'{project_obj.pi.username}']
+        managing_groups = {'groupname': project_obj.title}
         return self.create_zone(zone_name, paths, managers, managing_groups)
+
+    def get_corresponding_coldfront_resources(self):
+        resources = Resource.objects.filter(
+            reduce(operator.or_,(Q(name__contains=x) for x in self.volumes))
+        )
+        return resources
 
     def get_volumes_in_coldfront(self):
         resource_volume_list = [r.name.split('/')[0] for r in Resource.objects.all()]
@@ -281,6 +294,14 @@ class StarFishRedash:
         self.base_url = f'https://{server_name}.rc.fas.harvard.edu/redash/api/'
         self.queries = import_from_settings('REDASH_API_KEYS')
 
+    def get_corresponding_coldfront_resources(self):
+        volumes = [r['volume_name'] for r in self.get_vol_stats()]
+        resources = Resource.objects.filter(
+            reduce(operator.or_,(Q(name__contains=x) for x in volumes))
+        )
+        return resources
+
+
     def submit_query(self, queryname):
         """submit a query and return a json of the results.
         """
@@ -366,8 +387,8 @@ def return_get_json(url, headers):
     response = requests.get(url, headers=headers)
     return response.json()
 
-def return_post_json(url, params=None, headers=None):
-    response = requests.post(url, params=params, headers=headers)
+def return_post_json(url, params=None, data=None, headers=None):
+    response = requests.post(url, params=params, json=data, headers=headers)
     return response.json()
 
 def generate_headers(token):
@@ -473,8 +494,16 @@ class UsageDataPipelineBase:
     """Base class for usage data pipeline classes."""
 
     def __init__(self, volume=None):
-        self.volume = volume
-        self.resource_volumes = None
+        self.connection_obj = self.return_connection_obj()
+        if volume:
+            self.volumes = [volume]
+        else:
+            self.volumes = self.connection_obj.get_corresponding_coldfront_resources()
+
+        self.allocations = Allocation.objects.filter(
+            status__name__in=['Active', 'New', 'Updated', 'Ready for Review'],
+            resources__in=self.volumes
+        )
         self.connection_obj = self.return_connection_obj()
         # self.collection_filter = self.set_collection_parameters()
         self.sf_user_data = self.collect_sf_user_data()
@@ -502,11 +531,7 @@ class UsageDataPipelineBase:
 
         # limit allocations to those in the volumes collected
         vols_collected = {e['volume'] for e in self.sf_usage_data}
-        searched_resources = [Resource.objects.get(name__contains=vol) for vol in vols_collected]
-        allocations = Allocation.objects.filter(
-            resources__in=searched_resources,
-            status__name__in=['Active', 'New', 'Updated', 'Ready for Review']
-        ).prefetch_related('project','allocationattribute_set', 'allocationuser_set')
+        allocations = self.allocations.prefetch_related('project','allocationattribute_set', 'allocationuser_set')
         allocationquerymatch_objects = match_allocations_with_usage_entries(
             allocations, self.sf_user_data, self.sf_usage_data
         )
@@ -645,6 +670,7 @@ class RESTDataPipeline(UsageDataPipelineBase):
     def return_connection_obj(self):
         return StarFishServer()
 
+
     @record_process
     def produce_lab_dict(self):
         """Create dict of lab/volume combinations to collect and the volumes associated with them.
@@ -658,7 +684,7 @@ class RESTDataPipeline(UsageDataPipelineBase):
             Structured as follows:
             'lab_name': [('volume', 'path'), ('volume', 'path')]
         """
-        pr_objs = ALLOCATIONS_FOR_COLLECTION.only('id', 'project')
+        pr_objs = self.allocations.only('id', 'project')
         labs_resources = {allocation.project.title: [] for allocation in pr_objs}
         for allocation in pr_objs:
             proj_name = allocation.project.title
@@ -666,9 +692,11 @@ class RESTDataPipeline(UsageDataPipelineBase):
             if resource:
                 vol_name = resource.name.split('/')[0]
             else:
-                print("no resource for allocation owned by", proj_name)
+                message = f'no resource for allocation owned by {proj_name}'
+                print(message)
+                logger.error(message)
                 continue
-            if self.volume and resource != self.volume:
+            if resource not in self.volumes:
                 continue
             if allocation.path:
                 labs_resources[proj_name].append((vol_name, allocation.path))
