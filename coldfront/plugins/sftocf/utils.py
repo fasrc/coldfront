@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 import requests
+from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
@@ -99,6 +100,17 @@ def zone_report():
         logger.warning(r)
 
 
+def add_zone_group_to_ad(group_name):
+    if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
+        ldap_conn = LDAPConn()
+        try:
+            ldap_conn.add_group_to_group(group_name, 'starfish_users')
+        except Exception as e:
+            error = f"Error adding {group_name} to starfish_users: {e}"
+            print(error)
+            logger.warning(error)
+
+
 class StarFishServer:
     """Class for interacting with StarFish REST API.
     """
@@ -134,7 +146,8 @@ class StarFishServer:
         return volnames
 
     def get_zones(self, zone_id=''):
-        """Get all zones from the API, or the zone with the corresponding ID"""
+        """Get all zones from the API, or the zone with the corresponding ID
+        """
         url = self.api_url + f'zone/{zone_id}'
         response = return_get_json(url, self.headers)
         return response
@@ -166,6 +179,9 @@ class StarFishServer:
             data['managers'] = managers
         if managing_groups:
             data['managing_groups'] = managing_groups
+            for group in managing_groups:
+                print(group)
+                add_zone_group_to_ad(group['groupname'])
         response = return_put_json(url, data=data, headers=self.headers)
         if response['status_code'] != 201:
             print('Error updating zone:', response)
@@ -184,14 +200,7 @@ class StarFishServer:
         ]
         managers = [f'{project_obj.pi.username}']
         managing_groups = {'groupname': project_obj.title}
-        if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
-            ldap_conn = LDAPConn()
-            try:
-                ldap_conn.add_group_to_group(project_obj.title, 'starfish_users')
-            except Exception as e:
-                error = f"Error adding {project_obj.title} to starfish_users: {e}"
-                print(error)
-                logger.warning(error)
+        add_zone_group_to_ad(project_obj.title)
         return self.create_zone(zone_name, paths, managers, managing_groups)
 
     def get_corresponding_coldfront_resources(self):
@@ -217,7 +226,7 @@ class StarFishServer:
     def get_scans(self):
         """Collect scans of all volumes in Coldfront
         """
-        volumes = '&'.join([f'volume={volume}' for volume in self.get_volumes_in_coldfront()])
+        volumes = '&'.join([f'volume={v}' for v in self.get_volumes_in_coldfront()])
         url = self.api_url + 'scan/?' + volumes
         response_raw = requests.get(url, headers=self.headers)
         response = response_raw.json()
