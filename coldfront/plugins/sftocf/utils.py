@@ -30,9 +30,11 @@ from coldfront.core.allocation.models import (
     AllocationAttributeUsage,
     AllocationUserStatusChoice,
 )
+if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
+    from coldfront.plugins.ldap.utils import LDAPConn
 
 DATESTR = datetime.today().strftime('%Y%m%d')
-DATAPATH = "./coldfront/plugins/sftocf/data/"
+DATAPATH = './coldfront/plugins/sftocf/data/'
 STARFISH_SERVER = import_from_settings('STARFISH_SERVER', 'starfish')
 
 logger = logging.getLogger(__name__)
@@ -76,9 +78,8 @@ def zone_report():
 
     # get all projects with at least one storage allocation
     projects = Project.objects.filter(
-        allocation__status__name__in=['Active'],
+        allocation__status__name__in=['Active', 'New', 'Updated', 'Ready for Review'],
         allocation__resources__in=server.get_corresponding_coldfront_resources(),
-        allocation__resources__resource_type__name='Storage'
     ).distinct()
     # check which of these projects have zones
     project_titles = [p.title for p in projects]
@@ -133,7 +134,7 @@ class StarFishServer:
         return volnames
 
     def get_zones(self, zone_id=''):
-        """Get all zones from the API, or one specific zone if an ID is provided"""
+        """Get all zones from the API, or the zone with the corresponding ID"""
         url = self.api_url + f'zone/{zone_id}'
         response = return_get_json(url, self.headers)
         return response
@@ -175,14 +176,22 @@ class StarFishServer:
         """Create a zone from a project object"""
         zone_name = project_obj.title
         paths = [
-            f"{a.resources.first().name.split('/')[0]}:{a.path}" for a in project_obj.allocation_set.filter(
-                status__name='Active',
-                resources__resource_type__name='Storage',
+            f"{a.resources.first().name.split('/')[0]}:{a.path}"
+            for a in project_obj.allocation_set.filter(
+                status__name__in=['Active', 'New', 'Updated', 'Ready for Review'],
                 resources__in=self.get_corresponding_coldfront_resources()
             )
         ]
         managers = [f'{project_obj.pi.username}']
         managing_groups = {'groupname': project_obj.title}
+        if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
+            ldap_conn = LDAPConn()
+            try:
+                ldap_conn.add_group_to_group(project_obj.title, 'starfish_users')
+            except Exception as e:
+                error = f"Error adding {project_obj.title} to starfish_users: {e}"
+                print(error)
+                logger.warning(error)
         return self.create_zone(zone_name, paths, managers, managing_groups)
 
     def get_corresponding_coldfront_resources(self):
