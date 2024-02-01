@@ -159,35 +159,34 @@ class LDAPConn:
             raise ValueError("no groups returned")
         return group[0]
 
-    def add_member_to_group(self, user_name, group_name):
-        # get group
+    def add_user_to_group(self, user_name, group_name):
         group = self.return_group_by_name(group_name)
-        # get user
-        try:
-            user = self.return_user_by_name(user_name)
-        except ValueError as e:
-            raise e
+        user = self.return_user_by_name(user_name)
+        self.add_member_to_group(user, group)
+
+    def add_group_to_group(self, group_name, parent_group_name):
+        group = self.return_group_by_name(group_name)
+        parent_group = self.return_group_by_name(parent_group_name)
+        self.add_member_to_group(group, parent_group)
+
+    def add_member_to_group(self, member, group):
         group_dn = group['distinguishedName']
-        user_dn = user['distinguishedName']
+        member_dn = member['distinguishedName']
         try:
-            result = ad_add_members_to_groups(self.conn, [user_dn], group_dn, fix=True)
+            result = ad_add_members_to_groups(
+                self.conn, [member_dn], group_dn, fix=True)
         except Exception as e:
             raise e
         return result
 
     def remove_member_from_group(self, user_name, group_name):
         # get group
-        try:
-            group = self.return_group_by_name(group_name)
-        except ValueError as e:
-            raise e
+        group = self.return_group_by_name(group_name)
         # get user
-        try:
-            user = self.return_user_by_name(user_name)
-        except ValueError as e:
-            raise e
+        user = self.return_user_by_name(user_name)
         if user['gidNumber'] == group['gidNumber']:
-            raise ValueError("group is user's primary group - please contact FASRC support to remove this user from your group.")
+            raise ValueError(
+                "Group is user's primary group. Please contact FASRC support to remove this user from your group.")
         group_dn = group['distinguishedName']
         user_dn = user['distinguishedName']
         try:
