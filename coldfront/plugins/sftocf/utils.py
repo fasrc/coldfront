@@ -1,4 +1,3 @@
-import re
 import operator
 from operator import itemgetter
 from itertools import groupby
@@ -84,7 +83,7 @@ def zone_report():
     # check which of these projects have zones
     project_titles = [p.title for p in projects]
     zone_names = [z['name'] for z in zones]
-    projs_no_zones, projs_w_zones, zones_no_projs = uniques_and_intersection(project_titles, zone_names)
+    projs_no_zones, _, zones_no_projs = uniques_and_intersection(project_titles, zone_names)
     report['projects_with_allocations_no_zones'] = projs_no_zones
     report['zones_with_no_projects'] = zones_no_projs
     no_group_zones = [z['name'] for z in zones if not z['managing_groups']]
@@ -151,10 +150,25 @@ class StarFishServer:
         print(data)
         response = return_post_json(url, data=data, headers=self.headers)
         print(response)
-        if response['status_code'] == 409:
-            print('409', response['error'],response['error_message'])
-        elif response['status_code'] == 400:
-            print('400', response['error'],response['error_message'])
+        if response['status_code'] != 201:
+            print('Error creating zone:', response)
+            raise Exception('Error creating zone:', response)
+        return response
+
+    def update_zone(self, zone_id, paths=None, managers=None, managing_groups=None):
+        """Update a zone via the API"""
+        url = self.api_url + f'zone/{zone_id}/'
+        data = {}
+        if paths:
+            data['paths'] = paths
+        if managers:
+            data['managers'] = managers
+        if managing_groups:
+            data['managing_groups'] = managing_groups
+        response = return_put_json(url, data=data, headers=self.headers)
+        if response['status_code'] != 201:
+            print('Error updating zone:', response)
+            raise Exception('Error updating zone:', response)
         return response
 
     def zone_from_project(self, project_obj):
@@ -301,7 +315,6 @@ class StarFishRedash:
         )
         return resources
 
-
     def submit_query(self, queryname):
         """submit a query and return a json of the results.
         """
@@ -317,7 +330,7 @@ class StarFishRedash:
             k.replace(' ', '_').replace('(','').replace(')','') : v for k, v in d.items()
         } for d in result]
         resource_names = [
-            re.sub(r'\/.+','',n) for n in Resource.objects.values_list('name',flat=True)
+            n.split('/')[0] for n in Resource.objects.values_list('name',flat=True)
         ]
         result = [r for r in result if r['volume_name'] in resource_names]
         return result
@@ -387,6 +400,10 @@ def return_get_json(url, headers):
     response = requests.get(url, headers=headers)
     return response.json()
 
+def return_put_json(url, data, headers):
+    response = requests.put(url, json=data, headers=headers)
+    return response.json()
+
 def return_post_json(url, params=None, data=None, headers=None):
     response = requests.post(url, params=params, json=data, headers=headers)
     return response.json()
@@ -394,11 +411,7 @@ def return_post_json(url, params=None, data=None, headers=None):
 def generate_headers(token):
     """Generate 'headers' attribute by using the 'token' attribute.
     """
-    headers = {
-        'accept': 'application/json',
-        'Authorization': 'Bearer {}'.format(token),
-    }
-    return headers
+    return {'accept': 'application/json', 'Authorization': f'Bearer {token}'}
 
 
 class AllocationQueryMatch:
@@ -504,7 +517,6 @@ class UsageDataPipelineBase:
             status__name__in=['Active', 'New', 'Updated', 'Ready for Review'],
             resources__in=self.volumes
         )
-        self.connection_obj = self.return_connection_obj()
         # self.collection_filter = self.set_collection_parameters()
         self.sf_user_data = self.collect_sf_user_data()
         self.sf_usage_data = self.collect_sf_usage_data()
@@ -530,7 +542,6 @@ class UsageDataPipelineBase:
         logger.debug('allocation_usage:\n%s', self.sf_usage_data)
 
         # limit allocations to those in the volumes collected
-        vols_collected = {e['volume'] for e in self.sf_usage_data}
         allocations = self.allocations.prefetch_related('project','allocationattribute_set', 'allocationuser_set')
         allocationquerymatch_objects = match_allocations_with_usage_entries(
             allocations, self.sf_user_data, self.sf_usage_data
@@ -642,10 +653,8 @@ class RedashDataPipeline(UsageDataPipelineBase):
 
     def collect_sf_user_data(self):
         """Collect starfish data using the Redash API. Return the results."""
-        # 1. grab data from redash
-        resource_volume_list = [r.name.split('/')[0] for r in Resource.objects.all()]
         user_usage = self.connection_obj.return_query_results(
-            query='path_usage_query', volumes=resource_volume_list
+            query='path_usage_query', volumes=self.volumes
         )
         for d in user_usage:
             d['username'] = d.pop('user_name')
@@ -654,9 +663,8 @@ class RedashDataPipeline(UsageDataPipelineBase):
         return user_usage
 
     def collect_sf_usage_data(self):
-        resource_volume_list = [r.name.split('/')[0] for r in Resource.objects.all()]
         allocation_usage = self.connection_obj.return_query_results(
-            query='subdirectory', volumes=resource_volume_list
+            query='subdirectory', volumes=self.volumes
         )
         for d in allocation_usage:
             d['username'] = d.pop('user_name')
@@ -724,7 +732,7 @@ class RESTDataPipeline(UsageDataPipelineBase):
         filepaths = []
         to_collect = []
         labs_resources = [(l, res) for l, r in lr.items() for res in r]
-        logger.debug("labs_resources:%s", labs_resources)
+        logger.debug('labs_resources:%s', labs_resources)
 
         yesterdaystr = (datetime.today()-timedelta(1)).strftime("%Y%m%d")
         dates = [yesterdaystr, DATESTR]
@@ -768,7 +776,7 @@ class RESTDataPipeline(UsageDataPipelineBase):
         for volume in vols:
             # volumepath = svp["volumes"][volume]
             projects = [t for t in to_collect if t[1] == volume]
-            logger.debug("vol: %s\nto_collect_subset: %s", volume, projects)
+            logger.debug('vol: %s\nto_collect_subset: %s', volume, projects)
 
             ### OLD METHOD ###
             for tup in projects:
@@ -825,9 +833,9 @@ class RESTDataPipeline(UsageDataPipelineBase):
         items_to_remove = ['size_sum_hum', 'rec_aggrs', 'physical_nlinks_size_sum',
             'physical_nlinks_size_sum_hum', 'volume_display_name', 'count', 'fn']
         for volume in vols:
-            volumepath = svp["volumes"][volume]
+            volumepath = svp['volumes'][volume]
             projects = [t for t in lab_res if t[1] == volume]
-            logger.debug("vol: %s\nto_collect_subset: %s", volume, projects)
+            logger.debug('vol: %s\nto_collect_subset: %s', volume, projects)
 
             ### OLD METHOD ###
             for tup in projects:
