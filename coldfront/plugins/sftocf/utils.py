@@ -106,6 +106,8 @@ def add_zone_group_to_ad(group_name):
         try:
             ldap_conn.add_group_to_group(group_name, 'starfish_users')
         except Exception as e:
+            # no exception if group is already present
+            # exception if group doesn't exist
             error = f"Error adding {group_name} to starfish_users: {e}"
             print(error)
             logger.warning(error)
@@ -152,6 +154,11 @@ class StarFishServer:
         response = return_get_json(url, self.headers)
         return response
 
+    def get_zone_by_name(self, zone_name):
+        """Get a zone by name"""
+        zones = self.get_zones()
+        return next((z for z in zones if z['name'] == zone_name), None)
+
     def create_zone(self, zone_name, paths, managers, managing_groups):
         """Create a zone via the API"""
         url = self.api_url + 'zone/'
@@ -185,6 +192,8 @@ class StarFishServer:
         response = return_put_json(url, data=data, headers=self.headers)
         if response['status_code'] != 201:
             print('Error updating zone:', response)
+            if response['status_code'] == 400 and response['error'] == 'schema-data-not-valid':
+                logger.error('Reexamine your schema data: %s', data)
             raise Exception('Error updating zone:', response)
         return response
 
