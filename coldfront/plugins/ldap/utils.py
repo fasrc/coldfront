@@ -12,7 +12,9 @@ from ldap3 import Connection, Server, ALL_ATTRIBUTES
 from ldap3.extend.microsoft.addMembersToGroups import ad_add_members_to_groups
 from ldap3.extend.microsoft.removeMembersFromGroups import ad_remove_members_from_groups
 
-from coldfront.core.utils.common import import_from_settings
+from coldfront.core.utils.common import (
+    import_from_settings, uniques_and_intersection
+)
 from coldfront.core.field_of_science.models import FieldOfScience
 from coldfront.core.utils.fasrc import (
     id_present_missing_users,
@@ -32,8 +34,7 @@ logger = logging.getLogger(__name__)
 username_ignore_list = import_from_settings('username_ignore_list', [])
 
 class LDAPConn:
-    """
-    LDAP connection object
+    """LDAP connection object
     """
     def __init__(self, test=False):
 
@@ -325,13 +326,6 @@ def format_template_assertions(attr_search_dict, search_operator='and'):
     if len(filter_template_vars) > 1:
         search_filter = f'({match_operator[search_operator]}'+search_filter+')'
     return search_filter
-
-def uniques_and_intersection(list1, list2):
-    intersection = list(set(list1) & set(list2))
-    list1_unique = list(set(list1) - set(list2))
-    list2_unique = list(set(list2) - set(list1))
-    return (list1_unique, intersection, list2_unique)
-
 
 def is_string(value):
     return isinstance(value, str)

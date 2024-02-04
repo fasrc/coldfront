@@ -99,6 +99,27 @@ def zone_report():
         print(r)
         logger.warning(r)
 
+def allocation_to_zone(allocation):
+    """
+    1. Check whether the allocation is in Starfish
+    2. If so, check whether a zone exists for the allocation's project.
+    3. If not, create a zone for the allocation's project.
+    4. Add the allocation to the zone.
+    """
+    server = StarFishServer(STARFISH_SERVER)
+    resource = allocation.resources.first()
+    if not any(sf_res in resource.title for sf_res in server.volumes):
+        return None
+    project = allocation.project
+    zone = server.get_zone_by_name(project.title)
+    if zone:
+        zone_paths = zone['paths']
+        new_path = f"{allocation.resources.first().name.split('/')[0]}:{allocation.path}"
+        zone_paths.append(new_path)
+        zone.update_zone(paths=zone_paths)
+    else:
+        zone = server.zone_from_project(project.title)
+    return zone
 
 def add_zone_group_to_ad(group_name):
     if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
@@ -176,8 +197,9 @@ class StarFishServer:
             raise Exception('Error creating zone:', response)
         return response
 
-    def update_zone(self, zone_id, paths=None, managers=None, managing_groups=None):
+    def update_zone(self, zone_name, paths=None, managers=None, managing_groups=None):
         """Update a zone via the API"""
+        zone_id = self.get_zone_by_name(zone_name)['id']
         url = self.api_url + f'zone/{zone_id}/'
         data = {}
         if paths:
