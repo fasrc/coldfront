@@ -207,7 +207,7 @@ class StarFishServer:
         print(data)
         response = return_post_json(url, data=data, headers=self.headers)
         print(response)
-        if response['status_code'] != 201:
+        if response['status_code'] not in [200, 201]:
             print('Error creating zone:', response)
             raise ZoneCreationError('Error creating zone:', response)
         return response
@@ -225,7 +225,7 @@ class StarFishServer:
         """Update a zone via the API"""
         zone_id = self.get_zone_by_name(zone_name)['id']
         url = self.api_url + f'zone/{zone_id}/'
-        data = {}
+        data = {'name':zone_name}
         if paths:
             data['paths'] = paths
         if managers:
@@ -233,15 +233,14 @@ class StarFishServer:
         if managing_groups:
             data['managing_groups'] = managing_groups
             for group in managing_groups:
-                print(group)
                 add_zone_group_to_ad(group['groupname'])
         response = return_put_json(url, data=data, headers=self.headers)
-        if response['status_code'] != 201:
+        if response['status_code'] not in [200, 201]:
             print('Error updating zone:', response)
             if response['status_code'] == 400 and response['error'] == 'schema-data-not-valid':
                 logger.error('Reexamine your schema data: %s', data)
             raise Exception('Error updating zone:', response)
-        return response
+        return response.json()
 
     def zone_from_project(self, project_obj):
         """Create a zone from a project object"""
@@ -475,7 +474,7 @@ def return_get_json(url, headers):
 
 def return_put_json(url, data, headers):
     response = requests.put(url, json=data, headers=headers)
-    return response.json()
+    return response
 
 def return_post_json(url, params=None, data=None, headers=None):
     response = requests.post(url, params=params, json=data, headers=headers)
