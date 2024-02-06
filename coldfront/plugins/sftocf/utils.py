@@ -61,7 +61,7 @@ def zone_report():
     """Check of SF zone alignment with pipeline specs.
     Report on:
         Coldfront projects with storage allocations vs. SF zones
-        AD groups that correspond to SF zones but don't belong to the AD group starfish_groups
+        AD groups corresponding to SF zones that don't belong to AD group starfish_groups
         SF zones have all allocations that correspond to Coldfront project allocations
         SF zones that don’t have groups
         SF zones that have users as opposed to groups
@@ -79,13 +79,14 @@ def zone_report():
 
     # get all projects with at least one storage allocation
     projects = Project.objects.filter(
-        allocation__status__name__in=['Active', 'New', 'Updated', 'Ready for Review'],
+        allocation__status__name__in=['Active', 'Updated', 'Ready for Review'],
         allocation__resources__in=server.get_corresponding_coldfront_resources(),
     ).distinct()
     # check which of these projects have zones
     project_titles = [p.title for p in projects]
     zone_names = [z['name'] for z in zones]
-    projs_no_zones, _, zones_no_projs = uniques_and_intersection(project_titles, zone_names)
+    projs_no_zones, projs_with_zones, zones_no_projs = uniques_and_intersection(project_titles, zone_names)
+    report['projs_with_zones'] = {p['name']:p['id'] for p in [z for z in zones if z['name'] in projs_with_zones]}
     report['projects_with_allocations_no_zones'] = projs_no_zones
     report['zones_with_no_projects'] = zones_no_projs
     no_group_zones = [z['name'] for z in zones if not z['managing_groups']]
@@ -129,10 +130,16 @@ def add_zone_group_to_ad(group_name):
         except Exception as e:
             # no exception if group is already present
             # exception if group doesn't exist
-            error = f"Error adding {group_name} to starfish_users: {e}"
+            error = f'Error adding {group_name} to starfish_users: {e}'
             print(error)
             logger.warning(error)
 
+
+class ZoneCreationError(Exception):
+    pass
+
+class ZoneExistsError(ZoneCreationError):
+    pass
 
 class StarFishServer:
     """Class for interacting with StarFish REST API.
@@ -168,6 +175,13 @@ class StarFishServer:
         volnames = [i['vol'] for i in response]
         return volnames
 
+    def get_groups(self):
+        """get set of group names on starfish"""
+        url = self.api_url + 'mapping/group/'
+        response = return_get_json(url, self.headers)
+        groupnames = {g['name'] for g in response}
+        return groupnames
+
     def get_zones(self, zone_id=''):
         """Get all zones from the API, or the zone with the corresponding ID
         """
@@ -179,6 +193,7 @@ class StarFishServer:
         """Get a zone by name"""
         zones = self.get_zones()
         return next((z for z in zones if z['name'] == zone_name), None)
+
 
     def create_zone(self, zone_name, paths, managers, managing_groups):
         """Create a zone via the API"""
@@ -194,7 +209,16 @@ class StarFishServer:
         print(response)
         if response['status_code'] != 201:
             print('Error creating zone:', response)
-            raise Exception('Error creating zone:', response)
+            raise ZoneCreationError('Error creating zone:', response)
+        return response
+
+    def delete_zone(self, zone_name, zone_id=None):
+        """Delete a zone via the API"""
+        if not zone_id:
+            zone = self.get_zone_by_name(zone_name)
+            zone_id = zone['id']
+        url = self.api_url + f'zone/{zone_id}'
+        response = requests.delete(url, headers=self.headers)
         return response
 
     def update_zone(self, zone_name, paths=None, managers=None, managing_groups=None):
