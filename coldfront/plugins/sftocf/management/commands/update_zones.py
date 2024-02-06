@@ -11,6 +11,8 @@
     - If the project no longer has any active allocations on Starfish, remove the zone
 """
 import logging
+from requests.exceptions import HTTPError
+
 from django.core.management.base import BaseCommand
 
 from coldfront.core.project.models import Project, ProjectAttributeType
@@ -31,11 +33,14 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
+        if dry_run:
+            print("DRY RUN")
 
         report = {
             'dry_run': dry_run,
             'deleted_zones': [],
             'created_zones': [],
+            'allocations_missing_paths': [],
             'updated_zone_paths': [],
             'updated_zone_groups': []
         }
@@ -50,18 +55,19 @@ class Command(BaseCommand):
 
         # also confirm that the projects are available as groups in Starfish
         projects_with_allocations = projects_with_allocations.filter(
-            ad_group__in=sf.get_groups(),
+            title__in=sf.get_groups(),
         )
 
         projects_with_zones = projects_with_allocations.filter(
-            projectattribute__proj_attr_type__name='Starfish Zone',
+            projectattribute__proj_attr_type=starfish_zone_attr_type,
         )
         # for the projects that do have zones, ensure that its zone:
+        sf_cf_vols = sf.get_volumes_in_coldfront()
         for project in projects_with_zones:
             zone_id = project.projectattribute_set.get(
                 proj_attr_type__name='Starfish Zone',
             ).value
-            zone = sf.get_zone(zone_id)
+            zone = sf.get_zones(zone_id)
 
             # has all the allocation paths associated with the project
             update_paths = zone['paths']
@@ -69,7 +75,18 @@ class Command(BaseCommand):
                 status__name='Active',
                 resources__in=sf.get_corresponding_coldfront_resources(),
             )
-            paths = [allocation.path for allocation in storage_allocations]
+            zone_paths_not_in_cf = [p for p in zone['paths'] if p.split(':')[0] not in sf_cf_vols]
+            # don't update if any paths are missing
+            missing_paths = False
+            for a in storage_allocations:
+                if a.path == '':
+                    missing_paths = True
+                    report['allocations_missing_paths'].append(a.pk)
+                    logger.error('Allocation %s (%s) is missing a path; cannot update zone until this is fixed',
+                        a.pk, a)
+            if missing_paths:
+                continue
+            paths = [f'{a.resources.first().name.split("/")[0]}:{a.path}' for a in storage_allocations] + zone_paths_not_in_cf
             # delete any zones that have no paths
             if not paths:
                 if not dry_run:
@@ -95,12 +112,12 @@ class Command(BaseCommand):
             zone_group_names = [g['groupname'] for g in zone['managing_groups']]
             if project.title not in zone_group_names:
                 if not dry_run:
-                    update_groups.append({'groupname': project.ad_group})
+                    update_groups.append({'groupname': project.title})
                     sf.update_zone(zone, managing_groups=update_groups)
                 report['updated_zone_groups'].append({
                     'zone': zone['name'],
                     'old_groups': zone_group_names,
-                    'new_groups': zone_group_names + [project.ad_group],
+                    'new_groups': zone_group_names + [project.title],
                 })
                 
         # if project lacks "Starfish Zone" attribute, create or update the zone and save zone id to ProjectAttribute "Starfish Zone"
@@ -111,13 +128,21 @@ class Command(BaseCommand):
             if not dry_run:
                 try:
                     zone = sf.zone_from_project(project)
-                    print(zone)
-                except ZoneCreationError as e:
-                    logger.warning('zone for %s already exists and cannot be created', project.title)
-                    zone = sf.get_zone_by_name(project.title)
-                    print(zone)
-                project.projectattribute_set.create(
+                    report['created_zones'].append(project.title)
+                except HTTPError as e:
+                    if e.response.status_code == '409':
+                        logger.warning('zone for %s already exists; adding zoneid to Project and breaking', project.title)
+                        zone = sf.get_zone_by_name(project.title)
+                    else:
+                        logger.error(
+                            'unclear error prevented creation of zone for project %s. error: %s',
+                            project.title, e
+                        )
+                project.projectattribute_set.get_or_create(
                     proj_attr_type=starfish_zone_attr_type,
                     value=zone['id'],
                 )
-            report['created_zones'].append(project.title)
+            else:
+                report['created_zones'].append(project.title)
+        print(report)
+        logger.warning(report)

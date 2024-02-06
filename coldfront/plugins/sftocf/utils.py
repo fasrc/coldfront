@@ -207,9 +207,6 @@ class StarFishServer:
         print(data)
         response = return_post_json(url, data=data, headers=self.headers)
         print(response)
-        if response['status_code'] not in [200, 201]:
-            print('Error creating zone:', response)
-            raise ZoneCreationError('Error creating zone:', response)
         return response
 
     def delete_zone(self, zone_name, zone_id=None):
@@ -223,24 +220,17 @@ class StarFishServer:
 
     def update_zone(self, zone_name, paths=None, managers=None, managing_groups=None):
         """Update a zone via the API"""
-        zone_id = self.get_zone_by_name(zone_name)['id']
+        zone_data = self.get_zone_by_name(zone_name)
+        zone_id = zone_data['id']
         url = self.api_url + f'zone/{zone_id}/'
-        data = {'name':zone_name}
-        if paths:
-            data['paths'] = paths
-        if managers:
-            data['managers'] = managers
-        if managing_groups:
-            data['managing_groups'] = managing_groups
-            for group in managing_groups:
-                add_zone_group_to_ad(group['groupname'])
+        data = {'name': zone_name}
+        data['paths'] = paths if paths else zone_data['paths']
+        data['managers'] = managers if managers else zone_data['managers']
+        data['managing_groups'] = managing_groups if managing_groups else zone_data['managing_groups']
+        for group in managing_groups:
+            add_zone_group_to_ad(group['groupname'])
         response = return_put_json(url, data=data, headers=self.headers)
-        if response['status_code'] not in [200, 201]:
-            print('Error updating zone:', response)
-            if response['status_code'] == 400 and response['error'] == 'schema-data-not-valid':
-                logger.error('Reexamine your schema data: %s', data)
-            raise Exception('Error updating zone:', response)
-        return response.json()
+        return response
 
     def zone_from_project(self, project_obj):
         """Create a zone from a project object"""
@@ -251,9 +241,10 @@ class StarFishServer:
                 status__name__in=['Active', 'New', 'Updated', 'Ready for Review'],
                 resources__in=self.get_corresponding_coldfront_resources()
             )
+            if a.path
         ]
         managers = [f'{project_obj.pi.username}']
-        managing_groups = {'groupname': project_obj.title}
+        managing_groups = [{'groupname': project_obj.title}]
         add_zone_group_to_ad(project_obj.title)
         return self.create_zone(zone_name, paths, managers, managing_groups)
 
@@ -474,10 +465,12 @@ def return_get_json(url, headers):
 
 def return_put_json(url, data, headers):
     response = requests.put(url, json=data, headers=headers)
-    return response
+    response.raise_for_status()
+    return response.json()
 
 def return_post_json(url, params=None, data=None, headers=None):
     response = requests.post(url, params=params, json=data, headers=headers)
+    response.raise_for_status()
     return response.json()
 
 def generate_headers(token):
