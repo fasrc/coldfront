@@ -227,9 +227,7 @@ We do not have information about your research. Please provide a detailed descri
         Returns:
             str: value of the first attribute found for this project with the specified name
         """
-
-        attr = self.projectattribute_set.filter(
-            project_attribute_type__name=name).first()
+        attr = self.projectattribute_set.filter(proj_attr_type__name=name).first()
         if attr:
             return attr.value
         return None
@@ -242,8 +240,7 @@ We do not have information about your research. Please provide a detailed descri
         Returns:
             list: the list of values of the attributes found with specified name
         """
-
-        attr = self.projectattribute_set.filter(project_attribute_type__name=name)
+        attr = self.projectattribute_set.filter(proj_attr_type__name=name)
         return [a.value for a in attr]
 
     def __str__(self):
