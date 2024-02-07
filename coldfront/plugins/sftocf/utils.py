@@ -135,12 +135,6 @@ def add_zone_group_to_ad(group_name):
             logger.warning(error)
 
 
-class ZoneCreationError(Exception):
-    pass
-
-class ZoneExistsError(ZoneCreationError):
-    pass
-
 class StarFishServer:
     """Class for interacting with StarFish REST API.
     """
@@ -198,18 +192,21 @@ class StarFishServer:
     def create_zone(self, zone_name, paths, managers, managing_groups):
         """Create a zone via the API"""
         url = self.api_url + 'zone/'
+        zone_paths = paths if paths else []
+        zone_managers = managers if managers else []
+        zone_managing_groups = managing_groups if managing_groups else []
         data = {
             "name": zone_name,
-            "paths": paths,
-        #    "managers": managers,
-            "managing_groups": managing_groups,
+            "paths": zone_paths,
+            "managers": zone_managers,
+            "managing_groups": zone_managing_groups,
         }
-        print(data)
+        logger.debug(data)
         response = return_post_json(url, data=data, headers=self.headers)
-        print(response)
+        logger.debug(response)
         return response
 
-    def delete_zone(self, zone_name, zone_id=None):
+    def delete_zone(self, zone_id, zone_name=None):
         """Delete a zone via the API"""
         if not zone_id:
             zone = self.get_zone_by_name(zone_name)

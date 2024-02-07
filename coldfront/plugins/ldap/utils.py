@@ -341,7 +341,7 @@ def sort_dict_on_conditional(dict1, condition):
 def cleaned_membership_query(proj_membs_mans):
     search_errors, proj_membs_mans = sort_dict_on_conditional(proj_membs_mans, is_string)
     if search_errors:
-        logger.error('could not return members and manager for some groups:\n%s',
+        logger.error('could not return members and manager for some groups: %s',
                         search_errors)
     return proj_membs_mans, search_errors
 

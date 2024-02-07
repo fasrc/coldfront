@@ -16,9 +16,7 @@ from requests.exceptions import HTTPError
 from django.core.management.base import BaseCommand
 
 from coldfront.core.project.models import Project, ProjectAttributeType
-from coldfront.plugins.sftocf.utils import (
-    StarFishServer, ZoneCreationError,
-)
+from coldfront.plugins.sftocf.utils import StarFishServer
 
 logger = logging.getLogger(__name__)
 class Command(BaseCommand):
@@ -90,7 +88,7 @@ class Command(BaseCommand):
             # delete any zones that have no paths
             if not paths:
                 if not dry_run:
-                    sf.delete_zone(zone['name'])
+                    sf.delete_zone(zone['id'])
                     # delete projectattribute
                     project.projectattribute_set.get(
                         proj_attr_type=starfish_zone_attr_type,
@@ -130,7 +128,7 @@ class Command(BaseCommand):
                     zone = sf.zone_from_project(project)
                     report['created_zones'].append(project.title)
                 except HTTPError as e:
-                    if e.response.status_code == '409':
+                    if e.response.status_code == 409:
                         logger.warning('zone for %s already exists; adding zoneid to Project and breaking', project.title)
                         zone = sf.get_zone_by_name(project.title)
                     else:
