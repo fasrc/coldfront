@@ -133,6 +133,7 @@ def add_zone_group_to_ad(group_name):
             error = f'Error adding {group_name} to starfish_users: {e}'
             print(error)
             logger.warning(error)
+            raise
 
 
 class StarFishServer:
@@ -192,14 +193,11 @@ class StarFishServer:
     def create_zone(self, zone_name, paths, managers, managing_groups):
         """Create a zone via the API"""
         url = self.api_url + 'zone/'
-        zone_paths = paths if paths else []
-        zone_managers = managers if managers else []
-        zone_managing_groups = managing_groups if managing_groups else []
         data = {
             "name": zone_name,
-            "paths": zone_paths,
-            "managers": zone_managers,
-            "managing_groups": zone_managing_groups,
+            "paths": paths,
+            "managers": managers,
+            "managing_groups": managing_groups,
         }
         logger.debug(data)
         response = return_post_json(url, data=data, headers=self.headers)
@@ -243,7 +241,7 @@ class StarFishServer:
         managers = [f'{project_obj.pi.username}']
         managing_groups = [{'groupname': project_obj.title}]
         add_zone_group_to_ad(project_obj.title)
-        return self.create_zone(zone_name, paths, managers, managing_groups)
+        return self.create_zone(zone_name, paths, [], managing_groups)
 
     def get_corresponding_coldfront_resources(self):
         resources = Resource.objects.filter(
