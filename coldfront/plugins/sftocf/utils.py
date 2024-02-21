@@ -320,7 +320,7 @@ class StarFishServer:
         subpaths = [i['Basename'] for i in pathdicts]
         return subpaths
 
-    def create_query(self, query, group_by, volpath, sec=3, qformat='parent_path +aggrs.by_uid'):
+    def create_query(self, query, group_by, volpath, qformat='parent_path +aggrs.by_uid'):
         """Produce a Query class object.
         Parameters
         ----------
@@ -334,13 +334,13 @@ class StarFishServer:
         query : Query class object
         """
         query = AsyncQuery(
-            self.headers, self.api_url, query, group_by, volpath, sec=sec, qformat=qformat
+            self.headers, self.api_url, query, group_by, volpath, qformat=qformat
         )
-        data = usage_query.result
+        data = query.result
         if not data:
-            logger.warning('No starfish result for lab %s', p)
+            logger.warning('No starfish result for query %s', query)
         elif isinstance(data, dict) and 'error' in data:
-            logger.warning('Error in starfish result for lab %s:\n%s', p, data)
+            logger.warning('Error in starfish result for query %s:\n%s', query, data)
         return query
 
     @record_process
@@ -372,7 +372,7 @@ class StarFishRedash:
     def get_corresponding_coldfront_resources(self):
         volumes = [r['volume_name'] for r in self.get_vol_stats()]
         resources = Resource.objects.filter(
-            reduce(operator.or_,(Q(name__contains=x) for x in volumes))
+            reduce(operator.or_,(Q(name__contains=vol) for vol in volumes))
         )
         return resources
 
@@ -396,7 +396,7 @@ class StarFishRedash:
         return result
 
     def return_query_results(self, query='path_usage_query', volumes=None):
-        """
+        """Return query results.
         """
         result = self.submit_query(query)
         if 'query_result' in result and result['query_result']:
