@@ -1053,6 +1053,7 @@ class AllocationAttributeEditView(LoginRequiredMixin, UserPassesTestMixin, Creat
                         pk=formset_data.get('pk')
                     )
                     allocation_attribute.value = new_value
+                    allocation_attribute.clean()
                     allocation_attribute.save()
         messages.success(request, 'Allocation attributes changed.')
         return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
