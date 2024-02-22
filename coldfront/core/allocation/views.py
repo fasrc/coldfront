@@ -74,7 +74,7 @@ if 'ifxbilling' in settings.INSTALLED_APPS:
 if 'django_q' in settings.INSTALLED_APPS:
     from django_q.tasks import Task
 if 'coldfront.plugins.isilon' in settings.INSTALLED_APPS:
-    from coldfront.plugins.isilon.utils import update_isilon_allocation_quota
+    from coldfront.plugins.isilon import update_isilon_allocation_quota
 
 ALLOCATION_ENABLE_ALLOCATION_RENEWAL = import_from_settings(
     'ALLOCATION_ENABLE_ALLOCATION_RENEWAL', True)
@@ -697,6 +697,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             'New Allocation Request',
             'email/new_allocation_request.txt',
             domain_url=get_domain_url(self.request),
+            url_path=reverse('allocation-detail', kwargs={'pk': allocation_obj.pk}),
             other_vars=other_vars,
         )
         return super().form_valid(form)
@@ -1754,7 +1755,6 @@ class AllocationAccountListView(LoginRequiredMixin, UserPassesTestMixin, ListVie
         return AllocationAccount.objects.filter(user=self.request.user)
 
 
-
 class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
     formset_class = AllocationAttributeUpdateForm
     template_name = 'allocation/allocation_change_detail.html'
@@ -1952,7 +1952,6 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                 alloc_change_obj.allocation.save()
 
             if attrs_to_change:
-                attr_changes = alloc_change_obj.allocationattributechangerequest_set.all()
 
                 autoupdate_choice = autoupdate_form.data.get('auto_update_opts')
                 if autoupdate_choice == '2':
@@ -2000,6 +1999,7 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                         messages.error(request, err)
                         return self.redirect_to_detail(pk)
 
+                    attr_changes = alloc_change_obj.allocationattributechangerequest_set.all()
                 for attribute_change in attr_changes:
                     new_value = attribute_change.new_value
                     attribute_change.allocation_attribute.value = new_value
@@ -2248,7 +2248,10 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             allocation_obj,
             'New Allocation Change Request',
             'email/new_allocation_change_request.txt',
-            url_path=reverse('allocation-change-list'),
+            url_path=reverse(
+                'allocation-change-detail',
+                kwargs={'pk': allocation_change_request_obj.pk},
+            ),
             domain_url=get_domain_url(self.request),
             other_vars=email_vars,
         )
