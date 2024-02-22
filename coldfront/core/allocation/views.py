@@ -74,7 +74,7 @@ if 'ifxbilling' in settings.INSTALLED_APPS:
 if 'django_q' in settings.INSTALLED_APPS:
     from django_q.tasks import Task
 if 'coldfront.plugins.isilon' in settings.INSTALLED_APPS:
-    from coldfront.plugins.isilon import update_isilon_allocation_quota
+    from coldfront.plugins.isilon.utils import update_isilon_allocation_quota
 
 ALLOCATION_ENABLE_ALLOCATION_RENEWAL = import_from_settings(
     'ALLOCATION_ENABLE_ALLOCATION_RENEWAL', True)
@@ -1999,7 +1999,7 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                         messages.error(request, err)
                         return self.redirect_to_detail(pk)
 
-                    attr_changes = alloc_change_obj.allocationattributechangerequest_set.all()
+                attr_changes = alloc_change_obj.allocationattributechangerequest_set.all()
                 for attribute_change in attr_changes:
                     new_value = attribute_change.new_value
                     attribute_change.allocation_attribute.value = new_value
@@ -2222,8 +2222,7 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         messages.success(request, 'Allocation change request successfully submitted.')
 
         quantity = [
-            a
-            for a in attribute_changes_to_make
+            a for a in attribute_changes_to_make
             if a[0].allocation_attribute_type.name == 'Storage Quota (TB)'
         ]
         # if requested resource is on NESE, add to vars
