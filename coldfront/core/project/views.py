@@ -399,8 +399,9 @@ class ProjectArchiveProjectView(LoginRequiredMixin, UserPassesTestMixin, Templat
 
     def test_func(self):
         """UserPassesTestMixin Tests"""
-        project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
-        if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        # project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
+        # if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        if self.request.user.is_superuser:
             return True
         return False
 

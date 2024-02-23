@@ -681,6 +681,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             'used_percentage': used_percentage,
             'expense_code': expense_code,
             'unmatched_code': False,
+            'user': self.request.user,
         }
 
         if 'ifxbilling' in settings.INSTALLED_APPS:
@@ -697,6 +698,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             'New Allocation Request',
             'email/new_allocation_request.txt',
             domain_url=get_domain_url(self.request),
+            url_path=reverse('allocation-detail', kwargs={'pk': allocation_obj.pk}),
             other_vars=other_vars,
         )
         return super().form_valid(form)
@@ -962,6 +964,104 @@ class AllocationAttributeCreateView(LoginRequiredMixin, UserPassesTestMixin, Cre
 
     def get_success_url(self):
         return reverse('allocation-detail', kwargs={'pk': self.kwargs.get('pk')})
+
+
+class AllocationAttributeEditView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
+    model = AllocationAttribute
+    formset_class = AllocationAttributeChangeForm
+    template_name = 'allocation/allocation_allocationattribute_edit.html'
+
+    def test_func(self):
+        """UserPassesTestMixin Tests"""
+        if self.request.user.is_superuser:
+            return True
+        err = 'You do not have permission to edit allocation attributes.'
+        messages.error(self.request, err)
+        return False
+
+    def get_allocation_attrs_to_change(self, allocation_obj):
+        attributes_to_change = allocation_obj.allocationattribute_set.filter(
+        #    allocation_attribute_type__is_changeable=True
+        )
+        attributes_to_change = [
+            {
+                'pk': attribute.pk,
+                'name': attribute.allocation_attribute_type.name,
+                'value': attribute.value,
+            }
+            for attribute in attributes_to_change
+        ]
+        return attributes_to_change
+
+    def get(self, request, *args, **kwargs):
+        context = {}
+        allocation_obj = get_object_or_404(Allocation, pk=self.kwargs.get('pk'))
+
+        form = AllocationChangeForm(**self.get_form_kwargs())
+        context['form'] = form
+
+        attrs_to_change = self.get_allocation_attrs_to_change(allocation_obj)
+        if attrs_to_change:
+            formset = formset_factory(self.formset_class, max_num=len(attrs_to_change))
+            formset = formset(initial=attrs_to_change, prefix='attributeform')
+            context['formset'] = formset
+
+        if allocation_obj.get_parent_resource:
+            resource_used = allocation_obj.get_parent_resource.used_percentage
+        else:
+            resource_used = None
+        context['allocation'] = allocation_obj
+        context['attributes'] = attrs_to_change
+        context['used_percentage'] = resource_used
+        return render(request, self.template_name, context)
+
+    def post(self, request, *args, **kwargs):
+        attribute_changes_to_make = set({})
+        pk = self.kwargs.get('pk')
+        allocation_obj = get_object_or_404(Allocation, pk=pk)
+
+        form = AllocationChangeForm(**self.get_form_kwargs())
+        attrs_to_change = self.get_allocation_attrs_to_change(allocation_obj)
+
+        # find errors
+        validation_errors = []
+
+        if not form.is_valid():
+            validation_errors.extend(list(form.errors))
+
+        if attrs_to_change:
+            formset = formset_factory(self.formset_class, max_num=len(attrs_to_change))
+            formset = formset(
+                request.POST, initial=attrs_to_change, prefix='attributeform'
+            )
+            if not formset.is_valid():
+                attribute_errors = ''
+                for error in formset.errors:
+                    if error:
+                        attribute_errors += error.get('__all__')
+                validation_errors.append(attribute_errors)
+
+        if validation_errors:
+            for error in validation_errors:
+                messages.error(request, error)
+            return HttpResponseRedirect(reverse('allocation-attribute-edit', kwargs={'pk': pk}))
+
+        # ID changes
+        change_requested = False
+
+        if attrs_to_change:
+            for entry in formset:
+                formset_data = entry.cleaned_data
+                new_value = formset_data.get('new_value')
+                if new_value != '':
+                    allocation_attribute = AllocationAttribute.objects.get(
+                        pk=formset_data.get('pk')
+                    )
+                    allocation_attribute.value = new_value
+                    allocation_attribute.clean()
+                    allocation_attribute.save()
+        messages.success(request, 'Allocation attributes changed.')
+        return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
 
 
 class AllocationAttributeDeleteView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
@@ -1656,7 +1756,6 @@ class AllocationAccountListView(LoginRequiredMixin, UserPassesTestMixin, ListVie
         return AllocationAccount.objects.filter(user=self.request.user)
 
 
-
 class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
     formset_class = AllocationAttributeUpdateForm
     template_name = 'allocation/allocation_change_detail.html'
@@ -1854,7 +1953,6 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                 alloc_change_obj.allocation.save()
 
             if attrs_to_change:
-                attr_changes = alloc_change_obj.allocationattributechangerequest_set.all()
 
                 autoupdate_choice = autoupdate_form.data.get('auto_update_opts')
                 if autoupdate_choice == '2':
@@ -1902,6 +2000,7 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                         messages.error(request, err)
                         return self.redirect_to_detail(pk)
 
+                attr_changes = alloc_change_obj.allocationattributechangerequest_set.all()
                 for attribute_change in attr_changes:
                     new_value = attribute_change.new_value
                     attribute_change.allocation_attribute.value = new_value
@@ -2124,14 +2223,16 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         messages.success(request, 'Allocation change request successfully submitted.')
 
         quantity = [
-            a
-            for a in attribute_changes_to_make
+            a for a in attribute_changes_to_make
             if a[0].allocation_attribute_type.name == 'Storage Quota (TB)'
         ]
         # if requested resource is on NESE, add to vars
         nese = bool(allocation_obj.resources.filter(name__contains="nesetape"))
 
-        email_vars = {'justification': justification}
+        email_vars = {
+            'justification': justification,
+            'user': self.request.user,
+        }
         if quantity:
             quantity_num = int(float(quantity[0][1]))
             difference = quantity_num - int(float(allocation_obj.size))
@@ -2150,7 +2251,10 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             allocation_obj,
             'New Allocation Change Request',
             'email/new_allocation_change_request.txt',
-            url_path=reverse('allocation-change-list'),
+            url_path=reverse(
+                'allocation-change-detail',
+                kwargs={'pk': allocation_change_request_obj.pk},
+            ),
             domain_url=get_domain_url(self.request),
             other_vars=email_vars,
         )

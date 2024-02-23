@@ -40,20 +40,18 @@ Allocation Detail
 
 <div class="card mb-3">
   <div class="card-header">
-    {% if allocation.is_changeable and not allocation.is_locked and is_allowed_to_update_project and allocation.status.name in 'Active, Renewal Requested, Payment Pending, Payment Requested, Paid' %}
     <div class="row">
       <div class="col">
         <h3><i class="fas fa-list" aria-hidden="true"></i> Allocation Information</h3>
       </div>
+    {% if allocation.is_changeable and not allocation.is_locked and is_allowed_to_update_project and allocation.status.name in 'Active, Renewal Requested, Payment Pending, Payment Requested, Paid' %}
       <div class="col">
         <a class="btn btn-primary" href="{% url 'allocation-change' allocation.pk %}" role="button" style="float: right;">
           Request Change
         </a>
       </div>
-    </div>
-    {% else %}
-      <h3><i class="fas fa-list" aria-hidden="true"></i> Allocation Information</h3>
     {% endif %}
+    </div>
   </div>
 
   <div class="card-body">
@@ -311,6 +309,9 @@ Allocation Detail
           <a class="btn btn-success" href="{% url 'allocation-attribute-add' allocation.pk %}" role="button">
             <i class="fas fa-plus" aria-hidden="true"></i> Add Allocation Attribute
           </a>
+          <a class="btn btn-danger" href="{% url 'allocation-attribute-edit' allocation.pk %}" role="button">
+            <i class="fas fa-edit" aria-hidden="true"></i> Edit Allocation Attributes
+          </a>
           <a class="btn btn-danger" href="{% url 'allocation-attribute-delete' allocation.pk %}" role="button">
             <i class="fas fa-minus" aria-hidden="true"></i> Delete Allocation Attributes
           </a>
@@ -370,6 +371,11 @@ Allocation Detail
     <h3 class="d-inline">
       <i class="fas fa-info-circle" aria-hidden="true"></i> Allocation Change Requests
     </h3> <span class="badge badge-secondary">{{allocation_changes.count}}</span>
+    {% if allocation.is_changeable and not allocation.is_locked and is_allowed_to_update_project and allocation.status.name in 'Active, Renewal Requested, Payment Pending, Payment Requested, Paid' %}
+        <a class="btn btn-primary" href="{% url 'allocation-change' allocation.pk %}" role="button" style="float: right;">
+          Request Change
+        </a>
+    {% endif %}
   </div>
 
   <div class="card-body">
