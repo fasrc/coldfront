@@ -46,6 +46,7 @@ def resource_summary_table(resource):
 
     return {'res_attr_table': res_attr_table}
 
+@register.simple_tag()
 def resource_fullness_badge(resource):
     badge_type = "info"
     pct = None
