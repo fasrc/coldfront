@@ -1,5 +1,6 @@
 {% extends "common/base.html" %}
 {% load crispy_forms_tags %}
+{% load fasrc_tags %}
 {% load static %}
 
 
@@ -196,6 +197,7 @@ Allocation Change Detail
         <h3 class="d-inline"><i class="fas fa-info-circle" aria-hidden="true"></i> Actions</h3>
       </div>
       <div class="card-body">
+            {% resource_summary_table %}
 
           {% csrf_token %}
             {{autoupdate_form.sheetcheck | as_crispy_field}}
