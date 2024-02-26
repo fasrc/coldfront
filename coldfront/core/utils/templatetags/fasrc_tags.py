@@ -37,11 +37,11 @@ def resource_summary_table(resource):
     if allocated_tb:
         allocated_pct = round(allocated_tb / resource.capacity * 100, 2)
         res_attr_table['Space Committed'] = f'{allocated_tb} ({allocated_pct}%)'
-        remaining_space = resource.capacity * .85 - allocated_tb
+        remaining_space = round(resource.capacity * .85 - allocated_tb, 2)
         res_attr_table['Remaining Space (assuming 85% limit)'] = f'{remaining_space} TB'
     else:
         res_attr_table['Space Committed'] = 'Information not available; check the sheet.'
-    if resource.free_capacity:
-        res_attr_table['Space Occupied'] = f'{resource.used_percentage}%'
+    if resource.used_tb:
+        res_attr_table['Space Occupied'] = f'{round(resource.used_tb, 2)} ({resource.used_percentage})%'
 
     return {'res_attr_table': res_attr_table}

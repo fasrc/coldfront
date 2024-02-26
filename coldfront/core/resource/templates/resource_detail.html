@@ -77,8 +77,8 @@ Resource Detail
   </div>
 </div>
 
-
 <!-- Start Resource Report -->
+{% if resource.resource_type.name == "Storage" %}
 <div class="card mb-3">
   <div class="card-header">
     <h3 class="d-inline"><i class="fas fa-info-circle" aria-hidden="true"></i> Resource Report</h3>
@@ -87,7 +87,7 @@ Resource Detail
     {% resource_summary_table resource %}
   </div>
 </div>
-
+{% endif %}
 
 <!-- Start Resource Attributes -->
 {% if attributes or request.user.is_superuser %}
