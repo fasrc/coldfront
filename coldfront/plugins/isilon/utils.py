@@ -16,6 +16,7 @@ class IsilonConnection:
         self.quota_client = isilon_api.QuotaApi(self.api_client)
         self.pools_client = isilon_api.StoragepoolApi(self.api_client)
         self._total_space = None
+        self._allocated_space = None
         self._used_space = None
 
     def connect(self, cluster_name):
@@ -38,17 +39,27 @@ class IsilonConnection:
         return self._total_space
 
     @property
-    def used_space(self):
+    def allocated_space(self):
         """space claimed by allocations"""
-        if self._used_space is None:
+        if self._allocated_space is None:
             quotas = self.quota_client.list_quota_quotas(type='directory')
-            self._used_space = sum(
+            self._allocated_space = sum(
                 [q.thresholds.hard for q in quotas.quotas if q.thresholds.hard])
+        return self._allocated_space
+
+    @property
+    def used_space(self):
+        """space used by files etc"""
+        if self._used_space is None:
+            pool_query = self.pools_client.get_storagepool_storagepools(
+                toplevels=True)
+            pools_bytes = [int(sp.usage.used_bytes) for sp in pool_query.storagepools]
+            self._used_space = sum(pools_bytes)
         return self._used_space
 
     @property
-    def free_space(self):
-        """total unallocated space on a volume"""
+    def unused_space(self):
+        """total unused space on a volume"""
         return self.total_space - self.used_space
 
     def to_tb(self, bytes_value):

@@ -31,7 +31,7 @@ def resource_summary_table(resource):
     """
     res_attr_table = {
         'Resource': resource,
-        'Total space': resource.capacity,
+        'Total space': round(resource.capacity, 2),
     }
     allocated_tb = resource.allocated_tb
     if allocated_tb:
