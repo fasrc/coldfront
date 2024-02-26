@@ -45,3 +45,20 @@ def resource_summary_table(resource):
         res_attr_table['Space Occupied'] = f'{round(resource.used_tb, 2)} ({resource.used_percentage})%'
 
     return {'res_attr_table': res_attr_table}
+
+def resource_fullness_badge(resource):
+    badge_type = "info"
+    pct = None
+    if resource.allocated_tb:
+        label = 'allocated'
+        pct = round(resource.allocated_tb / resource.capacity * 100, 2)
+        if pct > 79.5:
+            badge_type = "danger"
+        elif pct > 75:
+            badge_type = "warning"
+    if resource.used_percentage:
+        label = 'in use'
+        pct = resource.used_percentage
+    if pct:
+        return f'<span class="badge badge-{badge_type}" {pct}% {label}></span>'
+    return ''
