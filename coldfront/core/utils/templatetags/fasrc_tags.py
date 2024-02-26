@@ -25,11 +25,10 @@ def cost_cpuhours(context, amount):
         return "${:,.2f}".format(float(a_price) * float(amount))
     return None
 
-@register.inclusion_tag('resource_summary_table.html', takes_context=True)
-def resource_summary_table(context):
+@register.inclusion_tag('resource_summary_table.html')
+def resource_summary_table(resource):
     """
     """
-    resource = context['allocation_change'].allocation.resources.first()
     res_attr_table = {
         'Resource': resource,
         'Total space': resource.capacity,
@@ -41,7 +40,7 @@ def resource_summary_table(context):
         remaining_space = resource.capacity * .85 - allocated_tb
         res_attr_table['Remaining Space (assuming 85% limit)'] = f'{remaining_space} TB'
     else:
-        res_attr_table['Space Commited'] = 'Information not available; check the sheet.'
+        res_attr_table['Space Committed'] = 'Information not available; check the sheet.'
     if resource.free_capacity:
         res_attr_table['Space Occupied'] = f'{resource.used_percentage}%'
 
