@@ -1,4 +1,5 @@
 from django import template
+from django.utils.html import format_html
 from coldfront.core.utils.fasrc import get_resource_rate
 
 register = template.Library()
@@ -61,5 +62,7 @@ def resource_fullness_badge(resource):
         label = 'in use'
         pct = resource.used_percentage
     if pct:
-        return f'<span class="badge badge-{badge_type}" {pct}% {label}></span>'
+        return format_html('<span class="badge badge-{}">{}% {}</span>',
+            badge_type, pct, label
+        )
     return ''
