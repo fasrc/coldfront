@@ -62,6 +62,11 @@ class IsilonConnection:
         """total unused space on a volume"""
         return self.total_space - self.used_space
 
+    @property
+    def unallocated_space(self):
+        """total unallocated space on a volume"""
+        return self.total_space - self.allocated_space
+
     def to_tb(self, bytes_value):
         return bytes_value / (1024**4)
 
@@ -70,7 +75,7 @@ class IsilonConnection:
             path=path, recurse_path_children=False, recurse_path_parents=False, type='directory')
         if len(current_quota.quotas) > 1:
             raise Exception(f'more than one quota returned for quota {self.cluster_name}:{path}')
-        elif len(current_quota.quotas) == 0:
+        if len(current_quota.quotas) == 0:
             raise Exception(f'no quotas returned for quota {self.cluster_name}:{path}')
         return current_quota.quotas[0]
 
@@ -91,7 +96,7 @@ def update_isilon_allocation_quota(allocation, new_quota):
 
     # check if enough space exists on the volume
     new_quota_bytes = new_quota * 1024**4
-    unallocated_space = isilon_conn.free_space
+    unallocated_space = isilon_conn.unallocated_space
     current_quota_obj = isilon_conn.get_quota_from_path(path)
     current_quota = current_quota_obj.thresholds.hard
     logger.warning("changing allocation %s %s from %s (%s TB) to %s (%s TB)",
@@ -102,12 +107,12 @@ def update_isilon_allocation_quota(allocation, new_quota):
             'ERROR: not enough space on volume to set quota to %s TB for %s'
             % (new_quota, allocation)
         )
-    elif current_quota > new_quota_bytes:
+    if current_quota > new_quota_bytes:
         current_quota_usage = current_quota_obj.usage.physical
         space_needed = new_quota_bytes * .8
         if current_quota_usage > space_needed:
             raise ValueError(
-                'ERROR: cannot automatically shrink the size of allocations to a quota smaller than 80% of the space in use. Current size: %s Desired size: %s Space used: %s Allocation: %s'
+                'ERROR: cannot automatically shrink the size of allocations to a quota smaller than 80 percent of the space in use. Current size: %s Desired size: %s Space used: %s Allocation: %s'
                 % (allocation.size, new_quota, allocation.usage, allocation)
             )
     try:
