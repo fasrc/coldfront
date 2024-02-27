@@ -63,7 +63,7 @@ class IsilonConnection:
         return self.total_space - self.used_space
 
     def to_tb(self, bytes_value):
-        return bytes_value / (1024**3)
+        return bytes_value / (1024**4)
 
     def get_quota_from_path(self, path):
         current_quota = self.quota_client.list_quota_quotas(
