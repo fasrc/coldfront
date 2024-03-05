@@ -13,10 +13,15 @@ class IsilonConnection:
     def __init__(self, cluster_name):
         self.cluster_name = cluster_name
         self.api_client = self.connect(cluster_name)
-        self.quota_client = isilon_api.QuotaApi(self.api_client)
-        self.pools_client = isilon_api.StoragepoolApi(self.api_client)
-        self._total_space = None
+        # APIs
+        self._namespace_client = None
+        self._pools_client = None
+        self._protocols_client = None
+        self._quota_client = None
+        self._snapshot_client = None
+        # stats
         self._allocated_space = None
+        self._total_space = None
         self._used_space = None
 
     def connect(self, cluster_name):
@@ -27,6 +32,36 @@ class IsilonConnection:
         configuration.verify_ssl = False
         api_client = isilon_api.ApiClient(configuration)
         return api_client
+
+    @property
+    def quota_client(self):
+        if not self._quota_client:
+            self._quota_client = isilon_api.QuotaApi(self.api_client)
+        return self._quota_client
+
+    @property
+    def protocols_client(self):
+        if not self._protocols_client:
+            self._protocols_client = isilon_api.QuotaApi(self.api_client)
+        return self._protocols_client
+
+    @property
+    def snapshot_client(self):
+        if not self._snapshot_client:
+            self._snapshot_client = isilon_api.SnapshotApi(self.api_client)
+        return self._snapshot_client
+
+    @property
+    def namespace_client(self):
+        if not self._namespace_client:
+            self._namespace_client = isilon_api.NamespaceApi(self.api_client)
+        return self._namespace_client
+
+    @property
+    def pools_client(self):
+        if not self._pools_client:
+            self._pools_client = isilon_api.StoragepoolApi(self.api_client)
+        return self._pools_client
 
     @property
     def total_space(self):
@@ -78,6 +113,18 @@ class IsilonConnection:
         if len(current_quota.quotas) == 0:
             raise Exception(f'no quotas returned for quota {self.cluster_name}:{path}')
         return current_quota.quotas[0]
+
+def create_isilon_allocation_quota(
+        allocation, snapshots=True, nfs=True, cifs=False
+    ):
+    """Create a new isilon allocation quota
+    """
+    lab_name = allocation.project.title
+    isilon_resource = allocation.resources.first().name.split('/')[0]
+    isilon_conn = IsilonConnection(isilon_resource)
+    # determine whether rc_labs or rc_fasse_labs path
+    subdir = 'rc_fasse_labs' if '_l3' in lab_name else 'rc_labs'
+    path = f'ifs/{subdir}/{lab_name}'
 
 
 def update_isilon_allocation_quota(allocation, new_quota):
