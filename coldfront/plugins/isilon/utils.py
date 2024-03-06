@@ -49,6 +49,11 @@ class IsilonConnection:
 
     @property
     def auth_client(self):
+        """Set up the Auth api.
+        Useful AuthApi methods:
+            list_auth_groups (doesn't access ldap groups)
+            list_auth_users (doesn't access ldap users)
+        """
         if not self._auth_client:
             self._auth_client = isilon_api.AuthApi(self.api_client)
         return self._auth_client
@@ -56,7 +61,7 @@ class IsilonConnection:
     @property
     def protocols_client(self):
         if not self._protocols_client:
-            self._protocols_client = isilon_api.QuotaApi(self.api_client)
+            self._protocols_client = isilon_api.ProtocolsApi(self.api_client)
         return self._protocols_client
 
     @property
@@ -67,6 +72,12 @@ class IsilonConnection:
 
     @property
     def namespace_client(self):
+        """Set up the namespace api.
+        Useful NamespaceApi methods:
+            create_directory
+            get_acl
+            set_acl
+        """
         if not self._namespace_client:
             self._namespace_client = isilon_api.NamespaceApi(self.api_client)
         return self._namespace_client
@@ -147,7 +158,7 @@ class IsilonUser:
             ).users[0].uid.id
         if ISILON_AUTH_MODEL == 'ldap': #and 'ldap' in plugins:
             ldap_conn = LDAPConn()
-            return ldap_conn.return_user_by_name(self.name, attributes=['uidNumber'])['uidNumber']
+            return ldap_conn.return_user_by_name(self.name, attributes=['uidNumber'])['uidNumber'][0]
 
 
 class IsilonGroup:
@@ -167,7 +178,7 @@ class IsilonGroup:
             ).groups[0].gid.id
         if ISILON_AUTH_MODEL == 'ldap': #and 'ldap' in plugins:
             ldap_conn = LDAPConn()
-            return ldap_conn.return_user_by_name(self.name, attributes=['gidNumber'])['gidNumber']
+            return ldap_conn.return_group_by_name(self.name)['gidNumber'][0]
 
 
 def create_isilon_allocation_quota(
@@ -178,8 +189,6 @@ def create_isilon_allocation_quota(
     lab_name = allocation.project.title
     isilon_resource = allocation.resources.first().name.split('/')[0]
     isilon_conn = IsilonConnection(isilon_resource)
-    isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
-    isilon_group = IsilonGroup(allocation.project, isilon_conn)
 
     # determine whether rc_labs or rc_fasse_labs path
     subdir = 'rc_fasse_labs' if '_l3' in lab_name else 'rc_labs'
@@ -190,8 +199,6 @@ def create_isilon_allocation_quota(
         isilon_conn.namespace_client.create_directory(
             path,
             x_isi_ifs_target_type='container',
-            # x_isi_ifs_access_control=x_isi_ifs_access_control,
-            # x_isi_ifs_node_pool_name=x_isi_ifs_node_pool_name,
             overwrite=False,
         )
     except ApiException as e:
@@ -200,41 +207,58 @@ def create_isilon_allocation_quota(
             logger.error("can't create directory %s, it already exists", path)
         raise
 
-
     ### Set ownership and default permissions ###
+    isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
+    isilon_group = IsilonGroup(allocation.project, isilon_conn)
 
     namespace_acl = {
         'group':{'id': isilon_group.gid},
         'owner':{'id': isilon_pi.uid},
-        'authoritative': 'acl',
-        'action': 'update',
+        'authoritative': 'mode',
+        'mode': '2770',
     }
-
     isilon_conn.namespace_client.set_acl(path, True, namespace_acl)
 
-
-
+    ### Set up quota ###
     # make a threshold object with the hard quota
     threshold = isilon_api.QuotaQuotaThresholds(
         hard=int(allocation.quota * 1024**4),
         percent_advisory=95,
     )
-    # example
-    quota_quota = isilon_api.QuotaQuotaCreateParams(
-        container=True, # bool  If true, SMB shares using the quota directory see the quota thresholds as share size.
-        description=f"share for {lab_name}",
-        enforced=True, # True if the quota provides enforcement
-        # force= ,# bool Force creation of quotas on the root of /ifs or percent based quotas.
-        # ignore_limit_checks=, # bool If true, skip child quota's threshold comparison with parent quota path.	[optional]
-        include_snapshots=False, # bool If true, quota governs snapshot data as well as head data.
-        # labels=, # str  Tags to identify a quota domain.	[optional]
-        path=path,
-        thresholds=threshold, # QuotaQuotaThresholds [optional]
-        thresholds_on='fslogicalsize',
-        type='directory', # str  The type of quota.
-    )
-    created_quota = isilon_conn.quota_client.create_quota_quota(quota_quota)
 
+    # TO DO: set up an advisory excess notification
+
+    quota_quota = isilon_api.QuotaQuotaCreateParams(
+        container=True,
+        enforced=True,
+        include_snapshots=False,
+        path=path,
+        thresholds=threshold,
+        thresholds_on='fslogicalsize',
+        type='directory',
+    )
+    isilon_conn.quota_client.create_quota_quota(quota_quota)
+
+    if snapshots:
+        ### set up snapshots for the created quota ###
+        snapshot_schedule = isilon_api.SnapshotScheduleCreateParams(
+            name=lab_name,
+            path=f'/{path}',
+            pattern=f"{lab_name}_daily_%Y-%m-%d-_%H-%M",
+            schedule="Every 1 days",
+            duration=7*24*60*60,
+        )
+        isilon_conn.snapshot_client.create_snapshot_schedule(snapshot_schedule)
+
+    if cifs:
+        ### set up smb share ###
+        smb_share = isilon_api.SmbShareCreateParams(
+            create_permissions="inherit mode bits",
+            name=lab_name,
+            ntfs_acl_support=False,
+            path=f'/{path}',
+        )
+        isilon_conn.protocols_client.create_smb_share(smb_share)
 
 
 def update_isilon_allocation_quota(allocation, new_quota):

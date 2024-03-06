@@ -152,8 +152,10 @@ class LDAPConn:
             raise ValueError("no users returned")
         return user[0]
 
-    def return_group_by_name(self, groupname, return_as='dict'):
-        group = self.search_groups({"sAMAccountName": groupname}, return_as=return_as)
+    def return_group_by_name(self, groupname, return_as='dict', attributes=ALL_ATTRIBUTES):
+        group = self.search_groups(
+            {"sAMAccountName": groupname}, return_as=return_as, attributes=attributes
+        )
         if len(group) > 1:
             raise ValueError("too many groups in value returned")
         if not group:
