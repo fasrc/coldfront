@@ -18,3 +18,5 @@ LOGGING['handlers']['isilon'] = {
 LOGGING['loggers']['coldfront.plugins.isilon'] = {
     'handlers': ['isilon'],
 }
+
+ISILON_AUTH_MODEL = 'ldap'

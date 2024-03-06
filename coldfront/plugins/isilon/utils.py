@@ -4,8 +4,15 @@ import isilon_sdk.v9_3_0 as isilon_api
 from isilon_sdk.v9_3_0.rest import ApiException
 
 from coldfront.core.utils.common import import_from_settings
+from coldfront.config.plugins.isilon import ISILON_AUTH_MODEL
 
 logger = logging.getLogger(__name__)
+
+if ISILON_AUTH_MODEL == 'ldap':
+    try:
+        from coldfront.plugins.ldap.utils import LDAPConn
+    except:
+        logger.warning("no ldap plugin; isilon auth model will have issues")
 
 class IsilonConnection:
     """Convenience class containing methods for collecting data from an isilon cluster
@@ -14,6 +21,7 @@ class IsilonConnection:
         self.cluster_name = cluster_name
         self.api_client = self.connect(cluster_name)
         # APIs
+        self._auth_client = None
         self._namespace_client = None
         self._pools_client = None
         self._protocols_client = None
@@ -38,6 +46,12 @@ class IsilonConnection:
         if not self._quota_client:
             self._quota_client = isilon_api.QuotaApi(self.api_client)
         return self._quota_client
+
+    @property
+    def auth_client(self):
+        if not self._auth_client:
+            self._auth_client = isilon_api.AuthApi(self.api_client)
+        return self._auth_client
 
     @property
     def protocols_client(self):
@@ -114,6 +128,48 @@ class IsilonConnection:
             raise Exception(f'no quotas returned for quota {self.cluster_name}:{path}')
         return current_quota.quotas[0]
 
+
+class IsilonUser:
+    """Class for retrieval and storage of an isilon user from a coldfront user
+    """
+
+    def __init__(self, user_obj, isilon_conn):
+        self.name = user_obj.username
+        self.django_user = user_obj
+        self.isilon_conn = isilon_conn
+        # self.isilon_user = self.return_isilon_user()
+        self.uid = self.return_isilon_user_id()
+
+    def return_isilon_user_id(self):
+        if not ISILON_AUTH_MODEL:
+            return self.isilon_conn.auth_client.list_auth_users(
+                filter=self.name
+            ).users[0].uid.id
+        if ISILON_AUTH_MODEL == 'ldap': #and 'ldap' in plugins:
+            ldap_conn = LDAPConn()
+            return ldap_conn.return_user_by_name(self.name, attributes=['uidNumber'])['uidNumber']
+
+
+class IsilonGroup:
+    """Class for retrieval and storage of an isilon user from a coldfront user
+    """
+
+    def __init__(self, group_obj, isilon_conn):
+        self.name = group_obj.username
+        self.django_group = group_obj
+        self.isilon_conn = isilon_conn
+        self.gid = self.return_isilon_group_id()
+
+    def return_isilon_group_id(self):
+        if not ISILON_AUTH_MODEL:
+            return self.isilon_conn.auth_client.list_auth_users(
+                filter=self.name
+            ).groups[0].gid.id
+        if ISILON_AUTH_MODEL == 'ldap': #and 'ldap' in plugins:
+            ldap_conn = LDAPConn()
+            return ldap_conn.return_user_by_name(self.name, attributes=['gidNumber'])['gidNumber']
+
+
 def create_isilon_allocation_quota(
         allocation, snapshots=True, nfs=True, cifs=False
     ):
@@ -122,9 +178,63 @@ def create_isilon_allocation_quota(
     lab_name = allocation.project.title
     isilon_resource = allocation.resources.first().name.split('/')[0]
     isilon_conn = IsilonConnection(isilon_resource)
+    isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
+    isilon_group = IsilonGroup(allocation.project, isilon_conn)
+
     # determine whether rc_labs or rc_fasse_labs path
     subdir = 'rc_fasse_labs' if '_l3' in lab_name else 'rc_labs'
     path = f'ifs/{subdir}/{lab_name}'
+
+    ### make the directory ###
+    try:
+        isilon_conn.namespace_client.create_directory(
+            path,
+            x_isi_ifs_target_type='container',
+            # x_isi_ifs_access_control=x_isi_ifs_access_control,
+            # x_isi_ifs_node_pool_name=x_isi_ifs_node_pool_name,
+            overwrite=False,
+        )
+    except ApiException as e:
+        logger.error("can't create directory: %s", e)
+        if e.status == 403:
+            logger.error("can't create directory %s, it already exists", path)
+        raise
+
+
+    ### Set ownership and default permissions ###
+
+    namespace_acl = {
+        'group':{'id': isilon_group.gid},
+        'owner':{'id': isilon_pi.uid},
+        'authoritative': 'acl',
+        'action': 'update',
+    }
+
+    isilon_conn.namespace_client.set_acl(path, True, namespace_acl)
+
+
+
+    # make a threshold object with the hard quota
+    threshold = isilon_api.QuotaQuotaThresholds(
+        hard=int(allocation.quota * 1024**4),
+        percent_advisory=95,
+    )
+    # example
+    quota_quota = isilon_api.QuotaQuotaCreateParams(
+        container=True, # bool  If true, SMB shares using the quota directory see the quota thresholds as share size.
+        description=f"share for {lab_name}",
+        enforced=True, # True if the quota provides enforcement
+        # force= ,# bool Force creation of quotas on the root of /ifs or percent based quotas.
+        # ignore_limit_checks=, # bool If true, skip child quota's threshold comparison with parent quota path.	[optional]
+        include_snapshots=False, # bool If true, quota governs snapshot data as well as head data.
+        # labels=, # str  Tags to identify a quota domain.	[optional]
+        path=path,
+        thresholds=threshold, # QuotaQuotaThresholds [optional]
+        thresholds_on='fslogicalsize',
+        type='directory', # str  The type of quota.
+    )
+    created_quota = isilon_conn.quota_client.create_quota_quota(quota_quota)
+
 
 
 def update_isilon_allocation_quota(allocation, new_quota):
