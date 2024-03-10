@@ -239,7 +239,7 @@ class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
             detail_table.extend([
                 ('Total Labs in Bill', len(project_objs)),
                 ('Total Allocations in Bill', allocation_objs.count()),
-                ('Total Users in Your Bill', allocation_users.count()),
+                ('Total Users in Bill', allocation_users.count()),
             ])
         else:
             detail_table.extend([

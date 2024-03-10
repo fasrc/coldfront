@@ -182,7 +182,7 @@ class IsilonGroup:
 
 
 def create_isilon_allocation_quota(
-        allocation, snapshots=True, nfs=True, cifs=False
+        allocation, snapshots=False, nfs=False, cifs=False
     ):
     """Create a new isilon allocation quota
     """
@@ -226,7 +226,7 @@ def create_isilon_allocation_quota(
         percent_advisory=95,
     )
 
-    # TO DO: set up an advisory excess notification
+    # set up an advisory excess notification
 
     quota_quota = isilon_api.QuotaQuotaCreateParams(
         container=True,
@@ -249,6 +249,14 @@ def create_isilon_allocation_quota(
             duration=7*24*60*60,
         )
         isilon_conn.snapshot_client.create_snapshot_schedule(snapshot_schedule)
+
+    if nfs:
+        ### set up NFS export ###
+        root_clients = []
+        nfs_export = isilon_api.NfsExportCreateParams(
+            root_clients=root_clients,
+        )
+        isilon_conn.protocols_client.create_nfs_export(nfs_export)
 
     if cifs:
         ### set up smb share ###
