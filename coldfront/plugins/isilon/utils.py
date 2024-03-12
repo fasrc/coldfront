@@ -4,6 +4,7 @@ import isilon_sdk.v9_3_0 as isilon_api
 from isilon_sdk.v9_3_0.rest import ApiException
 
 from coldfront.core.utils.common import import_from_settings
+from coldfront.core.allocation.models import AllocationAttributeType, AllocationAttribute
 from coldfront.config.plugins.isilon import ISILON_AUTH_MODEL
 
 logger = logging.getLogger(__name__)
@@ -189,7 +190,7 @@ def create_isilon_allocation_quota(
     lab_name = allocation.project.title
     isilon_resource = allocation.resources.first().name.split('/')[0]
     isilon_conn = IsilonConnection(isilon_resource)
-
+    actions_performed = []
     # determine whether rc_labs or rc_fasse_labs path
     subdir = 'rc_fasse_labs' if '_l3' in lab_name else 'rc_labs'
     path = f'ifs/{subdir}/{lab_name}'
@@ -206,6 +207,7 @@ def create_isilon_allocation_quota(
         if e.status == 403:
             logger.error("can't create directory %s, it already exists", path)
         raise
+    actions_performed.append('directory created')
 
     ### Set ownership and default permissions ###
     isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
@@ -217,7 +219,12 @@ def create_isilon_allocation_quota(
         'authoritative': 'mode',
         'mode': '2770',
     }
-    isilon_conn.namespace_client.set_acl(path, True, namespace_acl)
+    try:
+        isilon_conn.namespace_client.set_acl(path, True, namespace_acl)
+    except ApiException as e:
+        logger.error("can't set directory acl: %s", e)
+        raise
+    actions_performed.append('acl set')
 
     ### Set up quota ###
     # make a threshold object with the hard quota
@@ -227,6 +234,7 @@ def create_isilon_allocation_quota(
     )
 
     # set up an advisory excess notification
+    # https://github.com/Isilon/isilon_sdk_python/blob/d079c07611b5b43206f7f167d3c059b880ab3e50/isilon_sdk/isilon_sdk/v9_2_1/docs/QuotaNotificationExtended.md
 
     quota_quota = isilon_api.QuotaQuotaCreateParams(
         container=True,
@@ -237,7 +245,12 @@ def create_isilon_allocation_quota(
         thresholds_on='fslogicalsize',
         type='directory',
     )
-    isilon_conn.quota_client.create_quota_quota(quota_quota)
+    try:
+        isilon_conn.quota_client.create_quota_quota(quota_quota)
+    except:
+        logger.error("quota creation failed")
+        raise
+    actions_performed.append('quota set')
 
     if snapshots:
         ### set up snapshots for the created quota ###
@@ -248,7 +261,12 @@ def create_isilon_allocation_quota(
             schedule="Every 1 days",
             duration=7*24*60*60,
         )
-        isilon_conn.snapshot_client.create_snapshot_schedule(snapshot_schedule)
+        try:
+            isilon_conn.snapshot_client.create_snapshot_schedule(snapshot_schedule)
+        except:
+            logger.error("snapshot creation failed")
+            raise
+    actions_performed.append('snapshots scheduled')
 
     if nfs:
         ### set up NFS export ###
@@ -256,7 +274,11 @@ def create_isilon_allocation_quota(
         nfs_export = isilon_api.NfsExportCreateParams(
             root_clients=root_clients,
         )
-        isilon_conn.protocols_client.create_nfs_export(nfs_export)
+        try:
+            isilon_conn.protocols_client.create_nfs_export(nfs_export)
+        except:
+            logger.error("nfs share creation failed")
+            raise
 
     if cifs:
         ### set up smb share ###
@@ -266,7 +288,18 @@ def create_isilon_allocation_quota(
             ntfs_acl_support=False,
             path=f'/{path}',
         )
-        isilon_conn.protocols_client.create_smb_share(smb_share)
+        try:
+            isilon_conn.protocols_client.create_smb_share(smb_share)
+        except:
+            logger.error("cifs/smb share creation failed")
+            raise
+
+    subdir_type = AllocationAttributeType.objects.get(name='Subdirectory')
+    AllocationAttribute.objects.create(
+        allocation=allocation,
+        allocation_attribute_type_id=subdir_type.pk,
+        value=path
+    )
 
 
 def update_isilon_allocation_quota(allocation, new_quota):
