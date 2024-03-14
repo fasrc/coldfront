@@ -230,11 +230,7 @@ def create_isilon_allocation_quota(
     # make a threshold object with the hard quota
     threshold = isilon_api.QuotaQuotaThresholds(
         hard=int(allocation.quota * 1024**4),
-        percent_advisory=95,
     )
-
-    # set up an advisory excess notification
-    # https://github.com/Isilon/isilon_sdk_python/blob/d079c07611b5b43206f7f167d3c059b880ab3e50/isilon_sdk/isilon_sdk/v9_2_1/docs/QuotaNotificationExtended.md
 
     quota_quota = isilon_api.QuotaQuotaCreateParams(
         container=True,
@@ -270,9 +266,15 @@ def create_isilon_allocation_quota(
 
     if nfs:
         ### set up NFS export ###
-        root_clients = []
+        root_clients = import_from_settings('ISILON_NFS_ROOT_CLIENTS').split(',')
+        if 'fasse' in path:
+            clients = import_from_settings('ISILON_NFS_FASSE_CLIENTS').split(',')
+        else:
+            clients = import_from_settings('ISILON_NFS_CANNON_CLIENTS').split(',')
+
         nfs_export = isilon_api.NfsExportCreateParams(
             root_clients=root_clients,
+            clients=clients,
         )
         try:
             isilon_conn.protocols_client.create_nfs_export(nfs_export)

@@ -482,7 +482,7 @@ def collect_update_project_status_membership():
         for pu in projectusers_to_remove
     ], ['status'])
     logger.info('changing status of these ProjectUsers to "Removed":%s',
-            [(pu.user.username, pu.project.title) for pu in projectusers_to_remove])
+                [{"uname":pu.user.username, "lab": pu.project.title} for pu in projectusers_to_remove])
 
 def import_projects_projectusers(projects_list):
     """Use AD user and group information to automatically create new
