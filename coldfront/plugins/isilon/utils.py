@@ -241,7 +241,7 @@ def create_isilon_allocation_quota(
     ### Set up quota ###
     # make a threshold object with the hard quota
     threshold = isilon_api.QuotaQuotaThresholds(
-        hard=int(allocation.quota * 1024**4),
+        hard=int(allocation.size * 1024**4),
     )
 
     quota_quota = isilon_api.QuotaQuotaCreateParams(
