@@ -228,7 +228,7 @@ def create_isilon_allocation_quota(
         ],
         group={'id': f'GID:{isilon_group.gid}'},
         owner={'id': f'UID:{isilon_pi.uid}'},
-        authoritative='acl',
+        authoritative='mode',
         mode='2770',
     )
     try:
