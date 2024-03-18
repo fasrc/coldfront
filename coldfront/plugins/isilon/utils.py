@@ -260,6 +260,7 @@ def create_isilon_allocation_quota(
         raise
     actions_performed.append('quota set')
 
+    option_exceptions = {}
     if snapshots:
         ### set up snapshots for the created quota ###
         snapshot_schedule = isilon_api.SnapshotScheduleCreateParams(
@@ -273,8 +274,7 @@ def create_isilon_allocation_quota(
             isilon_conn.snapshot_client.create_snapshot_schedule(snapshot_schedule)
             actions_performed.append('snapshots scheduled')
         except Exception as e:
-            logger.error("snapshot creation failed")
-            raise Exception('snapshot creation failed: %s', e)
+            option_exceptions['snapshots'] = e
 
     if nfs_share:
         ### set up NFS export ###
@@ -293,8 +293,7 @@ def create_isilon_allocation_quota(
             isilon_conn.protocols_client.create_nfs_export(nfs_export)
             actions_performed.append('nfs share created')
         except Exception as e:
-            logger.error("nfs share creation failed")
-            raise Exception('nfs share creation failed: %s', e)
+            option_exceptions['nfs_share'] = e
 
     if cifs_share:
         ### set up smb share ###
@@ -308,8 +307,7 @@ def create_isilon_allocation_quota(
             isilon_conn.protocols_client.create_smb_share(smb_share)
             actions_performed.append('smb share created')
         except Exception as e:
-            logger.error("cifs/smb share creation failed")
-            raise Exception('smb share creation failed: %s', e)
+            option_exceptions['cifs_share'] = e
 
     subdir_type = AllocationAttributeType.objects.get(name='Subdirectory')
     AllocationAttribute.objects.create(
@@ -317,6 +315,7 @@ def create_isilon_allocation_quota(
         allocation_attribute_type_id=subdir_type.pk,
         value=path
     )
+    return option_exceptions
 
 
 def update_isilon_allocation_quota(allocation, new_quota):

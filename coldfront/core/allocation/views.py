@@ -345,9 +345,13 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                     plugin = resources_plugins[rtype]
                     if plugin in settings.INSTALLED_APPS:
                         try:
-                            create_isilon_allocation_quota(
+                            option_exceptions = create_isilon_allocation_quota(
                                 allocation_obj, resource, **automation_kwargs
                             )
+                            if option_exceptions:
+                                err = f'some options failed to be created for new allocation {allocation_obj} ({allocation_obj.pk}): {option_exceptions}'
+                                logger.error(err)
+                                messages.error(f"{err}. Please contact Coldfront administration for further assistance.")
                         except Exception as e:
                             err = ("An error was encountered while auto-creating"
                                 " the allocation. Please contact Coldfront "
