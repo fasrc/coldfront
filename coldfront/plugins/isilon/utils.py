@@ -195,6 +195,10 @@ def create_isilon_allocation_quota(
     subdir = 'rc_fasse_labs' if '_l3' in lab_name else 'rc_labs'
     path = f'ifs/{subdir}/{lab_name}'
 
+    ### Set ownership and default permissions ###
+    isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
+    isilon_group = IsilonGroup(allocation.project, isilon_conn)
+
     ### make the directory ###
     try:
         isilon_conn.namespace_client.create_directory(
@@ -209,12 +213,6 @@ def create_isilon_allocation_quota(
             raise
     actions_performed.append('directory created')
 
-    ### Set ownership and default permissions ###
-    isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
-    isilon_group = IsilonGroup(allocation.project, isilon_conn)
-    group_member_object = isilon_api.MemberObject(id=isilon_group.gid)
-    owner_member_object = isilon_api.MemberObject(id=isilon_pi.gid)
-
     namespace_acl = isilon_api.NamespaceAcl(
         acl=[
             isilon_api.AclObject(# acl object for group permissions
@@ -228,8 +226,8 @@ def create_isilon_allocation_quota(
                 trustee=isilon_api.MemberObject(id='SID:S-1-3-0'), #standard Creator Owner ID
             ),
         ],
-        group={'id': f'GID:{group_member_object.id}'},
-        owner={'id': f'UID:{owner_member_object.id}'},
+        group={'id': f'GID:{isilon_group.gid}'},
+        owner={'id': f'UID:{isilon_pi.uid}'},
         authoritative='acl',
         mode='2770',
     )
