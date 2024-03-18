@@ -212,13 +212,27 @@ def create_isilon_allocation_quota(
     ### Set ownership and default permissions ###
     isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
     isilon_group = IsilonGroup(allocation.project, isilon_conn)
+    group_member_object = isilon_api.MemberObject(id=isilon_group.gid)
+    owner_member_object = isilon_api.MemberObject(id=isilon_pi.gid)
 
-    namespace_acl = {
-        'group':{'id': isilon_group.gid},
-        'owner':{'id': isilon_pi.uid},
-        'authoritative': 'mode',
-        'mode': '2770',
-    }
+    namespace_acl = isilon_api.NamespaceAcl(
+        acl=[
+            isilon_api.AclObject(# acl object for group permissions
+                accessrights=['dir_gen_read','dir_gen_execute','file_gen_read','file_gen_execute'],
+                inherit_flags=['object_inherit','container_inherit','inherit_only'],
+                trustee=isilon_api.MemberObject(id='SID:S-1-3-1'), #standard Creator Group ID
+            ),
+            isilon_api.AclObject(# acl object for owner permissions
+                accessrights=['dir_gen_all'],
+                inherit_flags=['object_inherit','container_inherit','inherit_only'],
+                trustee=isilon_api.MemberObject(id='SID:S-1-3-0'), #standard Creator Owner ID
+            ),
+        ],
+        group={'id': f'GID:{group_member_object.id}'},
+        owner={'id': f'UID:{owner_member_object.id}'},
+        authoritative='acl',
+        mode='2770',
+    )
     try:
         isilon_conn.namespace_client.set_acl(path, True, namespace_acl)
     except ApiException as e:
@@ -244,7 +258,7 @@ def create_isilon_allocation_quota(
     try:
         isilon_conn.quota_client.create_quota_quota(quota_quota)
     except:
-        logger.error("quota creation failed")
+        logger.error('quota creation failed')
         raise
     actions_performed.append('quota set')
 
