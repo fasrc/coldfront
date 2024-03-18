@@ -183,7 +183,7 @@ class IsilonGroup:
 
 
 def create_isilon_allocation_quota(
-        allocation, resource, snapshots=False, nfs=False, cifs=False
+        allocation, resource, snapshots=False, nfs_share=False, cifs_share=False
     ):
     """Create a new isilon allocation quota
     """
@@ -206,7 +206,7 @@ def create_isilon_allocation_quota(
         logger.error("can't create directory: %s", e)
         if e.status == 403:
             logger.error("can't create directory %s, it already exists", path)
-        raise
+            raise
     actions_performed.append('directory created')
 
     ### Set ownership and default permissions ###
@@ -278,7 +278,7 @@ def create_isilon_allocation_quota(
             raise
     actions_performed.append('snapshots scheduled')
 
-    if nfs:
+    if nfs_share:
         ### set up NFS export ###
         root_clients = import_from_settings('ISILON_NFS_ROOT_CLIENTS').split(',')
         if 'fasse' in path:
@@ -296,7 +296,7 @@ def create_isilon_allocation_quota(
             logger.error("nfs share creation failed")
             raise
 
-    if cifs:
+    if cifs_share:
         ### set up smb share ###
         smb_share = isilon_api.SmbShareCreateParams(
             create_permissions="inherit mode bits",
