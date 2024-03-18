@@ -210,7 +210,7 @@ def create_isilon_allocation_quota(
         logger.error("can't create directory: %s", e)
         if e.status == 403:
             logger.error("can't create directory %s, it already exists", path)
-            raise
+        raise
     actions_performed.append('directory created')
 
     namespace_acl = isilon_api.NamespaceAcl(
