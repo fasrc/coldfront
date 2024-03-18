@@ -183,12 +183,12 @@ class IsilonGroup:
 
 
 def create_isilon_allocation_quota(
-        allocation, snapshots=False, nfs=False, cifs=False
+        allocation, resource, snapshots=False, nfs=False, cifs=False
     ):
     """Create a new isilon allocation quota
     """
     lab_name = allocation.project.title
-    isilon_resource = allocation.resources.first().name.split('/')[0]
+    isilon_resource = resource.name.split('/')[0]
     isilon_conn = IsilonConnection(isilon_resource)
     actions_performed = []
     # determine whether rc_labs or rc_fasse_labs path

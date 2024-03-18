@@ -312,12 +312,6 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             if err:
                 messages.error(request, err)
                 return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
-            if 'Tier ' in allocation_obj.get_resources_as_string:
-                # remove current resource from resources
-                allocation_obj.resources.clear()
-                # add form_data.get(resource)
-                allocation_obj.resources.add(resource)
-
             if action == 'approve':
                 approval_form = AllocationApprovalForm(request.POST)
                 # approval_form_data = approval_form.cleaned_data
@@ -352,7 +346,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                     if plugin in settings.INSTALLED_APPS:
                         try:
                             create_isilon_allocation_quota(
-                                allocation_obj, **automation_kwargs
+                                allocation_obj, resource, **automation_kwargs
                             )
                         except Exception as e:
                             err = ("An error was encountered while auto-creating"
@@ -370,7 +364,11 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                         return HttpResponseRedirect(
                             reverse('allocation-detail', kwargs={'pk': pk})
                         )
-
+            if 'Tier ' in allocation_obj.get_resources_as_string:
+                # remove current resource from resources
+                allocation_obj.resources.clear()
+                # add form_data.get(resource)
+                allocation_obj.resources.add(resource)
 
             allocation_obj.status = AllocationStatusChoice.objects.get(name='Active')
 
@@ -382,7 +380,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         )
         if old_status != 'Active' == allocation_obj.status.name:
 
-            if not form_data.get('resource'):
+            if not form_data.get('resource') and 'Tier ' in allocation_obj.get_parent_resource.name:
                 err = "You must select a resource to approve the form. If you do not have the option to select a resource, update the status of the Allocation to 'New' first."
                 messages.error(request, err)
                 return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
