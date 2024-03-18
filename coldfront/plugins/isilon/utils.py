@@ -167,7 +167,7 @@ class IsilonGroup:
     """
 
     def __init__(self, group_obj, isilon_conn):
-        self.name = group_obj.username
+        self.name = group_obj.title
         self.django_group = group_obj
         self.isilon_conn = isilon_conn
         self.gid = self.return_isilon_group_id()
