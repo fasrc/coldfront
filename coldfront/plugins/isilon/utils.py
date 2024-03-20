@@ -218,12 +218,14 @@ def create_isilon_allocation_quota(
             isilon_api.AclObject(# acl object for group permissions
                 accessrights=['dir_gen_read','dir_gen_execute','file_gen_read','file_gen_execute'],
                 inherit_flags=['object_inherit','container_inherit','inherit_only'],
-                trustee=isilon_api.MemberObject(id='SID:S-1-3-1'), #standard Creator Group ID
+                trustee=isilon_api.MemberObject(
+                    id='SID:S-1-3-1', name='Creator Group', type='wellknown')
             ),
             isilon_api.AclObject(# acl object for owner permissions
                 accessrights=['dir_gen_all'],
                 inherit_flags=['object_inherit','container_inherit','inherit_only'],
-                trustee=isilon_api.MemberObject(id='SID:S-1-3-0'), #standard Creator Owner ID
+                trustee=isilon_api.MemberObject(
+                    id='SID:S-1-3-0', name='Creator Owner', type='wellknown'),
             ),
         ],
         group={'id': f'GID:{isilon_group.gid}'},
