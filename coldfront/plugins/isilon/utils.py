@@ -248,7 +248,7 @@ def create_isilon_allocation_quota(
         container=True,
         enforced=True,
         include_snapshots=False,
-        path=path,
+        path=f'/{path}',
         thresholds=threshold,
         thresholds_on='fslogicalsize',
         type='directory',

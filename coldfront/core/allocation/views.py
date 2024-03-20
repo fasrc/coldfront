@@ -1,4 +1,6 @@
 import re
+import sys
+import traceback
 import logging
 import datetime
 from datetime import date
@@ -351,11 +353,18 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                             if option_exceptions:
                                 err = f'some options failed to be created for new allocation {allocation_obj} ({allocation_obj.pk}): {option_exceptions}'
                                 logger.error(err)
-                                messages.error(f"{err}. Please contact Coldfront administration for further assistance.")
+                                messages.error(request, f"{err}. Please contact Coldfront administration for further assistance.")
                         except Exception as e:
                             err = ("An error was encountered while auto-creating"
                                 " the allocation. Please contact Coldfront "
                                 f"administration and/or manually create the allocation: {e}")
+                            logger.error(err)
+                            ex_type, ex_value, ex_traceback = sys.exc_info()
+                            stack_trace = list()
+                            trace_back = traceback.extract_tb(ex_traceback)
+                            for trace in trace_back:
+                                stack_trace.append("File : %s , Line : %d, Func.Name : %s, Message : %s" % (trace[0], trace[1], trace[2], trace[3]))
+                            logger.error(stack_trace)
                             messages.error(request, err)
                             return HttpResponseRedirect(
                                 reverse('allocation-detail', kwargs={'pk': pk})
