@@ -5,13 +5,16 @@ import logging
 import operator
 from functools import reduce
 
+from coldfront.core import field_of_science
 from django.db.models import Q
+from django.dispatch import receiver
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from ldap3 import Connection, Server, ALL_ATTRIBUTES
 from ldap3.extend.microsoft.addMembersToGroups import ad_add_members_to_groups
 from ldap3.extend.microsoft.removeMembersFromGroups import ad_remove_members_from_groups
 
+from coldfront.core.project.signals import project_create, project_post_create
 from coldfront.core.utils.common import (
     import_from_settings, uniques_and_intersection
 )
@@ -217,6 +220,10 @@ class LDAPConn:
         ----------
         samaccountname : string
             sAMAccountName of the group to search for
+
+        Returns
+        -------
+        tuple (group_members, group_manager[0])
         """
         logger.debug('return_group_members_manager for Project %s', samaccountname)
         group_entries = self.search_groups(
@@ -630,3 +637,47 @@ def add_new_projects(groupusercollections, errortracker):
     for errortype in errortracker:
         logger.warning('AD groups with %s: %s', errortype, errortracker[errortype])
     return added_projects, errortracker
+
+@receiver(project_create)
+def identify_ad_group(sender, **kwargs):
+    """Confirm that a project's name corresponds to an existing AD group"""
+    project_title = kwargs['project_title']
+    try:
+        ad_conn = LDAPConn()
+        group_entry = ad_conn.return_group_by_name(project_title)
+    except Exception as e:
+        raise ValueError(f"ldap connection error: {e}")
+    return group_entry
+
+@receiver(project_post_create)
+def update_new_project(sender, **kwargs):
+    """Update the new project using the AD group information"""
+    project_pk = kwargs['project_pk']
+    project = Project.objects.get(pk=project_pk)
+    try:
+        ad_conn = LDAPConn()
+        members, manager = ad_conn.return_group_members_manager(project.title)
+    except Exception as e:
+        raise ValueError(f"ldap connection error: {e}")
+    project.pi = get_user_model().objects.get(username=manager['sAMAccountName'][0])
+    # locate field_of_science
+    if 'department' in manager.keys() and manager['department']:
+        field_of_science_name=manager['department'][0]
+        logger.debug('field_of_science_name %s', field_of_science_name)
+        field_of_science_obj, created = FieldOfScience.objects.get_or_create(
+            description=field_of_science_name, defaults={'is_selectable':'True'}
+        )
+        if created:
+            logger.info('added new field_of_science: %s', field_of_science_name)
+    else:
+        raise ValueError(f'no department for AD group {project.title}, will not add unless fixed')
+    project.save()
+    for member in members:
+        role_name = "User" if member['sAMAccountName'][0] != manager['sAMAccountName'][0] else "Manager"
+        ProjectUser.objects.create(
+            project=project,
+            user=get_user_model().objects.get(username=member['sAMAccountName'][0]),
+            role=ProjectUserRoleChoice.objects.get(name=role_name),
+            field_of_science=field_of_science_obj.pk,
+            status=ProjectUserStatusChoice.objects.get(name='Active'),
+        )
