@@ -73,7 +73,7 @@ class Project(TimeStampedModel):
     DEFAULT_DESCRIPTION = ("We do not have information about your research. "
     "Please provide a detailed description of your work.")
 
-    title = models.CharField(max_length=255,)
+    title = models.CharField(max_length=255, unique=True)
     pi = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,)
     description = models.TextField(
         default=DEFAULT_DESCRIPTION,

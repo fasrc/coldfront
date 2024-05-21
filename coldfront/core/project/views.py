@@ -395,22 +395,33 @@ class ProjectCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
                 sender=self.__class__, project_title=project_obj.title,
             )
         except Exception as exception:
+            logger.exception(exception)
             messages.error(self.request, str(exception))
             return HttpResponseRedirect(reverse('project-create'))
         form.instance.status = ProjectStatusChoice.objects.get(name='New')
         form.instance.pi = self.request.user
-        project_obj.save()
         try:
-            project_post_create.send(
-                    sender=self.__class__, project_pk=project_obj.pk
-            )
+            project_obj.save()
         except Exception as exception:
+            logger.exception(exception)
             messages.error(
                 self.request,
-                "the project was created but an error was encountered in post-creation processes - please contact a system administrator."
+                f"the project could not be created, an error was encountered: {exception}"
             )
             return HttpResponseRedirect(reverse('project-create'))
-        return super().form_valid(form)
+        form_valid_status = super().form_valid(form)
+        try:
+            project_post_create.send(
+                    sender=self.__class__, project_obj=project_obj
+            )
+        except Exception as exception:
+            logger.exception(exception)
+            messages.error(
+                self.request,
+                f"the project was created but an error was encountered in post-creation processes - please contact a system administrator: {exception}"
+            )
+            return HttpResponseRedirect(reverse('project-create'))
+        return form_valid_status
 
     def get_success_url(self):
         return reverse('project-detail', kwargs={'pk': self.object.pk})

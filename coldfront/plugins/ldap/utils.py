@@ -644,22 +644,25 @@ def identify_ad_group(sender, **kwargs):
     project_title = kwargs['project_title']
     try:
         ad_conn = LDAPConn()
-        group_entry = ad_conn.return_group_by_name(project_title)
+        members, manager = ad_conn.return_group_members_manager(project_title)
     except Exception as e:
         raise ValueError(f"ldap connection error: {e}")
-    return group_entry
+    try:
+        ifx_pi = get_user_model().objects.get(username=manager['sAMAccountName'][0])
+    except Exception as e:
+        raise ValueError(f"issue retrieving pi's ifxuser entry: {e}")
+
+    return ifx_pi
 
 @receiver(project_post_create)
 def update_new_project(sender, **kwargs):
     """Update the new project using the AD group information"""
-    project_pk = kwargs['project_pk']
-    project = Project.objects.get(pk=project_pk)
+    project = kwargs['project_obj']
     try:
         ad_conn = LDAPConn()
         members, manager = ad_conn.return_group_members_manager(project.title)
     except Exception as e:
         raise ValueError(f"ldap connection error: {e}")
-    project.pi = get_user_model().objects.get(username=manager['sAMAccountName'][0])
     # locate field_of_science
     if 'department' in manager.keys() and manager['department']:
         field_of_science_name=manager['department'][0]
@@ -671,13 +674,19 @@ def update_new_project(sender, **kwargs):
             logger.info('added new field_of_science: %s', field_of_science_name)
     else:
         raise ValueError(f'no department for AD group {project.title}, will not add unless fixed')
+
+    project.field_of_science = field_of_science_obj
+    project.pi = get_user_model().objects.get(username=manager['sAMAccountName'][0])
     project.save()
     for member in members:
         role_name = "User" if member['sAMAccountName'][0] != manager['sAMAccountName'][0] else "Manager"
+        try:
+            user_obj = get_user_model().objects.get(username=member['sAMAccountName'][0])
+        except get_user_model().DoesNotExist:
+            continue
         ProjectUser.objects.create(
             project=project,
-            user=get_user_model().objects.get(username=member['sAMAccountName'][0]),
+            user=user_obj,
             role=ProjectUserRoleChoice.objects.get(name=role_name),
-            field_of_science=field_of_science_obj.pk,
             status=ProjectUserStatusChoice.objects.get(name='Active'),
         )
