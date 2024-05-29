@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:experimental
-
 # to build for a development environment, run the following command:
 # docker build --build-arg build_env=dev -t coldfront --ssh default . --network=host
 
@@ -30,6 +28,9 @@ ARG IFXMAIL_CLIENT_COMMIT=8f728ff54441d2f2449fd3c31b75f0f77372b5f2
 ARG FIINE_CLIENT_COMMIT=112858d4115ee6447ab9e396403fc5b48858cb70
 ARG IFXEC_COMMIT=0c09c90890fb87d4db22c635a6c403c89e1a957f
 ARG IFXBILLING_COMMIT=7521a286a2a5aa9a317b9586939a3d218b41a73d
+ARG STARFISH_SDK_COMMIT=e3f82de7b3c2d251c6c4957d404384f86ecb79ac
+
+RUN pip install ldap3 django_auth_ldap django-author==1.0.2 django-prometheus gunicorn
 
 RUN --mount=type=ssh pip install --upgrade pip && \
     pip install git+ssh://git@github.com/harvardinformatics/ifxurls.git@${IFXURLS_COMMIT} && \
@@ -39,13 +40,12 @@ RUN --mount=type=ssh pip install --upgrade pip && \
     pip install git+ssh://git@github.com/harvardinformatics/fiine.client.git@${FIINE_CLIENT_COMMIT} && \
     pip install git+ssh://git@github.com/harvardinformatics/ifxec.git@${IFXEC_COMMIT} && \
     pip install git+ssh://git@github.com/harvardinformatics/ifxbilling.git@${IFXBILLING_COMMIT} && \
+    pip install git+ssh://git@github.com/fasrc/starfish_python_sdk.git@${STARFISH_SDK_COMMIT} && \
     pip install -r requirements.txt
 
 COPY . .
 
-RUN if [ "${BUILD_ENV}" = "dev" ]; then pip install django-redis reportlab==3.6.6 django-debug-toolbar; fi
-
-RUN pip install ldap3 django_auth_ldap django-author==1.0.2 django-prometheus gunicorn
+RUN if [ "${BUILD_ENV}" = "dev" ]; then pip install reportlab==3.6.6 django-debug-toolbar==3.8.1; fi
 
 ENV PYTHONPATH /usr/src/app:/usr/src/app/ifxreport
 
