@@ -298,14 +298,12 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         old_status = allocation_obj.status.name
         approval_form = AllocationApprovalForm(request.POST)
 
-        if action in ['update', 'approve', 'deny']:
-
-            allocation_obj.end_date = form_data.get('end_date')
-            allocation_obj.start_date = form_data.get('start_date')
-            allocation_obj.description = form_data.get('description')
-            allocation_obj.is_locked = form_data.get('is_locked')
-            allocation_obj.is_changeable = form_data.get('is_changeable')
-            allocation_obj.status = form_data.get('status')
+        allocation_obj.end_date = form_data.get('end_date')
+        allocation_obj.start_date = form_data.get('start_date')
+        allocation_obj.description = form_data.get('description')
+        allocation_obj.is_locked = form_data.get('is_locked')
+        allocation_obj.is_changeable = form_data.get('is_changeable')
+        allocation_obj.status = form_data.get('status')
 
         if 'approve' in action:
             err = None
@@ -384,6 +382,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                         return HttpResponseRedirect(
                             reverse('allocation-detail', kwargs={'pk': pk})
                         )
+
             if 'Tier ' in allocation_obj.get_resources_as_string:
                 # remove current resource from resources
                 allocation_obj.resources.clear()
@@ -394,6 +393,11 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
 
         elif action == 'deny':
             allocation_obj.status = AllocationStatusChoice.objects.get(name='Denied')
+        elif action == 'update':
+            if old_status in PENDING_ALLOCATION_STATUSES and allocation_obj.status.name not in PENDING_ALLOCATION_STATUSES:
+                err = "You can only use the 'update' option on new allocations to change their statuses to New, On Hold, or In Progress."
+                messages.error(request, err)
+                return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
 
         allocation_users = allocation_obj.allocationuser_set.exclude(
             status__name__in=['Removed', 'Error']
@@ -438,7 +442,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                 )
                 return HttpResponseRedirect(reverse('allocation-request-list'))
 
-        elif old_status != allocation_obj.status.name in ['Denied', 'New', 'Revoked']:
+        elif old_status != allocation_obj.status.name in ['Denied', 'Revoked']+PENDING_ALLOCATION_STATUSES:
             allocation_obj.start_date = None
             allocation_obj.end_date = None
             allocation_obj.save()
