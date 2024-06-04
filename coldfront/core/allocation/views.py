@@ -336,9 +336,11 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                         preactivation_responses = allocation_autocreate.send(
                             sender=self.__class__,
                             allocation_obj=allocation_obj,
+                            resource=resource,
                             approval_form_data=approval_form.cleaned_data
                         )
-                        if not preactivation_responses:
+                        preactivation_replies = [p[1] for p in preactivation_responses if p[1]]
+                        if not preactivation_replies:
                             error = ('this allocation\'s resource has no autocreate options '
                                 'at this time. Please manually create the resource '
                                 'before approving this request.')

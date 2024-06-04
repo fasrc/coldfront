@@ -387,12 +387,12 @@ def activate_allocation(sender, **kwargs):
 
     approval_form_data = kwargs['approval_form_data']
     allocation_obj = kwargs['allocation_obj']
+    resource = kwargs['resource']
 
     automation_specifications = approval_form_data.get('automation_specifications')
     automation_kwargs = {k:True for k in automation_specifications}
 
-    resource = allocation_obj.get_parent_resource.name
-    if 'isilon' in resource:
+    if 'isilon' in resource.name:
         try:
             option_exceptions = create_isilon_allocation_quota(
                 allocation_obj, resource, **automation_kwargs
