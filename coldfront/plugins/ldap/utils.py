@@ -194,11 +194,12 @@ class LDAPConn:
         group_dn = group['distinguishedName']
         try:
             result = ad_add_members_to_groups(
-                self.conn, [member_dn], group_dn, fix=True)
+                self.conn, [member_dn], group_dn, fix=True, raise_error=True)
         except Exception as e:
-            raise LDAPUserAdditionError("Error adding user to group: {}".format(e))
+            logger.exception("Error encountered while adding user to group: %s", e)
+            raise LDAPUserAdditionError("Error adding user to group.")
         if not self.member_in_group(member_dn, group_dn):
-            raise LDAPUserAdditionError("Member not successfully added to group")
+            raise LDAPUserAdditionError("Member not successfully added to group.")
         return result
 
     def remove_member_from_group(self, user_name, group_name):
@@ -213,12 +214,13 @@ class LDAPConn:
         user_dn = user['distinguishedName']
         try:
             result = ad_remove_members_from_groups(
-                self.conn, [user_dn], group_dn, fix=True
+                self.conn, [user_dn], group_dn, fix=True, raise_error=True
             )
         except Exception as e:
-            raise LDAPUserRemovalError("Error removing user from group: {}".format(e))
+            logger.exception("Error encountered while removing user from group: %s", e)
+            raise LDAPUserRemovalError("Error removing user from group.")
         if self.member_in_group(user_dn, group_dn):
-            raise LDAPUserRemovalError("Member not successfully removed from group")
+            raise LDAPUserRemovalError("Member not successfully removed from group.")
         return result
 
     def users_in_primary_group(self, usernames, groupname):
