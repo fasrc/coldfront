@@ -460,7 +460,8 @@ class ProjectAddUsersSearchView(LoginRequiredMixin, UserPassesTestMixin, Templat
     def test_func(self):
         """UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
-        if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        # if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        if self.request.user.is_superuser or self.request.user == project.pi:
             return True
         return False
 
@@ -488,7 +489,8 @@ class ProjectAddUsersSearchResultsView(
     def test_func(self):
         """UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
-        if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        # if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        if self.request.user.is_superuser or self.request.user == project.pi:
             return True
         return False
 
@@ -560,7 +562,8 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
     def test_func(self):
         """UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
-        if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        # if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        if self.request.user.is_superuser or self.request.user == project.pi:
             return True
         err = 'You do not have permission to add users to the project.'
         messages.error(self.request, err)
@@ -655,7 +658,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                                 project_obj.title,
                             )
                         except Exception as e:
-                            error = f"Could not add user {user_obj} to AD Group for {project_obj.title}: {e}"
+                            error = f"Could not add user {user_obj} to AD Group for {project_obj.title}: {e}\nPlease contact Coldfront administration for further assistance."
                             logger.error(
                                 "P685: user %s could not add AD user of %s to AD Group of %s: %s",
                                 self.request.user, user_obj, project_obj.title, e
@@ -716,7 +719,8 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
     def test_func(self):
         """UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
-        if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        # if project_obj.has_perm(self.request.user, ProjectPermission.UPDATE):
+        if self.request.user.is_superuser or self.request.user == project.pi:
             return True
         return False
 
