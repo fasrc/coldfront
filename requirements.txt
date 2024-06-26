@@ -49,6 +49,8 @@ django-mathfilters==1.0.0
 django-tables2==2.3.4
 djangorestframework==3.15.0
 djangorestframework-datatables==0.7.0
+grpcio==1.64.1
+grpcio_tools==1.64.1
 ipython==7.16.3
 isilon-sdk
 ldap3
