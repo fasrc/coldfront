@@ -61,3 +61,6 @@ XlsxWriter
 python-dateutil
 django-extensions
 natural-keys
+knox
+jinja2
+boto3
