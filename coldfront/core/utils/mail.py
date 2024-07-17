@@ -52,7 +52,7 @@ def send_email(subject, body, sender, receiver_list, cc=[]):
         email.send(fail_silently=False)
     except SMTPException:
         logger.error('Failed to send email to %s from %s with subject %s',
-                     sender, ','.join(receiver_list), subject)
+                     ','.join(receiver_list), sender, subject)
 
 
 def send_email_template(
