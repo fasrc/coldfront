@@ -36,9 +36,7 @@ class EmailFunctionsTestCase(TestCase):
             self.assertEqual(len(mail.outbox), 0)
 
     @patch('django.core.mail.EmailMessage.send')
-    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
-    @patch('coldfront.config.email.EMAIL_BACKEND', 'django.core.mail.backends.locmem.EmailBackend')
-    @override_settings(EMAIL_ENABLED=True)
+    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', False)
     def test_send_email_missing_receiver_list(self, mock_send):
         print('test_send_email_missing_receiver_list')
         with self.assertLogs(logger, level='ERROR') as log:
