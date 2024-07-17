@@ -61,20 +61,22 @@ class EmailFunctionsTestCase(TestCase):
         self.assertEqual(mail.outbox[0].to, ['dev@example.com'])
         self.assertEqual(mail.outbox[0].cc, ['dev@example.com'])
 
+    @patch('coldfront.core.utils.mail.EMAIL_SUBJECT_PREFIX', '[ColdFront]')
     def test_send_email_success(self):
         send_email(self.subject, self.body, self.sender, self.receiver_list, self.cc_list)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].subject, '[coldfront] Test Subject')
+        self.assertEqual(mail.outbox[0].subject, '[ColdFront] Test Subject')
         self.assertEqual(mail.outbox[0].body, 'Test Body')
         self.assertEqual(mail.outbox[0].from_email, self.sender)
         self.assertEqual(mail.outbox[0].to, self.receiver_list)
         self.assertEqual(mail.outbox[0].cc, self.cc_list)
 
+    @patch('coldfront.core.utils.mail.EMAIL_SUBJECT_PREFIX', '[ColdFront]')
     @patch('coldfront.core.utils.mail.EmailMessage.send', side_effect=SMTPException)
     def test_send_email_smtp_exception(self, mock_send):
         with self.assertLogs(logger, level='ERROR') as log:
             send_email(self.subject, self.body, self.sender, self.receiver_list, self.cc_list)
-            self.assertTrue(any('Failed to send email to receiver@example.com from sender@example.com with subject [coldfront] Test Subject' in message for message in log.output))
+            self.assertTrue(any('Failed to send email to receiver@example.com from sender@example.com with subject [ColdFront] Test Subject' in message for message in log.output))
         self.assertEqual(len(mail.outbox), 0)
         mock_send.assert_called_once()
 
