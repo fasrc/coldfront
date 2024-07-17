@@ -36,14 +36,22 @@ class EmailFunctionsTestCase(TestCase):
             self.assertEqual(len(mail.outbox), 0)
 
     @patch('django.core.mail.EmailMessage.send')
+    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
+    @patch('coldfront.config.email.EMAIL_BACKEND', 'django.core.mail.backends.locmem.EmailBackend')
+    @override_settings(EMAIL_ENABLED=True)
     def test_send_email_missing_receiver_list(self, mock_send):
+        print('test_send_email_missing_receiver_list')
         with self.assertLogs(logger, level='ERROR') as log:
             send_email(self.subject, self.body, self.sender, [], self.cc_list)
             self.assertTrue(any('Failed to send email missing receiver_list' in message for message in log.output))
         self.assertEqual(len(mail.outbox), 0)
         mock_send.assert_not_called()
 
+    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
+    @patch('coldfront.config.email.EMAIL_BACKEND', 'django.core.mail.backends.locmem.EmailBackend')
+    @override_settings(EMAIL_ENABLED=True)
     def test_send_email_missing_sender(self):
+        print('test_send_email_missing_sender')
         with self.assertLogs(logger, level='ERROR') as log:
             send_email(self.subject, self.body, '', self.receiver_list, self.cc_list)
             self.assertTrue(any('Failed to send email missing sender address' in message for message in log.output))
@@ -101,6 +109,7 @@ class EmailFunctionsTestCase(TestCase):
         self.assertEqual(build_link(url_path), f'{CENTER_BASE_URL}{url_path}')
 
     def test_send_allocation_admin_email(self):
+        print('test_send_allocation_admin_email')
         allocation_obj = MagicMock()
         allocation_obj.project.pi.first_name = 'John'
         allocation_obj.project.pi.last_name = 'Doe'
@@ -112,6 +121,7 @@ class EmailFunctionsTestCase(TestCase):
     @patch('coldfront.core.utils.mail.reverse', return_value='/test-path/')
     @patch('coldfront.core.utils.mail.render_to_string', return_value='Rendered Body')
     def test_send_allocation_customer_email(self, mock_render, mock_reverse):
+        print('test_send_allocation_customer_email')
         allocation_obj = MagicMock()
         allocation_obj.pk = 1
         allocation_obj.get_parent_resource = 'Test Resource'
