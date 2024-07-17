@@ -29,17 +29,14 @@ def send_email(subject, body, sender, receiver_list, cc=[]):
     """
 
     if not EMAIL_ENABLED:
-        print('Email is not enabled')
         return
 
     if len(receiver_list) == 0:
         logger.error('Failed to send email missing receiver_list')
-        print('Failed to send email missing receiver_list')
         return
 
     if len(sender) == 0:
         logger.error('Failed to send email missing sender address')
-        print('Failed to send email missing sender address')
         return
 
     if len(EMAIL_SUBJECT_PREFIX) > 0:
@@ -53,7 +50,6 @@ def send_email(subject, body, sender, receiver_list, cc=[]):
     try:
         email = EmailMessage(subject, body, sender, receiver_list, cc=cc)
         email.send(fail_silently=False)
-        print(f'Email sent to {receiver_list} from {sender} with subject {subject}')
     except SMTPException:
         logger.error('Failed to send email to %s from %s with subject %s',
                      ','.join(receiver_list), sender, subject)
