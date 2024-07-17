@@ -43,6 +43,7 @@ class EmailFunctionsTestCase(TestCase):
         print('test_send_email_missing_receiver_list')
         with self.assertLogs(logger, level='ERROR') as log:
             send_email(self.subject, self.body, self.sender, [], self.cc_list)
+            print([message for message in log.output])
             self.assertTrue(any('Failed to send email missing receiver_list' in message for message in log.output))
         self.assertEqual(len(mail.outbox), 0)
         mock_send.assert_not_called()
