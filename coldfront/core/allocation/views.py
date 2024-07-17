@@ -188,7 +188,8 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                 user_sync_task = Task.objects.filter(
                     func__contains=sync_task_name, success=True
                 ).order_by('started').last()
-                user_sync_dt = user_sync_task.started
+                if user_sync_task:
+                    user_sync_dt = user_sync_task.started
 
         context['user_sync_dt'] = user_sync_dt
 
