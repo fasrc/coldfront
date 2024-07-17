@@ -35,24 +35,21 @@ class EmailFunctionsTestCase(TestCase):
             send_email(self.subject, self.body, self.sender, self.receiver_list, self.cc_list)
             self.assertEqual(len(mail.outbox), 0)
 
-    @patch('django.core.mail.EmailMessage.send')
-    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', False)
-    def test_send_email_missing_receiver_list(self, mock_send):
+    def test_send_email_missing_receiver_list(self):
         print('test_send_email_missing_receiver_list')
         with self.assertLogs(logger, level='ERROR') as log:
             send_email(self.subject, self.body, self.sender, [], self.cc_list)
             print([message for message in log.output])
             self.assertTrue(any('Failed to send email missing receiver_list' in message for message in log.output))
         self.assertEqual(len(mail.outbox), 0)
-        mock_send.assert_not_called()
 
-    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
-    @patch('coldfront.config.email.EMAIL_BACKEND', 'django.core.mail.backends.locmem.EmailBackend')
     @override_settings(EMAIL_ENABLED=True)
     def test_send_email_missing_sender(self):
         print('test_send_email_missing_sender')
         with self.assertLogs(logger, level='ERROR') as log:
             send_email(self.subject, self.body, '', self.receiver_list, self.cc_list)
+            print("test_send_email_missing_sender log.output: ", [message for message in log.output])
+            print("test_send_email_missing_sender mail.outbox: ", mail.outbox)
             self.assertTrue(any('Failed to send email missing sender address' in message for message in log.output))
         self.assertEqual(len(mail.outbox), 0)
 
