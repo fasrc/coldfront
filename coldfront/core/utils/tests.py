@@ -104,7 +104,7 @@ class EmailFunctionsTestCase(TestCase):
         self.assertEqual(build_link(url_path, domain_url), expected_url)
         self.assertEqual(build_link(url_path), f'{CENTER_BASE_URL}{url_path}')
 
-    @override_settings(EMAIL_SENDER='test-admin@coldfront.org')
+    @patch('coldfront.core.utils.mail.EMAIL_SENDER', 'test-admin@coldfront.org')
     def test_send_allocation_admin_email(self):
         print('test_send_allocation_admin_email')
         allocation_obj = MagicMock()
@@ -117,7 +117,7 @@ class EmailFunctionsTestCase(TestCase):
 
     @patch('coldfront.core.utils.mail.reverse', return_value='/test-path/')
     @patch('coldfront.core.utils.mail.render_to_string', return_value='Rendered Body')
-    @override_settings(EMAIL_SENDER='test-admin@coldfront.org')
+    @patch('coldfront.core.utils.mail.EMAIL_SENDER', 'test-admin@coldfront.org')
     def test_send_allocation_customer_email(self, mock_render, mock_reverse):
         print('test_send_allocation_customer_email')
         allocation_obj = MagicMock()
