@@ -17,6 +17,7 @@ from coldfront.core.utils.mail import (
 
 @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
 @patch('coldfront.config.email.EMAIL_BACKEND', 'django.core.mail.backends.locmem.EmailBackend')
+@override_settings(EMAIL_ENABLED=True)
 class EmailFunctionsTestCase(TestCase):
 
     def setUp(self):
@@ -27,6 +28,12 @@ class EmailFunctionsTestCase(TestCase):
         self.cc_list = ['cc@example.com']
         self.template_name = 'email/test_email_template.html'
         self.template_context = {'test_key': 'test_value'}
+
+    @override_settings(EMAIL_ENABLED=False)
+    def test_send_email_not_enabled(self):
+        with patch('coldfront.core.utils.mail.EMAIL_ENABLED', False):
+            send_email(self.subject, self.body, self.sender, self.receiver_list, self.cc_list)
+            self.assertEqual(len(mail.outbox), 0)
 
     @patch('django.core.mail.EmailMessage.send')
     def test_send_email_missing_receiver_list(self, mock_send):
