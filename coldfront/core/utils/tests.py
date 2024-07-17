@@ -126,6 +126,7 @@ class EmailFunctionsTestCase(TestCase):
         allocation_user.allocation.project.projectuser_set.get.return_value.enable_notifications = True
         allocation_obj.allocationuser_set.exclude.return_value = [allocation_user]
         send_allocation_customer_email(allocation_obj, self.subject, self.template_name)
+        print("test_send_allocation_customer_email mail.outbox: ", mail.outbox)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('user@example.com', mail.outbox[0].to)
         mock_render.assert_called_once_with(self.template_name, mock.ANY)

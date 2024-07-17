@@ -34,10 +34,12 @@ def send_email(subject, body, sender, receiver_list, cc=[]):
 
     if len(receiver_list) == 0:
         logger.error('Failed to send email missing receiver_list')
+        print('Failed to send email missing receiver_list')
         return
 
     if len(sender) == 0:
         logger.error('Failed to send email missing sender address')
+        print('Failed to send email missing sender address')
         return
 
     if len(EMAIL_SUBJECT_PREFIX) > 0:
