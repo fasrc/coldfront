@@ -601,6 +601,7 @@ class UsageDataPipelineBase:
             status__name__in=allocation_statuses,
             resources__in=self.connection_obj.get_corresponding_coldfront_resources()
         )
+        return self._allocations
 
     @property
     def allocationquerymatches(self):
@@ -665,7 +666,7 @@ class UsageDataPipelineBase:
         return self.allocationquerymatches, user_models
 
     def update_coldfront_objects(self, user_models):
-        """update coldfront objects"""
+        """update coldfront allocation objects"""
         allocation_attribute_types = AllocationAttributeType.objects.all()
 
         quota_b_attrtype = allocation_attribute_types.get(name='Quota_In_Bytes')
