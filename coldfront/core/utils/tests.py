@@ -120,8 +120,8 @@ class EmailFunctionsTestCase(TestCase):
         allocation_obj.project.pi.username = 'jdoe'
         allocation_obj.project.pi.email = 'jdoe@test_project.edu'
         allocation_obj.get_parent_resource.name = 'Test Resource'
-        allocation_obj.size = 140140566725200
-        allocation_obj.usage = 100
+        allocation_obj.size_exact = 140140566725200
+        allocation_obj.usage_exact = 100
         new_usage = 140140566625100
         result = allocation_reaching_capacity_operations(allocation_obj, new_usage)
         self.assertEqual(result, True)
