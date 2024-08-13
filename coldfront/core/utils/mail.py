@@ -49,6 +49,8 @@ def send_email(subject, body, sender, receiver_list, cc=[]):
 
     try:
         email = EmailMessage(subject, body, sender, receiver_list, cc=cc)
+        logger.info('Email sent to %s from %s with subject %s',
+                    ','.join(receiver_list+cc), sender, subject)
         email.send(fail_silently=False)
     except SMTPException:
         logger.error('Failed to send email to %s from %s with subject %s',
@@ -84,9 +86,39 @@ def build_link(url_path, domain_url=''):
 
 def send_allocation_admin_email(
     allocation_obj, subject, template_name,
-    url_path='', domain_url='', other_vars=None
+    url_path='', domain_url='', cc=[], other_vars=None
 ):
-    """Send allocation admin emails
+    """Send allocation-related email to system admins
+    """
+    url_path = url_path or reverse('allocation-request-list')
+
+    url = build_link(url_path, domain_url=domain_url)
+    pi = allocation_obj.project.pi
+    pi_name = f'{pi.first_name} {pi.last_name}'
+    resource_name = allocation_obj.get_parent_resource
+
+    ctx = email_template_context(other_vars)
+    ctx['pi_name'] = pi_name
+    ctx['pi_username'] = f'{pi.username}'
+    ctx['resource'] = resource_name
+    ctx['url'] = url
+
+    if ctx.get('user'):
+        cc.append(ctx.get('user').email)
+    send_email_template(
+        f'{subject}: {pi_name} - {resource_name}',
+        template_name,
+        ctx,
+        EMAIL_SENDER,
+        [EMAIL_TICKET_SYSTEM_ADDRESS,],
+        cc=cc
+    )
+
+def send_allocation_manager_email(
+    allocation_obj, subject, template_name,
+    url_path='', manager_types=[], domain_url='', other_vars=None
+):
+    """Send allocation-related email to allocation pi, cc'ing managers
     """
     url_path = url_path or reverse('allocation-request-list')
 
@@ -102,16 +134,19 @@ def send_allocation_admin_email(
     ctx['url'] = url
 
     cc = []
-    if ctx.get('user'):
-        cc.append(ctx.get('user').email)
+    if manager_types:
+        managers = allocation_obj.project.projectuser_set.filter(
+            role__name__in=manager_types)
+        cc.extend([manager.user.email for manager in managers])
     send_email_template(
         f'{subject}: {pi_name} - {resource_name}',
         template_name,
         ctx,
         EMAIL_SENDER,
-        [EMAIL_TICKET_SYSTEM_ADDRESS,],
+        [pi.email],
         cc=cc
     )
+
 
 def send_allocation_customer_email(
     allocation_obj, subject, template_name,

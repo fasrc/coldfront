@@ -2,22 +2,27 @@
 """
 import os
 import json
+import logging
 import operator
 from functools import reduce
 from datetime import datetime
 
 import pandas as pd
+from django.conf import settings
 from django.db.models import Q
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 from ifxbilling.models import Product
 
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
+from coldfront.core.utils.mail import send_allocation_manager_email
 
+logger = logging.getLogger(__name__)
 
-MISSING_DATA_DIR = './local_data/missing/'
-
+MISSING_DATA_DIR = import_from_settings('MISSING_DATA_DIR', './local_data/missing/')
+DATA_MANAGERS = import_from_settings('DATA_MANAGERS', ['General Manager, Data Manager'])
 username_ignore_list = import_from_settings('username_ignore_list', [])
 groupname_ignore_list = import_from_settings('groupname_ignore_list', [])
 
@@ -28,6 +33,7 @@ def get_quarter_start_end():
     quarter_ends = [f'{y}-03-31', f'{y}-06-30', f'{y}-09-30', f'{y}-12-31']
     quarter = (datetime.today().month-1)//3
     return (quarter_starts[quarter], quarter_ends[quarter])
+
 
 def sort_by(list1, sorter, how='attr'):
     """split one list into two on basis of each item's ability to meet a condition
@@ -50,6 +56,7 @@ def sort_by(list1, sorter, how='attr'):
             raise Exception('unclear sorting method')
     return is_true, is_false
 
+
 def select_one_project_allocation(project_obj, resource_obj, dirpath=None):
     """
     Get one allocation for a given project/resource pairing; handle return of
@@ -69,13 +76,15 @@ def select_one_project_allocation(project_obj, resource_obj, dirpath=None):
     allocation_query = project_obj.allocation_set.filter(**filter_vals)
     if allocation_query.count() == 1:
         allocation_obj = allocation_query.first()
-        if allocation_obj.path and dirpath and allocation_obj.path not in dirpath and dirpath not in allocation_obj.path:
-            return None
+        if allocation_obj.subdirectory and allocation_obj.subdirectory != dirpath:
+            logger.error("directory path mismatch:", allocation_obj.subdirectory, dirpath)
     elif allocation_query.count() < 1:
         allocation_obj = None
     elif allocation_query.count() > 1:
-        allocation_obj = next((a for a in allocation_query if a.path.lower() in dirpath.lower()),
-                                None)
+        allocation_obj = next(
+            (a for a in allocation_query if a.path.lower() in dirpath.lower()),
+            'MultiAllocationError'
+        )
     return allocation_obj
 
 
@@ -90,6 +99,7 @@ def determine_size_fmt(byte_num):
         byte_num /= 1024.0
     return(round(byte_num, 3), unit)
 
+
 def convert_size_fmt(num, target_unit, source_unit='B'):
     units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB']
     diff = units.index(target_unit) - units.index(source_unit)
@@ -102,6 +112,7 @@ def convert_size_fmt(num, target_unit, source_unit='B'):
         for i in range(abs(diff)):
             num*=1024.0
     return round(num, 3)
+
 
 def get_resource_rate(resource):
     """find Product with the name provided and return the associated rate"""
@@ -120,6 +131,53 @@ def get_resource_rate(resource):
         return rate_obj.price/100
     price = convert_size_fmt(rate_obj.price, 'TB', source_unit=rate_obj.units)
     return round(price/100, 2)
+
+
+def allocation_reaching_capacity_operations(allocation_obj, new_usage):
+    """if allocation_obj.usage is <80% of allocation_obj.limit and new_usage
+    >80% of allocation_obj.limit, send email to pi and data manager.
+    """
+    threshold = 80
+    if (
+        allocation_obj.usage_exact/allocation_obj.size_exact < 0.8
+        and new_usage/allocation_obj.size > 0.8
+    ):
+        resource = allocation_obj.get_parent_resource
+        # send email to pi and data manager
+        # define: center_name, threshold, resource, allocation_url, request_allocation_url, starfish_url, starfish_docs_url, signature
+        allocation_pk_dict = {'pk': allocation_obj.pk}
+        other_vars = {
+            'threshold': threshold,
+            'project_title': allocation_obj.project.title,
+            'allocation_quota': f'{allocation_obj.size} {allocation_obj.get_parent_resource.quantity_label}',
+            'resource': resource.name,
+            'change_request_url': reverse('allocation-change', kwargs=allocation_pk_dict),
+        }
+        if (
+            'coldfront.plugins.sftocf' in settings.INSTALLED_APPS
+            and 'tape' not in resource.name
+            and 'tier' in resource.name
+            and allocation_obj.project.sf_zone
+        ):
+            other_vars['starfish'] = True
+            STARFISH_SERVER = import_from_settings('STARFISH_SERVER')
+            starfish_url = f'https://{STARFISH_SERVER}.rc.fas.harvard.edu/api/'
+            other_vars['starfish_url'] = starfish_url
+            other_vars['starfish_docs_url'] = 'https://docs.rc.fas.harvard.edu/kb/starfish-data-management/'
+        subject = f'Allocation Usage Warning for {allocation_obj.project.title} on {other_vars["resource"]}'
+        send_allocation_manager_email(
+            allocation_obj,
+            subject,
+            'email/allocation_usage_high.txt',
+            url_path=reverse('allocation-detail', kwargs=allocation_pk_dict),
+            manager_types=DATA_MANAGERS,
+            other_vars=other_vars
+        )
+        logger.info('allocation %s %s reaching capacity; warning email sent',
+            allocation_obj.allocation.pk, allocation_obj.allocation)
+        return True
+    return False
+
 
 def id_present_missing_resources(resourceserver_list):
     """
@@ -202,6 +260,7 @@ def log_missing(modelname, missing):
     """
     update_csv(missing, MISSING_DATA_DIR, f'missing_{modelname}s.csv')
 
+
 def slate_for_check(log_entries):
     """Add an issue encountered during runtime to a CSV for administrative review.
 
@@ -213,6 +272,7 @@ def slate_for_check(log_entries):
         pages), "detail" (exc_info, if necessary)
     """
     update_csv(log_entries, 'local_data/', 'program_error_checks.csv')
+
 
 def update_csv(new_entries, dirpath, csv_name, date_update='date'):
     """Add or update entries in CSV, order CSV by descending date and save.
