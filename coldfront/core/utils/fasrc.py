@@ -134,14 +134,17 @@ def get_resource_rate(resource):
 
 
 def allocation_reaching_capacity_operations(allocation_obj, new_usage):
-    """if allocation_obj.usage is <80% of allocation_obj.limit and new_usage
-    >80% of allocation_obj.limit, send email to pi and data manager.
+    """if allocation_obj.usage is <80/90% of allocation_obj.limit and new_usage
+    >80/90% of allocation_obj.limit, send email to pi and data manager.
     """
-    threshold = 80
-    if (
-        allocation_obj.usage_exact/allocation_obj.size_exact < 0.8
-        and new_usage/allocation_obj.size > 0.8
-    ):
+    threshold = None
+    for limit in [90, 80]:
+        if (
+            allocation_obj.usage_exact/allocation_obj.size_exact < limit/100
+            and new_usage/allocation_obj.size > limit/100
+        ):
+            threshold = limit
+    if threshold:
         resource = allocation_obj.get_parent_resource
         # send email to pi and data manager
         # define: center_name, threshold, resource, allocation_url, request_allocation_url, starfish_url, starfish_docs_url, signature
