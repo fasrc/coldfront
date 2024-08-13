@@ -133,15 +133,15 @@ def get_resource_rate(resource):
     return round(price/100, 2)
 
 
-def allocation_reaching_capacity_operations(allocation_obj, new_usage):
-    """if allocation_obj.usage is <80/90% of allocation_obj.limit and new_usage
+def allocation_reaching_capacity_operations(allocation_obj, new_byte_usage):
+    """if allocation_obj.usage is <80/90% of allocation_obj.limit and new_byte_usage
     >80/90% of allocation_obj.limit, send email to pi and data manager.
     """
     threshold = None
     for limit in [90, 80]:
         if (
             allocation_obj.usage_exact/allocation_obj.size_exact < limit/100
-            and new_usage/allocation_obj.size > limit/100
+            and new_byte_usage/allocation_obj.size_exact > limit/100
         ):
             threshold = limit
     if threshold:
