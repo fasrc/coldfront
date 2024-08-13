@@ -22,7 +22,7 @@ from coldfront.core.utils.mail import send_allocation_manager_email
 logger = logging.getLogger(__name__)
 
 MISSING_DATA_DIR = import_from_settings('MISSING_DATA_DIR', './local_data/missing/')
-DATA_MANAGERS = import_from_settings('DATA_MANAGERS', ['General Manager, Data Manager'])
+DATA_MANAGERS = import_from_settings('DATA_MANAGERS', ['General Manager, Storage Manager'])
 username_ignore_list = import_from_settings('username_ignore_list', [])
 groupname_ignore_list = import_from_settings('groupname_ignore_list', [])
 
