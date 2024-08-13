@@ -507,7 +507,7 @@ class AllocationQueryMatch:
                 return None
         return super().__new__(cls)
 
-    def __init__(self, allocation, total_usage_entries, user_usage_entries):
+    def __init__(self, allocation, total_usage_entries, user_usage_entries, usage=False):
         self.allocation = allocation
         self.volume = allocation.get_parent_resource.name.split('/')[0]
         self.path = allocation.path
