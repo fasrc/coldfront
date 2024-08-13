@@ -491,23 +491,22 @@ def generate_headers(token):
 
 class AllocationQueryMatch:
     """class to hold Allocations and related query results together."""
-    def __new__(cls, allocation, total_usage_entries, user_usage_entries, usage=False):
+    def __new__(cls, allocation, total_usage_entries, user_usage_entries):
         allocation_data = (
             allocation.pk, allocation.project.title, allocation.resources.first()
         )
         msg = None
-        if usage:
-            if not total_usage_entries:
-                msg = f'No starfish allocation usage result for allocation {allocation_data}; deactivation suggested'
-            elif len(total_usage_entries) > 1:
-                msg = f'too many total_usage_entries for allocation {allocation_data}; investigation required'
-            if msg:
-                print(msg)
-                logger.warning(msg)
-                return None
+        if not total_usage_entries:
+            msg = f'No starfish allocation usage result for allocation {allocation_data}; deactivation suggested'
+        elif len(total_usage_entries) > 1:
+            msg = f'too many total_usage_entries for allocation {allocation_data}; investigation required'
+        if msg:
+            print(msg)
+            logger.warning(msg)
+            return None
         return super().__new__(cls)
 
-    def __init__(self, allocation, total_usage_entries, user_usage_entries, usage=False):
+    def __init__(self, allocation, total_usage_entries, user_usage_entries):
         self.allocation = allocation
         self.volume = allocation.get_parent_resource.name.split('/')[0]
         self.path = allocation.path
@@ -600,7 +599,7 @@ class UsageDataPipelineBase:
         return self._allocations
 
     @property
-    def allocationquerymatches(self, usage=False):
+    def allocationquerymatches(self):
         # limit allocations to those in the volumes collected
         if self._allocationquerymatches:
             return self._allocationquerymatches
@@ -611,14 +610,13 @@ class UsageDataPipelineBase:
         ]
         # if usage is true, collect and update usage
         allocation_usage_grouped = {}
-        if usage:
-            total_sort_key = itemgetter('path','volume')
-            allocation_usage_grouped = return_dict_of_groupings(self.sf_usage_data, total_sort_key)
-            missing_allocations = [
-                (k,a) for k, a in allocation_usage_grouped if k not in allocation_list
-            ]
-            print("missing_allocations:", missing_allocations)
-            logger.warning('starfish allocations missing in coldfront: %s', missing_allocations)
+        total_sort_key = itemgetter('path','volume')
+        allocation_usage_grouped = return_dict_of_groupings(self.sf_usage_data, total_sort_key)
+        missing_allocations = [
+            (k,a) for k, a in allocation_usage_grouped if k not in allocation_list
+        ]
+        print("missing_allocations:", missing_allocations)
+        logger.warning('starfish allocations missing in coldfront: %s', missing_allocations)
 
         user_usage = [user for user in self.sf_user_data if user['path'] is not None]
         user_sort_key = itemgetter('path','volume')
@@ -632,7 +630,7 @@ class UsageDataPipelineBase:
             total_usage_entries = allocation_usage_grouped.get(a, None)
             user_usage_entries = user_usage_grouped.get(a, [])
             allocationquerymatch_objs.append(
-                AllocationQueryMatch(allocation, total_usage_entries, user_usage_entries, usage=usage)
+                AllocationQueryMatch(allocation, total_usage_entries, user_usage_entries)
             )
         self._allocationquerymatches = [a for a in allocationquerymatch_objs if a]
         return self._allocationquerymatches
@@ -663,7 +661,7 @@ class UsageDataPipelineBase:
                 obj.user_usage_entries.remove(i)
         return self.allocationquerymatches, user_models
 
-    def update_coldfront_allocation_usage(self, obj):
+    def update_coldfront_allocation_usage(self):
         """update coldfront allocation usage"""
         allocation_attribute_types = AllocationAttributeType.objects.all()
         quota_b_attrtype = allocation_attribute_types.get(name='Quota_In_Bytes')
@@ -680,8 +678,8 @@ class UsageDataPipelineBase:
         """update coldfront allocation objects"""
         # 3. iterate across allocations
         if usage:
-            self.update_coldfront_allocation_usage(obj)
-        for obj in self.allocationquerymatches(usage=usage):
+            self.update_coldfront_allocation_usage()
+        for obj in self.allocationquerymatches:
             logger.debug('updating allocation %s %s (path %s)',
                 obj.lab, obj.volume, obj.allocation.path
             )

@@ -138,10 +138,11 @@ def allocation_reaching_capacity_operations(allocation_obj, new_byte_usage):
     >80/90% of allocation_obj.limit, send email to pi and data manager.
     """
     threshold = None
+    size_bytes = float(allocation_obj.size_exact)
     for limit in [90, 80]:
         if (
-            allocation_obj.usage_exact/allocation_obj.size_exact < limit/100
-            and new_byte_usage/allocation_obj.size_exact > limit/100
+            allocation_obj.usage_exact/size_bytes < limit/100
+            and new_byte_usage/size_bytes > limit/100
         ):
             threshold = limit
     if threshold:
@@ -176,8 +177,9 @@ def allocation_reaching_capacity_operations(allocation_obj, new_byte_usage):
             manager_types=DATA_MANAGERS,
             other_vars=other_vars
         )
-        logger.info('allocation %s %s reaching capacity; warning email sent',
-            allocation_obj.allocation.pk, allocation_obj.allocation)
+        msg = f"email sent for allocation {allocation_obj.pk} - old usage {allocation_obj.usage_exact} ({allocation_obj.usage_exact/size_bytes}%), new usage {new_byte_usage} ({new_byte_usage/size_bytes}%), quota {allocation_obj.size_exact}"
+        logger.info(msg)
+        print(msg)
         return True
     return False
 
