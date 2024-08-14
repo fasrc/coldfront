@@ -12,7 +12,6 @@ CENTER_NAME = ENV.str('CENTER_NAME', default='HPC Center')
 CENTER_HELP_URL = ENV.str('CENTER_HELP_URL', default='{% url help-page %}')
 CENTER_PROJECT_RENEWAL_HELP_URL = ENV.str('CENTER_PROJECT_RENEWAL_HELP_URL', default='')
 CENTER_BASE_URL = ENV.str('CENTER_BASE_URL', default='')
-SITE_DOMAIN = ENV.str('SITE_DOMAIN', default='')
 
 #------------------------------------------------------------------------------
 # Enable Project Review

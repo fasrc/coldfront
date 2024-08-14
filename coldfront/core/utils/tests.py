@@ -20,7 +20,7 @@ from coldfront.core.utils.fasrc import allocation_reaching_capacity_operations
 @patch('coldfront.core.utils.mail.EMAIL_SENDER', 'test-admin@coldfront.org')
 @patch('coldfront.core.utils.mail.EMAIL_TICKET_SYSTEM_ADDRESS', 'tickets@example.org')
 @patch('coldfront.core.utils.mail.EMAIL_CENTER_NAME', 'HPC Center')
-@patch('coldfront.core.utils.mail.SITE_DOMAIN', 'sitedomain.org')
+@patch('coldfront.core.utils.mail.CENTER_BASE_URL', 'https://centerbaseexampleurl.org')
 @patch('coldfront.core.utils.mail.EMAIL_SIGNATURE', 'HPC Center Team')
 # @patch('coldfront.config.base.INSTALLED_APPS', 'coldfront.plugins')
 class EmailFunctionsTestCase(TestCase):
@@ -109,7 +109,7 @@ class EmailFunctionsTestCase(TestCase):
         domain_url = 'https://example.com'
         expected_url = f'{domain_url}{url_path}'
         self.assertEqual(build_link(url_path, domain_url), expected_url)
-        self.assertEqual(build_link(url_path), f'sitedomain.org{url_path}')
+        self.assertEqual(build_link(url_path), f'https://centerbaseexampleurl.org{url_path}')
 
     def test_allocation_reaching_capacity_operations(self):
         allocation_obj = MagicMock()
