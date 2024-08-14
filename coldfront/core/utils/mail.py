@@ -22,6 +22,7 @@ EMAIL_OPT_OUT_INSTRUCTION_URL = import_from_settings('EMAIL_OPT_OUT_INSTRUCTION_
 EMAIL_SIGNATURE = import_from_settings('EMAIL_SIGNATURE')
 EMAIL_CENTER_NAME = import_from_settings('CENTER_NAME')
 CENTER_BASE_URL = import_from_settings('CENTER_BASE_URL')
+SITE_DOMAIN = import_from_settings('SITE_DOMAIN')
 
 
 def send_email(subject, body, sender, receiver_list, cc=[]):
@@ -80,7 +81,7 @@ def email_template_context(extra_context=None):
 
 
 def build_link(url_path, domain_url=''):
-    domain_url = domain_url or CENTER_BASE_URL
+    domain_url = domain_url or SITE_DOMAIN
     return f'{domain_url}{url_path}'
 
 

@@ -68,7 +68,7 @@ from coldfront.core.allocation.utils import (generate_guauge_data_from_usage,
 from coldfront.core.project.models import (Project, ProjectPermission,
                                            ProjectUserStatusChoice)
 from coldfront.core.resource.models import Resource
-from coldfront.core.utils.common import get_domain_url, import_from_settings
+from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.mail import send_allocation_admin_email, send_allocation_customer_email
 
 
@@ -393,8 +393,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                 )
 
             send_allocation_customer_email(
-                allocation_obj, 'Allocation Activated',
-                'email/allocation_activated.txt', domain_url=get_domain_url(self.request)
+                allocation_obj, 'Allocation Activated', 'email/allocation_activated.txt'
             )
             if action == 'approve':
                 messages.success(request, 'Allocation Activated!')
@@ -425,7 +424,6 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                     allocation_obj,
                     f'Allocation {allocation_obj.status.name}',
                     f'email/allocation_{allocation_obj.status.name.lower()}.txt',
-                    domain_url=get_domain_url(self.request),
                 )
                 messages.success(request, f'Allocation {allocation_obj.status.name}!')
             else:
@@ -748,7 +746,6 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             allocation_obj,
             'New Allocation Request',
             'email/new_allocation_request.txt',
-            domain_url=get_domain_url(self.request),
             url_path=reverse('allocation-detail', kwargs={'pk': allocation_obj.pk}),
             other_vars=other_vars,
         )
@@ -1420,7 +1417,6 @@ class AllocationRenewView(LoginRequiredMixin, UserPassesTestMixin, TemplateView)
                 allocation_obj,
                 'Allocation Renewed',
                 'email/allocation_renewed.txt',
-                domain_url=get_domain_url(self.request),
             )
 
             messages.success(request, 'Allocation renewed successfully')
@@ -1946,7 +1942,6 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                 alloc_change_obj.allocation,
                 'Allocation Change Denied',
                 'email/allocation_change_denied.txt',
-                domain_url=get_domain_url(self.request),
             )
             save_and_redirect = True
 
@@ -2056,7 +2051,6 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                 alloc_change_obj.allocation,
                 'Allocation Change Approved',
                 'email/allocation_change_approved.txt',
-                domain_url=get_domain_url(self.request),
             )
 
             message = make_allocation_change_message(alloc_change_obj, 'APPROVED')
@@ -2293,7 +2287,6 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                 'allocation-change-detail',
                 kwargs={'pk': allocation_change_request_obj.pk},
             ),
-            domain_url=get_domain_url(self.request),
             other_vars=email_vars,
         )
         return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
