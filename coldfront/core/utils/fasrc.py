@@ -139,7 +139,7 @@ def allocation_reaching_capacity_operations(allocation_obj, new_byte_usage):
     """
     threshold = None
     size_bytes = float(allocation_obj.size_exact)
-    for limit in [90, 80]:
+    for limit in [80, 90]:
         if (
             allocation_obj.usage_exact/size_bytes < limit/100
             and new_byte_usage/size_bytes > limit/100
