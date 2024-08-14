@@ -17,7 +17,7 @@ from ifxbilling.models import Product
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
-from coldfront.core.utils.mail import send_allocation_manager_email
+from coldfront.core.utils.mail import send_allocation_manager_email, build_link
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +155,7 @@ def allocation_reaching_capacity_operations(allocation_obj, new_byte_usage):
             'project_title': allocation_obj.project.title,
             'allocation_quota': f'{allocation_obj.size} {allocation_obj.get_parent_resource.quantity_label}',
             'resource': resource.name,
-            'change_request_url': reverse('allocation-change', kwargs=allocation_pk_dict),
+            'change_request_url': build_link(reverse('allocation-change', kwargs=allocation_pk_dict)),
         }
         if (
             'coldfront.plugins.sftocf' in settings.INSTALLED_APPS
