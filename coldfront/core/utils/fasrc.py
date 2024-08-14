@@ -165,7 +165,7 @@ def allocation_reaching_capacity_operations(allocation_obj, new_byte_usage):
         ):
             other_vars['starfish'] = True
             STARFISH_SERVER = import_from_settings('STARFISH_SERVER')
-            starfish_url = f'https://{STARFISH_SERVER}.rc.fas.harvard.edu/api/'
+            starfish_url = f'https://{STARFISH_SERVER}.rc.fas.harvard.edu'
             other_vars['starfish_url'] = starfish_url
             other_vars['starfish_docs_url'] = 'https://docs.rc.fas.harvard.edu/kb/starfish-data-management/'
         subject = f'Allocation Usage Warning for {allocation_obj.project.title} on {other_vars["resource"]}'
