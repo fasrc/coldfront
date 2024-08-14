@@ -76,8 +76,8 @@ def select_one_project_allocation(project_obj, resource_obj, dirpath=None):
     allocation_query = project_obj.allocation_set.filter(**filter_vals)
     if allocation_query.count() == 1:
         allocation_obj = allocation_query.first()
-        if allocation_obj.subdirectory and allocation_obj.subdirectory != dirpath:
-            logger.error("directory path mismatch:", allocation_obj.subdirectory, dirpath)
+        if allocation_obj.path and allocation_obj.path != dirpath:
+            logger.error("directory path mismatch:", allocation_obj.path, dirpath)
     elif allocation_query.count() < 1:
         allocation_obj = None
     elif allocation_query.count() > 1:
