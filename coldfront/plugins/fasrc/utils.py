@@ -9,6 +9,7 @@ from coldfront.core.utils.fasrc import (
     log_missing,
     read_json,
     save_json,
+    allocation_reaching_capacity_operations,
     id_present_missing_projects
 )
 from coldfront.core.resource.models import Resource
@@ -182,11 +183,11 @@ class AllTheThingsConn:
         match_vars = '(u:User)-[r:MemberOf|ManagedBy]-(g:Group) WHERE'
         return_vars = 'type(r) AS relationship, g.ADManaged_By AS group_manager'
         if pi:
-            match_vars = '(g:Group) WITH g MATCH (u:User)\
+            match_vars = '(g:Group) WITH g MATCH (u:User) \
                     WHERE u.ADSamAccountName = g.ADManaged_By AND'
             return_vars = 'u.ADParentCanonicalName AS path, u.ADDepartment AS department'
         query = {'statements': [{
-            'statement': f"MATCH {match_vars} (g.ADSamAccountName =~ '({groupsearch})')\
+            'statement': f"MATCH {match_vars} (g.ADSamAccountName =~ '({groupsearch})') \
                 RETURN \
                 u.ADgivenName AS first_name, \
                 u.ADsurname AS last_name, \
@@ -323,6 +324,7 @@ def push_quota_data(result_file):
                         'no byte_allocation value for allocation %s, lab %s on resource %s',
                         allocation.pk, lab, data_dict['server']
                     )
+                allocation_reaching_capacity_operations(allocation, data_dict['byte_usage'])
                 for k, v in allocation_values.items():
                     allocation_attr_type_obj = allocation_attribute_types.get(name=k)
                     alloc_attr_obj, _ = allocation.allocationattribute_set.update_or_create(

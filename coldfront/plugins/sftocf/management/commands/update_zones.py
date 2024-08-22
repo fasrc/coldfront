@@ -147,9 +147,13 @@ class Command(BaseCommand):
             print(project, project.pk)
             zone = sf.get_zones(project.sf_zone)
             zone_paths_not_in_cf = [p for p in zone['paths'] if p.split(':')[0] not in sf_cf_vols]
-            # delete any zones that have no paths
-            if not zone_paths_not_in_cf:
+            # delete any zones that have no paths or belong to inactive projects
+            if not zone_paths_not_in_cf or project.status.name == 'Archived':
                 if not dry_run:
+                    if project.status.name == 'Archived':
+                        logger.warning('Project %s is archived; deleting zone', project)
+                    elif not zone_paths_not_in_cf:
+                        logger.warning('Zone %s has no paths; deleting', zone['name'])
                     sf.delete_zone(zone['id'])
                     # delete projectattribute
                     project.projectattribute_set.get(

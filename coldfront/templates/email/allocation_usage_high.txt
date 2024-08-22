@@ -1,0 +1,12 @@
+This is a notice that usage of {{project_title}}’s allocation on {{resource}} has exceeded {{threshold}}% of its quota of {{allocation_quota}}.
+You can view more information about the allocation here: {{url}}.
+
+To avoid reaching quota capacity, we strongly encourage either reducing allocation usage or requesting an allocation quota increase.
+You can request an allocation quota increase here: {{change_request_url}}.
+{% if starfish %}
+The Starfish platform can assist in identifying allocation directories and files that have not been used recently. You can access Starfish here: {{starfish_url}}.
+Some tips for using Starfish to identify files that have not been accessed recently or may no longer be in use are available here: {{starfish_docs_url}}
+{% endif %}
+
+Thank you,
+{{signature}}

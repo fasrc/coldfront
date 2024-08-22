@@ -10,15 +10,19 @@ from coldfront.core.utils.mail import (
     email_template_context,
     send_allocation_admin_email,
     send_allocation_customer_email,
-    CENTER_BASE_URL,
     build_link,
     logger
 )
+from coldfront.core.utils.fasrc import allocation_reaching_capacity_operations
 
 @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
 @patch('coldfront.config.email.EMAIL_BACKEND', 'django.core.mail.backends.locmem.EmailBackend')
 @patch('coldfront.core.utils.mail.EMAIL_SENDER', 'test-admin@coldfront.org')
 @patch('coldfront.core.utils.mail.EMAIL_TICKET_SYSTEM_ADDRESS', 'tickets@example.org')
+@patch('coldfront.core.utils.mail.EMAIL_CENTER_NAME', 'HPC Center')
+@patch('coldfront.core.utils.mail.CENTER_BASE_URL', 'https://centerbaseexampleurl.org')
+@patch('coldfront.core.utils.mail.EMAIL_SIGNATURE', 'HPC Center Team')
+# @patch('coldfront.config.base.INSTALLED_APPS', 'coldfront.plugins')
 class EmailFunctionsTestCase(TestCase):
 
     def setUp(self):
@@ -105,14 +109,31 @@ class EmailFunctionsTestCase(TestCase):
         domain_url = 'https://example.com'
         expected_url = f'{domain_url}{url_path}'
         self.assertEqual(build_link(url_path, domain_url), expected_url)
-        self.assertEqual(build_link(url_path), f'{CENTER_BASE_URL}{url_path}')
+        self.assertEqual(build_link(url_path), f'https://centerbaseexampleurl.org{url_path}')
+
+    def test_allocation_reaching_capacity_operations(self):
+        allocation_obj = MagicMock()
+        allocation_obj.pk = 1
+        allocation_obj.project.title = 'Test Project'
+        allocation_obj.project.pi.first_name = 'John'
+        allocation_obj.project.pi.last_name = 'Doe'
+        allocation_obj.project.pi.username = 'jdoe'
+        allocation_obj.project.pi.email = 'jdoe@test_project.edu'
+        allocation_obj.get_parent_resource.name = 'Test Resource'
+        allocation_obj.size_exact = 140140566725200
+        allocation_obj.usage_exact = 100
+        new_usage = 140140566625100
+        result = allocation_reaching_capacity_operations(allocation_obj, new_usage)
+        self.assertEqual(result, True)
+        self.assertEqual(len(mail.outbox), 1)
+        print(mail.outbox[0].__dict__)
 
     def test_send_allocation_admin_email(self):
         allocation_obj = MagicMock()
         allocation_obj.project.pi.first_name = 'John'
         allocation_obj.project.pi.last_name = 'Doe'
         allocation_obj.project.pi.username = 'jdoe'
-        allocation_obj.get_parent_resource = 'Test Resource'
+        allocation_obj.get_parent_resource.name = 'Test Resource'
         send_allocation_admin_email(allocation_obj, self.subject, self.template_name)
         self.assertEqual(len(mail.outbox), 1)
 

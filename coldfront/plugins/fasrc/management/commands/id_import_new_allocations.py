@@ -76,7 +76,8 @@ class Command(BaseCommand):
 
                 resource = Resource.objects.get(name__contains=entry['server'])
                 alloc_obj = select_one_project_allocation(project, resource, dirpath=lab_path)
-                if alloc_obj is not None:
+                if alloc_obj == 'MultiAllocationError':
+                    logger.warning('Multiple allocations found for %s %s %s', lab_name, lab_server, lab_path)
                     continue
                 lab_usage_entries = [
                     i for i in allocation_usages if i['vol_name'] == lab_server
