@@ -70,7 +70,7 @@ from coldfront.core.project.models import (Project, ProjectPermission,
 from coldfront.core.resource.models import Resource
 from coldfront.core.utils.common import get_domain_url, import_from_settings
 from coldfront.core.utils.mail import send_allocation_admin_email, send_allocation_customer_email
-
+from coldfront.plugins.ifx.models import ProjectOrganization
 
 if 'ifxbilling' in settings.INSTALLED_APPS:
     from fiine.client import API as FiineAPI
@@ -306,6 +306,34 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         allocation_obj.is_locked = form_data.get('is_locked')
         allocation_obj.is_changeable = form_data.get('is_changeable')
         allocation_obj.status = form_data.get('status')
+
+        # check if corresponding Account for expense code exists
+        if 'ifxbilling' in settings.INSTALLED_APPS:
+            # pull up the person corresponding to the PI
+            person = FiineAPI.readPerson(ifxid=allocation_obj.project.pi.ifxid)
+            if allocation_obj not in [a.account.code for a in person.facility_accounts]:
+                try:
+                    account = FiineAPI.listAccounts(code=allocation_obj.expense_code)[0]
+                except IndexError:
+                    account_data = {
+                        'code':allocation_obj.expense_code,
+                        'account_type': 'Expense Code',
+                        'name': 'name_placeholder',
+                        'active': 'true',
+                        'organization':
+                        ProjectOrganization.objects.get(project=allocation_obj.project).organization.name,
+                    }
+                    account = FiineAPI.createAccount(**account_data)
+
+                facility_account_dict = {
+                    'facility': 'Research Computing Storage',
+                    'account': account.code,
+                    'is_valid': True,
+                }
+                person.facility_accounts.append(facility_account_dict)
+                ifxid = str(allocation_obj.project.pi.ifxid)
+                pdict = person.to_dict()
+                FiineAPI.updatePerson(**pdict)
 
         if 'approve' in action:
 
