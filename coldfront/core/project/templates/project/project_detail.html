@@ -2,6 +2,7 @@
 {% load crispy_forms_tags %}
 {% load humanize %}
 {% load static %}
+{% load common_tags %}
 
 
 {% block title %}
@@ -30,8 +31,7 @@ Project Detail
   <hr>
 </div>
 
-{% comment %}
-{% if project.status.name != 'Archived' and is_allowed_to_update_project %}
+{% if project.status.name != 'Archived' and request.user.is_superuser %}
   <div class="card mb-3 bg-light">
     <div class="card-header">
       <h3 class="d-inline" id="manage-project"><i class="fas fa-cubes" aria-hidden="true"></i> Manage Project</h3>
@@ -42,15 +42,16 @@ Project Detail
         {% endif %}
       </div>
     </div>
+    {% comment %}
     <div class="card-body">
         <a class="btn btn-success" href="{% url 'project-add-users-search' project.pk %}" role="button"><i class="fas fa-user-plus" aria-hidden="true"></i> Add Users</a>
         <a class="btn btn-success" href="{% url 'grant-create' project.id %}" role="button"><i class="fas fa-trophy" aria-hidden="true"></i> Add Grant</a>
         <a class="btn btn-success" href="{% url 'publication-search' project.pk %}" role="button"><i class="fas fa-newspaper" aria-hidden="true"></i> Add Publication</a>
         <a class="btn btn-success" href="{% url 'add-research-output' project.pk %}" role="button"><i class="far fa-newspaper" aria-hidden="true"></i> Add Research Output</a>
     </div>
+    {% endcomment %}
   </div>
 {% endif %}
-{% endcomment %}
 
 <!-- Start Project Heading -->
 <div class="card mb-3">
@@ -78,44 +79,56 @@ Project Detail
 <div class="html2pdf__page-break"></div>
 <div class="card mb-3">
   <div class="card-header">
-    <h3 class="d-inline"><i class="fas fa-file-invoice-dollar" aria-hidden="true"></i> Project Invoice</h3>
-    <span class="badge badge-secondary">{{allocations|length}}</span>
+    <h3 class="d-inline"><i class="fas fa-list" aria-hidden="true"></i> Project Allocations</h3>
+    <span class="badge badge-secondary">{{allocations.count}}</span>
     <div class="float-right">
       {% if project.status.name != 'Archived' and is_allowed_to_update_project %}
         <a class="btn btn-success" href="{% url 'allocation-create' project.pk %}" role="button"><i class="fas fa-plus" aria-hidden="true"></i>
-          Request New Allocation</a>
+          Request New Storage Allocation</a>
       {% endif %}
     </div>
   </div>
   <div class="card-body">
     <div class="table-responsive">
+      {% if storage_allocations %}
         <table id="invoice_table" class="table table-hover">
+        <h4>Storage &nbsp;
+	{% if project.sf_zone %}
+	  <a class="btn btn-success" href="https://starfish.rc.fas.harvard.edu/#/browser?zone={{project.sf_zone}}" role="button"> View detailed storage allocation information on Starfish </a>
+	{% endif %}
+	</h4>
         <thead>
           <tr>
             <th scope="col">Resource Name</th>
-            <th scope="col">Resource Type</th>
             <th scope="col">Location</th>
             <th scope="col">User Count</th>
-            <th scope="col">Total Space (TB)</th>
-            <th scope="col">Monthly Cost</th>
+            <th scope="col">Space</th>
+            <th scope="col">Used</th>
+            <th scope="col">Monthly Cost
+              <a class="info-button" title="Monthly Cost" data-toggle="popover" data-trigger="hover" data-content="Monthly cost for each allocation (not necessarily billed to project)">
+                <i class="fas fa-info-circle" aria-hidden="true"></i>
+              </a>
+            </th>
             <th scope="col" class="nosort">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {% for allocation in allocations %}
+          {% for allocation in storage_allocations %}
+          {% if allocation.status.name == 'Active' %}
           <tr style="background-color:#FFFFFF">
             <td>{{ allocation.get_parent_resource.name }}</td>
-            <td>{{ allocation.get_parent_resource.resource_type.name }}</td>
             <td>{{ allocation.path }}</td>
-            <td>{{ allocation.allocation_users.count }}</td>
-            <td>{{ allocation.size|floatformat:1 }}</td>
-            <td>${{allocation.cost|floatformat:2 }}</td>
+            <td>{{ allocation.allocationuser_set.count }}</td>
+            <td>{{ allocation.size|floatformat:1 }} {{ allocation.get_parent_resource.unit }}</td>
+            <td>{{ allocation.usage|floatformat:1 }}</td>
+            <td>{% if allocation_obj.requires_payment %}${{allocation.cost|floatformat:2 }}{% endif %}</td>
             <td>
               <a href="{% url 'allocation-detail' allocation.pk %}">
               <span class="badge badge-success"><i class="fas fa-search" aria-hidden="true"></i>
                 View Details
               </span>
               </a>
+              <br/>
               {% if is_allowed_to_update_project and allocation.status.name == 'Active' %}
                 <a href="{% url 'allocation-change' allocation.pk %}">
                 <span class="badge badge-info"><i class="fas fa-sync" aria-hidden="true"></i>
@@ -130,26 +143,64 @@ Project Detail
                 </span>
                 </a>
               {% endif %}
-              {% if allocation.get_parent_resource.get_ondemand_status == 'Yes' and ondemand_url %}
-              <a href = "{{ ondemand_url }}" target="_blank"> <img src="/static/core/portal/imgs/ondemand.png" alt="ondemand cta" width="25" height="25"></a>
-            {% endif %}
             </td>
+            {% endif %}
           </tr>
           {% endfor %}
         </tbody>
-        <tfoot>
-          <tr style="background-color:#C2C2C2;font-weight:bold">
-            <td>Total</td>
-            <td>{{ allocation_total.resources.first.name}}</td>
-            <td>{{ allocation_total.path}}</td>
-            <td>{{ allocation_total.allocation_user_count}}</td>
-            <td>{{ allocation_total.size|floatformat:1}}</td>
-            <td>${{allocation_total.cost|floatformat:2 }}</td>
-            <td></td>
-            <td></td>
-          </tr>
-        </tfoot>
+        {% if storage_allocations|length > 1 %}
+          <tfoot>
+            <tr style="background-color:#C2C2C2;font-weight:bold">
+              <td>Total Storage</td>
+              <td>{{ allocation_total.path}}</td>
+              <td>{{ allocation_total.allocation_user_count}}</td>
+              <td>{{ allocation_total.size|floatformat:1}}</td>
+              <td>{{ allocation_total.usage|floatformat:1}}</td>
+              <td>${{allocation_total.cost|floatformat:2 }}</td>
+              <td></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        {% endif %}
       </table>
+      {% endif %}
+      {% if compute_allocations %}
+      <table id="cluster_table" class="table table-hover">
+       <h4>Cluster</h4>
+        <thead>
+          <tr>
+            <th scope="col">Resource Name</th>
+            <th scope="col">User Count</th>
+            <th scope="col">Quarterly Usage (CPU Hours)</th>
+            <th scope="col" class="nosort">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for allocation in compute_allocations %}
+            {% if allocation.get_parent_resource.resource_type.name == 'Cluster' %}
+            {% if allocation.status.name == 'Active' %}
+            <tr style="background-color:#FFFFFF">
+              <td>{{ allocation.get_parent_resource.name }}</td>
+              <td>{{ allocation.allocationuser_set.count }}</td>
+              <td>{{ allocation.size|floatformat:1 }} {{ allocation.get_parent_resource.unit }}</td>
+              <td>
+                <a href="{% url 'allocation-detail' allocation.pk %}">
+                  <span class="badge badge-success"><i class="fas fa-search" aria-hidden="true"></i>
+                    View Details
+                  </span>
+                </a>
+               <br/>
+               {% if allocation.get_parent_resource.get_ondemand_status == 'Yes' and ondemand_url %}
+               <a href = "{{ ondemand_url }}" target="_blank"> <img src="/static/core/portal/imgs/ondemand.png" alt="ondemand cta" width="25" height="25"></a>
+              {% endif %}
+             </td>
+              {% endif %}
+            </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
     </div>
 
   </div>
@@ -157,8 +208,80 @@ Project Detail
 <!-- End Project Invoice/Allocations -->
 
 
-<!-- Start Project Invoice/Allocations -->
-{% if time_chart_data %}
+<!-- Start Allocations -->
+<div class="html2pdf__page-break"></div>
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="d-inline"><i class="fas fa-list" aria-hidden="true"></i> Allocation History</h3>
+    <span class="badge badge-secondary">{{allocation_history_records.count}}</span>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+        <table id="allocation_history" class="table table-hover">
+        <thead>
+          <tr>
+            <th scope="col">Resource Name</th>
+            <th scope="col">Resource Type</th>
+            <th scope="col">Path</th>
+            <th scope="col">User Count</th>
+            <th scope="col">Total</th>
+            <th scope="col">Status</th>
+            <th scope="col">Created</th>
+            <th scope="col">Deactivated</th>
+            <!-- <th scope="col" class="nosort">Actions</th> -->
+          </tr>
+        </thead>
+        <tbody>
+          {% for allocation, record in allocation_history_records %}
+          <tr style="background-color:#FFFFFF">
+            <td>
+              <a href="{% url 'allocation-detail' allocation.pk %}">
+		    {{ allocation.get_parent_resource.name }}
+              </a>
+	    </td>
+            <td>{{ allocation.get_parent_resource.resource_type.name }}</td>
+            <td>{{ allocation.path }}</td>
+            <td>{{ allocation.allocationuser_set.count }}</td>
+            <td>{{ allocation.size|floatformat:1 }}
+            {% if allocation.get_parent_resource.resource_type.name == 'Cluster' %}
+	    CPU Hours
+            {% else %}
+	    TB
+            {% endif %}
+	    </td>
+
+            {% if allocation.status.name in 'New,In Progress,On Hold' %}
+              <td class="text-success">Requested</td>
+            {% elif allocation.status.name == 'Active' %}
+              <td class="text-success">{{ allocation.status.name }}</td>
+            {% elif allocation.status.name in 'Pending Deactivation,Denied,Inactive' %}
+              <td class="text-danger">{{ allocation.status.name }}</td>
+            {% else %}
+              <td class="text-success">{{ allocation.status.name }}</td>
+            {% endif %}
+            <td>
+              {% if allocation.status.name not in 'New,Denied' %}
+                {{ allocation.start_date|date }}
+              {% endif %}
+            </td>
+            <td>
+              {% if allocation.status.name == 'Inactive' %}
+                {{ record.history_date|date }}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+<!-- End Allocations -->
+
+
+<!-- Start Invoice History Chart -->
+<!-- {% if time_chart_data %}
 <div class="html2pdf__page-break"></div>
 <div class="card mb-3">
   <div class="card-header">
@@ -171,8 +294,8 @@ Project Detail
 
   </div>
 </div>
-{% endif %}
-
+{% endif %} -->
+<!-- End Invoice History Chart -->
 
 
 
@@ -180,38 +303,40 @@ Project Detail
 <div class="card mb-3">
   <div class="card-header">
     <h3 class="d-inline" id="users"><i class="fas fa-users" aria-hidden="true"></i> Users</h3> <span class="badge badge-secondary">{{project_users.count}}</span>
+    <span class="d-inline float-none">Last Sync: {{user_sync_dt}}</span>
     <div class="float-right">
-      {% comment %}
       {% if project.status.name != 'Archived' and is_allowed_to_update_project %}
-        <a style="visibility: hidden" class="btn btn-primary" href="{{mailto}}" role="button"><i class="far fa-envelope" aria-hidden="true"></i> Email Project Users</a>
-        <a style="visibility: hidden" class="btn btn-success" href="{% url 'project-add-users-search' project.id %}" role="button"><i class="fas fa-user-plus" aria-hidden="true"></i> Add Users</a>
-        <a style="visibility: hidden" class="btn btn-danger" href="{% url 'project-remove-users' project.id %}" role="button"><i class="fas fa-user-times" aria-hidden="true"></i> Remove Users</a>
+        <a class="btn btn-primary" href="{{mailto}}" role="button"><i class="far fa-envelope" aria-hidden="true"></i> Email Project Users</a>
       {% endif %}
-      {% endcomment %}
+      {% if is_allowed_to_update_users %}
+        <a class="btn btn-success" href="{% url 'project-add-users-search' project.id %}" role="button"><i class="fas fa-user-plus" aria-hidden="true"></i> Add Users</a>
+        <a class="btn btn-danger" href="{% url 'project-remove-users' project.id %}" role="button"><i class="fas fa-user-times" aria-hidden="true"></i> Remove Users</a>
+	    {% endif %}
     </div>
   </div>
   <div class="card-body">
     <div class="table-responsive">
-      <table id="projectusertable" class="table table-hover" filter="off">
+      <table id="projectuser_table" class="table table-hover" filter="off">
         <thead>
           <tr>
             <th scope="col">Username</th>
             <th scope="col">Name</th>
             <th scope="col">Email</th>
-            <th scope="col">Role <a href="#" data-toggle="popover" title="Role" data-trigger="hover" data-content="Manager role grants user access to add/remove users, allocations, grants, and publications to the project.">
-              <i class="fas fa-info-circle" aria-hidden="true"></i>
-              <span class="sr-only">Manager role grants user access to add/remove users, allocations, grants, and publications to the project.</span></a>
+            <th scope="col" class="text-nowrap">Role
+              <a class="info-button" title="User Role" data-toggle="popover" data-trigger="click" data-content="For details about User Roles, visit FASRC's <a href='https://docs.rc.fas.harvard.edu/kb/coldfront-allocation-management/' title='ColdFront User Guide'>ColdFront User Guide.">
+                <i class="fas fa-info-circle" aria-hidden="true"></i>
+              </a>
             </th>
-            <th scope="col">Status</th>
             <!-- This is what I want to add - a usage column; -->
-           <th scope="col">
-             <input type="checkbox" class="check" id="selectAll" style="margin-right: 5px;">Enable Notifications
-               <a href="#" title="Enable Notifications" data-toggle="popover" data-trigger="hover" data-content="When disabled, user will not receive notifications for allocation requests and expirations or cloud usage (if applicable).">
+            <th scope="col" class="nosort">
+             <input type="checkbox" class="check" id="selectAll" style="margin-right: 5px;">Notifications On
+               <a class="info-button" title="Enable Notifications" data-toggle="popover" data-trigger="click" data-content="When disabled, user will not receive notifications regarding allocation requests and expirations or cloud usage (if applicable).">
                  <i class="fas fa-info-circle" aria-hidden="true"></i>
-                 <span class="sr-only">When disabled, user will not receive notifications for allocation requests and expirations or cloud usage (if applicable).</span>
                </a>
-             </th>
-            <th scope="col">Actions</th>
+            </th>
+            {% if is_allowed_to_update_permissions %}
+              <th scope="col">Actions</th>
+            {% endif %}
           </tr>
         </thead>
         <tbody>
@@ -224,25 +349,14 @@ Project Detail
               <td>{{ user.user.first_name }} {{ user.user.last_name }}</td>
               <td>{{ user.user.email }}</td>
               <td>{{ user.role.name }}</td>
-
-
-              {% if user.status.name == 'Active' %}
-                <td class="text-success">{{ user.status.name }}</td>
-              {% elif user.status.name == 'Removed' %}
-                <td class="text-danger">Inactive</td>
-              {% else %}
-                <td class="text-info">{{ user.status.name }}</td>
-              {% endif %}
-
               <td>
-                {% if is_allowed_to_update_project %}
+                {% if is_allowed_to_update_permissions %}
                   <input type="checkbox"
                   id="email_notifications_for_user_id_{{user.id}}"
                   name="email_notifications_checkbox"
                   value="{{ user.enable_notifications }}"
                   {% if user.enable_notifications %} checked {% endif %}
-                  {% if user.role.name == "Manager" %} disabled {% endif %}
-                  {% if not request.user.is_superuser and user.role.name == "User" and request.user == user.user %} disabled {% endif %}>
+                  {% if user.role.name != "User" %} disabled {% endif %}>
                 {% elif request.user == user.user %}
                   <input type="checkbox"
                   id="email_notifications_for_user_id_{{user.id}}"
@@ -258,11 +372,11 @@ Project Detail
                   disabled>
                 {% endif %}
               </td>
-              <td>
-                {% if is_allowed_to_update_project %}
+              {% if is_allowed_to_update_permissions and user != project.pi %}
+                <td>
                   <a href="{% url 'project-user-detail' project.pk user.id %}"><i class="fas fa-user-edit" aria-hidden="true"></i><span class="sr-only">Edit</span></a>
-                {% endif %}
-              </td>
+                </td>
+              {% endif %}
             </tr>
           {% endfor %}
         </tbody>
@@ -272,7 +386,77 @@ Project Detail
 </div>
 <!-- End Project Users -->
 
+<!-- Start Project Attributes -->
+{% if request.user.is_superuser %}
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="d-inline"><i class="fas fa-info-circle" aria-hidden="true"></i> Attributes</h3> <span class="badge badge-secondary">{{attributes.count}}</span>
+    <div class="float-right">
+      {% if project.status.name != 'Archived' and request.user.is_superuser %}
+        <a class="btn btn-success" href="{% url 'project-attribute-create' project.pk %}" role="button"><i class="fas fa-plus" aria-hidden="true"></i> Add Attribute</a>
+        {% if attributes %}
+          <a class="btn btn-danger" href="{% url 'project-attribute-delete' project.pk %}" role="button"><i class="fas fa-minus" aria-hidden="true"></i> Delete Attributes</a>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    {% if attributes %}
+      <div class="table-responsive">
+        <table id="attribute_table" class="table table-hover">
+          <thead>
+            <tr>
+              <th scope="col">Attribute Type</th>
+              <th scope="col">Attribute Value</th>
+              {% if is_allowed_to_update_project %}
+              <th scope="col" class="nosort">Actions</th>
+              {% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for attribute in attributes %}
+                {% if attribute.proj_attr_type.is_private and is_allowed_to_update_project %}
+                  <tr style="background-color:#eee">
+                    <td><i class="fas fa-lock" aria-hidden="true"></i> {{attribute}}</td>
+                    <td>{{attribute.value}}</td>
+                    <td><a href="{% url 'project-attribute-update' project.pk attribute.pk %}"><i class="far fa-edit" aria-hidden="true"></i><span class="sr-only">Edit</span></a></td>
+                  </tr>
+                {% else %}
+                  <tr>
+                    <td>{{attribute}}</td>
+                    <td>
+                      {{attribute.value}}
+                    </td>
+                    {% if is_allowed_to_update_project %}
+                    <td><a href="{% url 'project-attribute-update' project.pk attribute.pk %}"><i class="far fa-edit" aria-hidden="true"></i><span class="sr-only">Edit</span></a></td>
+                    {% endif %}
+                  </tr>
+                {% endif %}
+              {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if attributes_with_usage %}
+      <hr>
+      {% for attribute in attributes_with_usage %}
+        <div class="card mb-3 mr-1">
+          <div class="card-body">
+            <h4 class="card-title">{{attribute}}</h4>
+            <div id="gauge-{{forloop.counter0}}"></div>
+          </div>
+        </div>
+      {% endfor %}
+      {% endif %}
+    {% else %}
+      <div class="alert alert-info" role="alert"><i class="fas fa-info-circle" aria-hidden="true"></i> There are no attributes to display.</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 
+<!-- End Project Attributes -->
+
+{% comment %}
 <!-- Start Project Grants -->
 <div style="display:none" class="card mb-3">
   <div class="card-header">
@@ -282,14 +466,12 @@ Project Detail
         <span class="badge badge-info">Last Updated: {{project.latest_grant.modified|date:"M. d, Y"}}</span>
       {% endif %}
 
-      {% comment %}
       {% if project.status.name != 'Archived' and is_allowed_to_update_project %}
         <a class="btn btn-success" href="{% url 'grant-create' project.id %}" role="button"><i class="fas fa-plus" aria-hidden="true"></i> Add Grant</a>
         {% if grants %}
           <a class="btn btn-danger" href="{% url 'grant-delete-grants' project.pk %}" role="button"><i class="fas fa-minus" aria-hidden="true"></i> Delete Grants</a>
         {% endif %}
       {% endif %}
-      {% endcomment %}
 
     </div>
   </div>
@@ -431,51 +613,15 @@ Project Detail
 </div>
 <!-- End Project ResearchOutputs -->
 
+{% endcomment %}
 
 <!-- Start Admin Messages -->
-<div class="card mb-3">
-  <div class="card-header">
-    <h3 class="d-inline"><i class="fas fa-users" aria-hidden="true"></i> Notifications </h3> <span class="badge badge-secondary">{{project.projectusermessage_set.count}}</span>
-    <div class="float-right">
-      {% if request.user.is_superuser %}
-        <a class="btn btn-success" href="{% url 'project-note-add' project.pk %}" role="button">
-          <i class="fas fa-plus" aria-hidden="true"></i> Add Notification
-        </a>
-      {% endif %}
-    </div>
-  </div>
-  <div class="card-body">
-    {% if project.projectusermessage_set.all %}
-      <div class="table-responsive">
-        <table class="table table-hover">
-          <thead>
-            <tr>
-              <th scope="col">Comment</th>
-              <th scope="col">Administrator</th>
-              <th scope="col">Last Modified</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for message in project.projectusermessage_set.all %}
-              {% if not message.is_private or request.user.is_superuser %}
-            <tr>
-              <td>{{ message.message }}</td>
-              <td>{{ message.author.first_name }} {{ message.author.last_name }}</td>
-              <td>{{ message.modified }}</td>
-            </tr>
-              {% endif %}
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="alert alert-info" role="alert"><i class="fas fa-info-circle" aria-hidden="true"></i> There are no messages from system administrators.</div>
-    {% endif %}
-  </div>
-</div>
+{% note_table request.user 'project-note-add' project %}
 <!-- End Admin Messages -->
 
 <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/dt/jszip-2.5.0/dt-1.10.24/af-2.3.5/b-1.7.0/b-colvis-1.7.0/b-html5-1.7.0/b-print-1.7.0/cr-1.5.3/date-1.0.2/fc-3.3.2/kt-2.6.1/r-2.2.7/rg-1.1.2/rr-1.2.7/sl-1.3.2/datatables.min.css"/>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/pdfmake.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/vfs_fonts.js"></script>
 <script type="text/javascript" src="https://cdn.datatables.net/v/dt/jszip-2.5.0/dt-1.10.24/af-2.3.5/b-1.7.0/b-colvis-1.7.0/b-html5-1.7.0/b-print-1.7.0/cr-1.5.3/date-1.0.2/fc-3.3.2/kt-2.6.1/r-2.2.7/rg-1.1.2/rr-1.2.7/sl-1.3.2/datatables.min.js"></script>
 
 
@@ -497,7 +643,6 @@ Project Detail
     }
     return cookieValue;
   }
-
 
   function drawBillHistoryChart() {
     var chart = c3.generate({
@@ -528,12 +673,12 @@ Project Detail
     });
   };
 
-
   $(document).ready(function(){
 
     drawBillHistoryChart();
 
-    $('[data-toggle="popover"]').popover();
+    var guage_data = {{ guage_data | safe }};
+    drawGauges(guage_data);
 
     $('#publication-table').DataTable({
       "aLengthMenu": [
@@ -544,35 +689,26 @@ Project Detail
       "order": [[ 1, "desc" ]]
     });
 
-    $('#projectusertable').DataTable({
-     "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "All"]],
-     "pageLength": 25,
-     dom: 'B<"clear">lfrtip',
-     order: [[ 3, "desc" ]],
-     buttons: [
-        {
-          name: 'toggleusers',
-          text: function() {
-              return $('#projectusertable').attr('filter') == "on" ? 'Show All Users' : "Show Active Users"
-            },
-          action: function(e, dt, node, config) {
-            var table = $('#projectusertable');
-            var filter = table.attr('filter') === "on" ? 'off' : "on";
-            document.querySelector('#projectusertable').setAttribute('filter', filter);
-            if (filter == 'on') {
-              $.fn.dataTable.ext.search.push(
-                function(settings, data, dataIndex) {
-                    return $(dt.row(dataIndex).node()).attr('status') == "Active";
-                  });
-            } else {$.fn.dataTable.ext.search.pop();}
-            table.DataTable().draw();
-            this.text(filter == 'on' ? 'Show All Users' : "Show Active Users")
-          }
-        }
-      ]}
-    );
+    $('#projectuser_table').DataTable({
+       'lengthMenu': [[10, 25, 50, -1], [10, 25, 50, 'All']],
+       'pageLength': 25,
+       'aoColumnDefs': [{
+         'bSortable': false,
+         'aTargets': ['nosort']
+       }],
+       dom: 'B<"clear">lfrtip',
+       order: [[ 3, "desc" ]],
+       buttons: [{
+         name: 'primary',
+         extend: 'collection',
+         background: false,
+         autoClose: true,
+         text: 'Export',
+         buttons: [ 'csv', 'excel', 'pdf' ]
+       }]
+    });
 
-    $('#invoice_table').DataTable({
+    $('#allocation_history').DataTable({
       'aoColumnDefs': [{
         'bSortable': false,
         'aTargets': ['nosort']
@@ -585,7 +721,6 @@ Project Detail
         'aTargets': ['nosort']
       }]
     });
-
 
     $("#selectAll").click(function () {
       $("input[id^='email_notifications_for_user_id_']").not(":disabled").prop('checked', $(this).prop('checked')).change();
@@ -612,5 +747,20 @@ Project Detail
       });
     });
   });
+
+  function drawGauges(guage_data) {
+    var arrayLength = guage_data.length;
+    for (var i = 0; i < arrayLength; i++) {
+      c3.generate({
+        bindto: '#gauge-' + i,
+        data: guage_data[i],
+        legend: {
+          item: {
+            onclick: function (id) { }
+          }
+        }
+      });
+    }
+  }
 </script>
 {% endblock %}

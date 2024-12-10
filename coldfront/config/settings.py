@@ -2,7 +2,6 @@ import environ
 from split_settings.tools import optional, include
 from coldfront.config.env import ENV, PROJECT_ROOT
 
-
 # enable correct url to be displayed in e.g. email correspondence
 USE_X_FORWARDED_HOST = True
 
@@ -16,22 +15,23 @@ coldfront_configs = [
     'email.py',
 ]
 
-
 # ColdFront plugin settings
 plugin_configs = {
+    'PLUGIN_IFX': 'plugins/ifx.py',
     'PLUGIN_SLURM': 'plugins/slurm.py',
     'PLUGIN_IQUOTA': 'plugins/iquota.py',
     'PLUGIN_FREEIPA': 'plugins/freeipa.py',
-    'PLUGIN_SYSMON': 'plugins/system_montior.py',
+    'PLUGIN_SYSMON': 'plugins/system_monitor.py',
     'PLUGIN_XDMOD': 'plugins/xdmod.py',
     'PLUGIN_AUTH_OIDC': 'plugins/openid.py',
     'PLUGIN_AUTH_LDAP': 'plugins/ldap.py',
     'PLUGIN_LDAP_USER_SEARCH': 'plugins/ldap_user_search.py',
+    'PLUGIN_API': 'plugins/api.py',
     'PLUGIN_LDAP': 'plugins/ldap_fasrc.py',
     'PLUGIN_SFTOCF': 'plugins/sftocf.py',
     'PLUGIN_FASRC': 'plugins/fasrc.py',
-    'PLUGIN_IFX': 'plugins/ifx.py',
-    'PLUGIN_FASRC_MONITORING': 'plugins/fasrc_monitoring.py'
+    'PLUGIN_FASRC_MONITORING': 'plugins/fasrc_monitoring.py',
+    'PLUGIN_ISILON': 'plugins/isilon.py',
 }
 
 # This allows plugins to be enabled via environment variables. Can alternatively

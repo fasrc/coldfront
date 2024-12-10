@@ -1,10 +1,8 @@
 import datetime
-import os
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
 from coldfront.core.allocation.models import (Allocation, AllocationAttribute,
@@ -17,12 +15,12 @@ from coldfront.core.grant.models import (Grant, GrantFundingAgency,
                                          GrantStatusChoice)
 from coldfront.core.project.models import (Project, ProjectStatusChoice,
                                            ProjectUser, ProjectUserRoleChoice,
-                                           ProjectUserStatusChoice)
+                                           ProjectUserStatusChoice, ProjectAttribute
+                                           , ProjectAttributeType, AttributeType)
 from coldfront.core.publication.models import Publication, PublicationSource
 from coldfront.core.resource.models import (Resource, ResourceAttribute,
                                             ResourceAttributeType,
                                             ResourceType)
-from coldfront.core.user.models import UserProfile
 
 base_dir = settings.BASE_DIR
 
@@ -153,11 +151,13 @@ class Command(BaseCommand):
                 email=email.strip()
             )
 
-        admin_user, _ = get_user_model().objects.get_or_create(username='admin')
-        admin_user.is_superuser = True
-        admin_user.is_staff = True
-        admin_user.save()
-
+        admin_user, _ = get_user_model().objects.get_or_create(
+            username='admin',
+            defaults={
+                'is_superuser': True,
+                'is_staff': True
+            }
+        )
         for user in get_user_model().objects.all():
             user.set_password('test1234')
             user.save()
@@ -200,6 +200,34 @@ class Command(BaseCommand):
             force_review=True
         )
 
+        AttributeType.objects.get_or_create(
+            name='Int'
+        )
+
+        ProjectAttributeType.objects.get_or_create(
+            attribute_type=AttributeType.objects.get(name='Text'),
+            name='Project ID',
+            is_private=False,
+        )
+
+        ProjectAttributeType.objects.get_or_create(
+            attribute_type=AttributeType.objects.get(name='Int'),
+            name='Account Number',
+            is_private=True,
+        )
+
+        ProjectAttribute.objects.get_or_create(
+            proj_attr_type=ProjectAttributeType.objects.get(name='Project ID'),
+            project=project_obj,
+            value=1242021,
+        )
+
+        ProjectAttribute.objects.get_or_create(
+            proj_attr_type=ProjectAttributeType.objects.get(name='Account Number'),
+            project=project_obj,
+            value=1756522,
+        )
+
         univ_hpc = Resource.objects.get(name='University HPC')
         for scavanger in ('Chemistry-scavenger', 'Physics-scavenger', 'Industry-scavenger', ):
             resource_obj = Resource.objects.get(name=scavanger)
@@ -208,11 +236,10 @@ class Command(BaseCommand):
 
         publication_source = PublicationSource.objects.get(name='doi')
 
-
-        project_user_obj, _ = ProjectUser.objects.get_or_create(
+        ProjectUser.objects.get_or_create(
             user=pi1,
             project=project_obj,
-            role=ProjectUserRoleChoice.objects.get(name='Manager'),
+            role=ProjectUserRoleChoice.objects.get(name='PI'),
             status=ProjectUserStatusChoice.objects.get(name='Active')
         )
 
@@ -225,6 +252,7 @@ class Command(BaseCommand):
             status=AllocationStatusChoice.objects.get(name='Active'),
             start_date=start_date,
             end_date=end_date,
+            is_changeable=True,
             justification='I need access to my nodes.'
         )
 
@@ -246,7 +274,7 @@ class Command(BaseCommand):
             allocation=allocation_obj,
             value='Fairshare=parent')
 
-        allocation_user_obj = AllocationUser.objects.create(
+        AllocationUser.objects.create(
             allocation=allocation_obj,
             user=pi1,
             status=AllocationUserStatusChoice.objects.get(name='Active')
@@ -257,6 +285,7 @@ class Command(BaseCommand):
             status=AllocationStatusChoice.objects.get(name='Active'),
             start_date=start_date,
             end_date=datetime.datetime.now() + relativedelta(days=10),
+            is_changeable=True,
             justification='I need access to university cluster.'
         )
 
@@ -299,7 +328,7 @@ class Command(BaseCommand):
             allocation=allocation_obj,
             value='2022-01-01')
 
-        allocation_user_obj = AllocationUser.objects.create(
+        AllocationUser.objects.create(
             allocation=allocation_obj,
             user=pi1,
             status=AllocationUserStatusChoice.objects.get(name='Active')
@@ -311,6 +340,7 @@ class Command(BaseCommand):
             start_date=start_date,
             end_date=end_date,
             quantity=10,
+            is_changeable=True,
             justification='I need extra storage.'
         )
 
@@ -331,6 +361,7 @@ class Command(BaseCommand):
             status=AllocationStatusChoice.objects.get(name='Active'),
             start_date=start_date,
             end_date=end_date,
+            is_changeable=True,
             justification='I need compute time on metered cluster.'
         )
         allocation_obj.resources.add(
@@ -368,7 +399,7 @@ class Command(BaseCommand):
         project_user_obj, _ = ProjectUser.objects.get_or_create(
             user=pi2,
             project=project_obj,
-            role=ProjectUserRoleChoice.objects.get(name='Manager'),
+            role=ProjectUserRoleChoice.objects.get(name='PI'),
             status=ProjectUserStatusChoice.objects.get(name='Active')
         )
 
@@ -436,6 +467,7 @@ class Command(BaseCommand):
             status=AllocationStatusChoice.objects.get(name='Active'),
             start_date=start_date,
             end_date=end_date,
+            is_changeable=True,
             justification='Need to host my own site.'
         )
 
@@ -472,6 +504,7 @@ class Command(BaseCommand):
             status=AllocationStatusChoice.objects.get(name='Active'),
             start_date=start_date,
             end_date=end_date,
+            is_changeable=True,
             justification='Need extra storage for webserver.'
         )
 
@@ -525,33 +558,49 @@ class Command(BaseCommand):
             name='quantity_label'), resource=Resource.objects.get(name='University Cloud'), value='Enter number of compute allocations to purchase')
         ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
             name='quantity_label'), resource=Resource.objects.get(name='ProjectStorage'), value='Enter storage in 1TB increments')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='quantity_label'), resource=Resource.objects.get(name='Budgetstorage'), value='Enter storage in 10TB increments (minimum purchase is 10TB)')
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='quantity_label'),
+            resource=Resource.objects.get(name='Budgetstorage'),
+            value='Enter storage in 10TB increments (minimum purchase is 10TB)')
 
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_cluster'), resource=Resource.objects.get(name='Chemistry'), value='chemistry')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_cluster'), resource=Resource.objects.get(name='Physics'), value='physics')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_cluster'), resource=Resource.objects.get(name='Industry'), value='industry')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_cluster'), resource=Resource.objects.get(name='University HPC'), value='university-hpc')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_cluster'), resource=Resource.objects.get(name='University Metered HPC'), 
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_cluster'),
+            resource=Resource.objects.get(name='Chemistry'),
+            value='chemistry')
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_cluster'),
+            resource=Resource.objects.get(name='Physics'), value='physics')
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_cluster'),
+            resource=Resource.objects.get(name='Industry'), value='industry')
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_cluster'),
+            resource=Resource.objects.get(name='University HPC'), value='university-hpc')
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_cluster'),
+            resource=Resource.objects.get(name='University Metered HPC'),
             value='metered-hpc')
 
         ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
             name='slurm_specs'), resource=Resource.objects.get(name='Chemistry-scavenger'), value='QOS+=scavenger:Fairshare=100')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_specs'), resource=Resource.objects.get(name='Physics-scavenger'), value='QOS+=scavenger:Fairshare=100')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_specs'), resource=Resource.objects.get(name='Industry-scavenger'), value='QOS+=scavenger:Fairshare=100')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_specs'), resource=Resource.objects.get(name='Chemistry-cgray'), value='QOS+=cgray:Fairshare=100')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_specs'), resource=Resource.objects.get(name='Physics-sfoster'), value='QOS+=sfoster:Fairshare=100')
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_specs'), resource=Resource.objects.get(name='University Metered HPC'), 
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_specs'),
+            resource=Resource.objects.get(name='Physics-scavenger'),
+            value='QOS+=scavenger:Fairshare=100')
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_specs'),
+            resource=Resource.objects.get(name='Industry-scavenger'),
+            value='QOS+=scavenger:Fairshare=100')
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_specs'),
+            resource=Resource.objects.get(name='Chemistry-cgray'),
+            value='QOS+=cgray:Fairshare=100')
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_specs'),
+            resource=Resource.objects.get(name='Physics-sfoster'), value='QOS+=sfoster:Fairshare=100')
+        ResourceAttribute.objects.get_or_create(
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_specs'),
+            resource=Resource.objects.get(name='University Metered HPC'),
             value='GrpTRESMins=cpu={cpumin}')
 
         #slurm_specs_attrib_list for University Metered HPC
@@ -563,7 +612,7 @@ class Command(BaseCommand):
             'cpumin *= 60'
         ]
         ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_specs_attriblist'), resource=Resource.objects.get(name='University Metered HPC'), 
+            name='slurm_specs_attriblist'), resource=Resource.objects.get(name='University Metered HPC'),
             value="\n".join(attriblist_list))
 
         # call_command('loaddata', 'test_data.json')

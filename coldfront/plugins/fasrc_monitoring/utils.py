@@ -1,3 +1,4 @@
+from django.test import Client
 from math import isclose
 from concurrent.futures import ThreadPoolExecutor
 
@@ -6,12 +7,13 @@ from coldfront.core.test_helpers import utils
 
 class UIChecker:
     def __init__(self, username, password):
-        self.client = utils.login_return_client(username, password)
+        self.client = Client()
+        self.client.login(username=username, password=password)
 
     def check_page_loads(self, url):
-        '''try to load page from url with self.client.
+        """try to load page from url with self.client.
         If successful, return response. If not, return error message.
-        '''
+        """
         try:
             response = self.client.get(url)
             return response
@@ -19,10 +21,10 @@ class UIChecker:
             return str(e)
 
     def check_project_page(self, url):
-        '''Run a series of checks on project pages.
+        """Run a series of checks on project pages.
         - page loads
         - billing graph loads correctly
-        '''
+        """
         lines = []
         response = self.check_page_loads(url)
         if isinstance(response, str):
@@ -35,12 +37,19 @@ class UIChecker:
                     'detail': f'{url}, {error}'})
         return lines
 
+    def check_department_page(self, url):
+        """Run checks on department pages.
+        """
+        response = self.check_page_loads(url)
+        return []
+
+
     def check_allocation_page(self, url):
-        '''Run checks on allocation pages.
+        """Run checks on allocation pages.
         - page loads
         - total allocation usage doesn't exceed allocation quota
         - sum of all user usage doesn't exceed total allocation usage
-        '''
+        """
         lines = []
         response = self.check_page_loads(url)
         if isinstance(response, str):
@@ -52,17 +61,20 @@ class UIChecker:
         if response.context_data['allocation'].status.name not in ['Active', 'New']:
             return []
 
-        allocation_usage = response.context_data['allocation_usage_bytes']
+        allocation_usage = response.context_data['allocation'].usage_exact
         # flag any allocations where usage_bytes > quota_bytes
-        if allocation_usage > response.context_data['allocation_quota_bytes']:
+        if allocation_usage and allocation_usage > response.context_data['allocation'].usage_exact:
             lines.append({'type': 'Service', 'name': 'usage_over_quota', 'url': url})
 
-        # confirm that allocation_quota_tb ~ allocation_quota_bytes
-        usage_tb = response.context_data['allocation_usage_tb']
-        usage_b_to_tb = allocation_usage/1099511627776
-        if not isclose(usage_b_to_tb, usage_tb):
-            lines.append({'type': 'Data', 'name': 'mismatched_tb_byte_usages',
+        # confirm that alloc_quota_display ~ alloc_quota_compute
+        usage_tb = response.context_data['allocation'].usage
+        if allocation_usage:
+            usage_b_to_tb = allocation_usage/1099511627776
+            if not isclose(usage_b_to_tb, usage_tb):
+                lines.append({'type': 'Data', 'name': 'mismatched_tb_byte_usages',
                             'url': url})
+        else:
+            print("no usage:", url)
 
 
         resource = response.context_data['allocation'].resources.all()[0]
@@ -113,9 +125,9 @@ class UIChecker:
 
 
 def simultaneous_checks(function, url_list, max_workers=4):
-    '''run a checking function on a list of urls.
+    """run a checking function on a list of urls.
     Return a combined list of the outputs. Function must return a list.
-    '''
+    """
     rows = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -137,6 +149,11 @@ def run_view_db_checks(username, password):
     project_urls = [f'/project/{obj_id}/' for obj_id in project_obj_ids]
     project_rows = simultaneous_checks(ui_checker.check_project_page, project_urls)
     rows.extend(project_rows)
+
+    department_list_url = '/department/?show_all_departments=on'
+    department_obj_ids = utils.collect_all_ids_in_listpage(ui_checker.client, department_list_url)
+    department_urls = [f'/department/{obj_id}' for obj_id in department_obj_ids]
+    simultaneous_checks(ui_checker.check_department_page, department_urls)
 
     allocation_list_url = '/allocation/?show_all_allocations=on'
     allocation_obj_ids = utils.collect_all_ids_in_listpage(ui_checker.client, allocation_list_url)

@@ -1,6 +1,6 @@
-'''
+"""
 Add allocations specified in local_data/add_allocations.csv
-'''
+"""
 import json
 import logging
 import datetime
@@ -10,8 +10,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError, MultipleObjectsReturned
 from django.core.management.base import BaseCommand
 
-from coldfront.core.allocation.models import (Allocation,
-                                            AllocationUser,
+from coldfront.core.allocation.models import (AllocationUser,
                                             AllocationAttribute,
                                             AllocationAttributeType,
                                             AllocationStatusChoice,
@@ -73,7 +72,7 @@ class Command(BaseCommand):
                     defaults={
                         'status': AllocationStatusChoice.objects.get(name='Active'),
                         'start_date': datetime.datetime.now(),
-                        'is_changeable': True,
+                        'is_changeable': resource.is_allocatable,
                         'justification': f'Allocation Information for {lab_name}',
                         }
                     )
@@ -105,10 +104,10 @@ class Command(BaseCommand):
                     'status': AllocationUserStatusChoice.objects.get(name='Active')}
                 )
             except ValidationError:
-                logger.debug('adding PI %s to allocation %s failed', pi_obj.pi.username, allocation.pk)
+                logger.debug('adding PI %s to allocation %s failed', pi_obj.username, allocation.pk)
                 created = None
             if created:
-                print('PI added: ' + project_obj.pi.username)
+                print('PI added: ' + pi_obj.username)
         missing_projects = [{'title': title} for title in command_report['missing_projects']]
         if not added_allocations_df.empty:
             added_allocations_df['billing_code'] = None

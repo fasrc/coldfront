@@ -1,32 +1,37 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
 Views
-'''
+"""
 import os
 from datetime import datetime
 
 import pandas as pd
 from django.http import Http404
 from django.db.models import Count
-from django.shortcuts import render
 from django.views.generic.base import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 
 from coldfront.config.env import ENV
 from coldfront.core.project.models import Project
 from coldfront.core.allocation.models import Allocation
+from coldfront.core.utils.common import import_from_settings
+
+PENDING_ACTIVE_ALLOCATION_STATUSES = import_from_settings(
+    'PENDING_ACTIVE_ALLOCATION_STATUSES', ['Active', 'New', 'Updated', 'Ready for Review'])
 
 if ENV.bool('PLUGIN_SFTOCF', default=False):
     from coldfront.plugins.sftocf.utils import STARFISH_SERVER, StarFishServer
 
+
+
 class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
-    '''
-    '''
+    """
+    """
     template_name = 'monitor.html'
 
     def test_func(self):
-        '''UserPassesTestMixin Tests'''
+        """UserPassesTestMixin Tests"""
         if self.request.user.is_superuser:
             return True
         raise Http404
@@ -50,8 +55,13 @@ class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         # database checks
         projects = Project.objects.all()
         pi_not_projectuser = [p for p in projects if p.pi_id not in  p.projectuser_set.values_list('user_id', flat=True)]
-        allocation_not_changeable = Allocation.objects.filter(status__name__in=['Active', 'New', 'Updated', 'Ready for Review'], is_changeable=False)
-        multiple_allocation_resources = Allocation.objects.annotate(num_vols=Count('resources')).filter(num_vols__gte=2)
+        allocation_not_changeable = Allocation.objects.filter(
+            status__name__in=PENDING_ACTIVE_ALLOCATION_STATUSES, is_changeable=False,
+            resources__is_allocatable=True
+        )
+        multiple_allocation_resources = Allocation.objects.annotate(
+            num_vols=Count('resources')
+        ).filter(num_vols__gte=2)
 
         # ui checks
         ui_error_file = 'local_data/error_checks.csv'

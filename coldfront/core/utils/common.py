@@ -1,4 +1,3 @@
-import datetime
 # import the logging library
 import logging
 
@@ -37,6 +36,11 @@ class Echo:
         """Write the value by returning it, instead of storing in a buffer."""
         return value
 
+def uniques_and_intersection(list1, list2):
+    intersection = list(set(list1) & set(list2))
+    list1_unique = list(set(list1) - set(list2))
+    list2_unique = list(set(list2) - set(list1))
+    return (list1_unique, intersection, list2_unique)
 
 def su_login_callback(user):
     """Only superusers are allowed to login as other users
@@ -44,6 +48,6 @@ def su_login_callback(user):
     if user.is_active and user.is_superuser:
         return True
 
-    logger.warn(
-        'User {} requested to login as another user but does not have permissions', user)
+    logger.warning(
+        'User %s requested to login as another user but does not have permissions', user)
     return False

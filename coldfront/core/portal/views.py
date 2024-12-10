@@ -1,47 +1,87 @@
+
 from collections import Counter
+
 from django.conf import settings
-from django.contrib.humanize.templatetags.humanize import intcomma
-from django.db.models import Count, Q, Sum
+from django.utils import timezone
+from django.db.models import Count, Q
 from django.shortcuts import render
 from django.views.decorators.cache import cache_page
 
-from coldfront.core.allocation.models import Allocation, AllocationUser
-from coldfront.core.portal.utils import (generate_allocations_chart_data,
-                                         generate_publication_by_year_chart_data,
-                                         generate_resources_chart_data,
-                                         generate_volume_bar_graph)
+from coldfront.core.allocation.models import Allocation, AllocationUser, AllocationChangeRequest
+from coldfront.core.portal.utils import (
+    generate_allocations_chart_data,
+    generate_publication_by_year_chart_data,
+    generate_resources_chart_data
+)
 from coldfront.core.project.models import Project
 from coldfront.core.publication.models import Publication
 from coldfront.core.resource.models import Resource
 from coldfront.config.env import ENV
+from coldfront.core.department.models import Department, DepartmentMember
+from coldfront.core.utils.common import import_from_settings
 
 if ENV.bool('PLUGIN_SFTOCF', default=False):
     from coldfront.plugins.sftocf.utils import StarFishRedash, STARFISH_SERVER
 
+MANAGERS = import_from_settings('MANAGERS', ['Manager'])
 
 def home(request):
-
     context = {}
     if request.user.is_authenticated:
         template_name = 'portal/authorized_home.html'
         project_list = Project.objects.filter(
-            (Q(pi=request.user) & Q(status__name__in=['New', 'Active', ])) |
-            (Q(status__name__in=['New', 'Active', ]) &
-             Q(projectuser__user=request.user) &
-             Q(projectuser__status__name__in=['Active', ]))
-        ).distinct().order_by('-created')[:5]
+            Q(status__name__in=['New', 'Active', ]) & (
+                Q(pi=request.user) | (
+                    Q(projectuser__user=request.user)
+                    & Q(projectuser__status__name='Active')
+                )
+            )
+        ).distinct().order_by('-created')
 
         allocation_list = Allocation.objects.filter(
             Q(status__name__in=['Active', 'New', 'Renewal Requested', ]) &
             Q(project__status__name__in=['Active', 'New']) &
-            Q(project__projectuser__user=request.user) &
-            Q(project__projectuser__status__name__in=['Active', ]) &
-                (Q(project__projectuser__role_id=1) |
-                Q(allocationuser__user=request.user) &
-                Q(allocationuser__status__name='Active'))
-        ).distinct().order_by('-created')[:5]
+            (
+                (
+                    Q(project__projectuser__user=request.user) &
+                    Q(project__projectuser__status__name__in=['Active', ]) &
+                        (Q(project__projectuser__role__name__in=MANAGERS) |
+                        Q(allocationuser__user=request.user) &
+                        Q(allocationuser__status__name='Active'))
+                ) | Q(project__pi=request.user)
+            )
+        ).distinct().order_by('-created')
+
+        managed_allocations = Allocation.objects.filter(
+            Q(status__name__in=['Active', 'New', 'Renewal Requested', ])
+            & Q(project__status__name__in=['Active', 'New']) & (
+                Q(project__pi=request.user) | (
+                    Q(project__projectuser__user=request.user)
+                    & Q(project__projectuser__role__name__in=MANAGERS)
+                )
+            )
+        )
+
+        if managed_allocations:
+            allocation_change_request_list = AllocationChangeRequest.objects.filter(
+                Q(allocation__in=managed_allocations) & (
+                    Q(status__name='Pending') |
+                    Q(modified__gt=timezone.now()-timezone.timedelta(days=30))
+                )
+            ).distinct().order_by('-created')
+        else:
+            allocation_change_request_list = None
+
+        user_depts = DepartmentMember.objects.filter(user=request.user)
+        department_list = Department.objects.filter(
+            id__in=user_depts.values_list('organization_id')
+        )
+
+        context['department_list'] = department_list
         context['project_list'] = project_list
         context['allocation_list'] = allocation_list
+        context['allocation_request_list'] = allocation_change_request_list
+
         try:
             context['ondemand_url'] = settings.ONDEMAND_URL
         except AttributeError:
@@ -80,15 +120,15 @@ def center_summary(request):
         starfish_redash = StarFishRedash(STARFISH_SERVER)
         volumes = starfish_redash.get_vol_stats()
         volumes = [
-            {
-                'name': vol['volume_name'],
-                'quota_TB': vol['capacity_TB'],
-                'free_TB': vol['free_TB'],
-                'used_TB': vol['used_physical_TB'],
-                'regular_files': vol['regular_files'],
-            }
+                {
+                    'name': vol['volume_name'],
+                    'quota_TB': vol['capacity_TB'],
+                    'free_TB': vol['free_TB'],
+                    'used_TB': vol['used_physical_TB'],
+                    'regular_files': vol['regular_files'],
+                }
             for vol in volumes
-        ]
+            ]
         # collect user and lab counts, allocation sizes for each volume
 
         for volume in volumes:
@@ -96,17 +136,19 @@ def center_summary(request):
 
             resource_allocations = resource.allocation_set.filter(status__name='Active')
 
-            allocation_sizes = [float(allocation.size) for allocation in resource_allocations]
+            allocation_sizes = [float(allocation.size) for allocation in resource_allocations if allocation.size]
             # volume['avgsize'] = allocation_sizes
-            volume['avgsize'] = round(sum(allocation_sizes)/len(allocation_sizes), 2)
+            try:
+                volume['avgsize'] = round(sum(allocation_sizes)/len(allocation_sizes), 2)
+            except ZeroDivisionError:
+                volume['avgsize'] = 0
 
             project_ids = set(resource_allocations.values_list('project'))
             volume['lab_count'] = len(project_ids)
-            user_ids = {user.pk for allocation in resource_allocations for user in allocation.allocation_users}
+            user_ids = {user.pk for allocation in resource_allocations for user in allocation.allocationuser_set.all()}
             volume['user_count'] = len(user_ids)
 
         context['volumes'] = volumes
-
 
 
     # # Tier Stats
@@ -117,8 +159,6 @@ def center_summary(request):
     #     match = next(r.split('/')[1] for r in resource_names if n in r)
     #     new.append(match)
     # # storage_stats['names'] = new
-
-
 
 
     # Combined Resource Stats
@@ -157,6 +197,32 @@ def center_summary(request):
 
 def help_page(request):
     context = {}
+    doc_pages = {
+        'General Documentation':[
+            {
+                'href': 'coldfront-allocation-management',
+                'title': 'Coldfront Usage Guide',
+            },
+        ],
+        'Storage Documentation':[
+            {
+                'href': 'storage-service-center',
+                'title': 'Storage Service Center Overview'
+            },
+            {
+                'href': 'storage-service-center-bill',
+                'title': 'How to read your storage center bill'
+            },
+        ],
+        'Cluster Documentation':[
+            {
+                'href': 'fairshare',
+                'title': 'About Cluster Fairshares',
+            },
+        ],
+    }
+    context['doc_pages'] = doc_pages
+
     return render(request, 'portal/help_page.html', context)
 
 

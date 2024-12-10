@@ -4,9 +4,10 @@ Installs ifxuser, ifxbilling, and author.  Sets AUTH_USER_MODEL
 '''
 import os
 from decimal import Decimal
-from coldfront.config.base import INSTALLED_APPS, MIDDLEWARE
+from coldfront.config.base import MIDDLEWARE, INSTALLED_APPS
 
-INSTALLED_APPS = ['ifxuser'] + INSTALLED_APPS + ['author', 'ifxbilling', 'rest_framework.authtoken', 'ifxreport', 'django_extensions']
+INSTALLED_APPS.insert(0, 'ifxuser')
+INSTALLED_APPS += ['author', 'ifxbilling', 'rest_framework.authtoken', 'ifxreport', 'django_extensions']
 
 MIDDLEWARE += [
     'author.middlewares.AuthorDefaultBackendMiddleware',
@@ -24,6 +25,9 @@ class GROUPS():
 class RATES():
     INTERNAL_RATE_NAME = 'Harvard Internal Rate'
 
+class EMAILS():
+    DEFAULT_EMAIL_FROM_ADDRESS = 'rchelp@rc.fas.harvard.edu'
+
 # Ignore billing models in the django-author pre-save so that values are set directly
 AUTHOR_IGNORE_MODELS = [
     'ifxbilling.BillingRecord',
@@ -37,3 +41,7 @@ MEDIA_URL = '/media/'
 
 IFXREPORT_FILE_ROOT = os.path.join(MEDIA_ROOT, 'reports')
 IFXREPORT_URL_ROOT = f'{MEDIA_URL}reports'
+
+# Class to be used for rebalancing
+REBALANCER_CLASS = 'coldfront.plugins.ifx.calculator.ColdfrontRebalance'
+

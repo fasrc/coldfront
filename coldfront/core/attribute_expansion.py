@@ -1,7 +1,7 @@
 #Collection of functions related to attribute expansion.
 #
 #This is a collection common functions related to the expansion
-#of parameters (typically related to other attributes) inside of 
+#of parameters (typically related to other attributes) inside of
 #attributes.  Used in the expanded_value() method of AllocationAttribute
 #and ResourceAttribute.
 
@@ -23,11 +23,11 @@ def is_expandable_type(attribute_type):
 
     Takes an AttributeType (from either Resource or Allocation, but
     wants AttributeType, not ResourceAttributeType or
-    AllocationAttributeType) and checks if type name matches 
+    AllocationAttributeType) and checks if type name matches
     ATTRIBUTE_EXPANSION_TYPE_PREFIX
     """
 
-    atype_name = attribute_type.name;
+    atype_name = attribute_type.name
     return atype_name.startswith(ATTRIBUTE_EXPANSION_TYPE_PREFIX)
 
 def get_attriblist_str(attribute_name, resources=[], allocations=[]):
@@ -75,7 +75,7 @@ def get_attribute_parameter_value(
     APDICT:pname - expands to the value of a parameter named pname already
         in the attribute_parameter_dict (or None if not present)
     RESOURCE:aname - expands to the value of the first attribute of type
-        named aname found in the resources list of resources. 
+        named aname found in the resources list of resources.
         NOTE: 'RESOURCE:' is a literal.  Or None if not found.
     ALLOCATION:aname - expands to the value of the first attribute of type
         named aname found in the allocations list of allocations.
@@ -88,17 +88,17 @@ def get_attribute_parameter_value(
     'single line of text' - expands to a string literal contained between
         the two single quotes.  Very simplistic, nothing is allowed after
         the last single quote, and we just remove the leading and trailing
-        single quote --- everything in between is treated literally 
+        single quote --- everything in between is treated literally
         (including any contained single quotes).
     digits (optionally with decimal): expands to a numeric literal
 
     error_text is used to give context in diagnostic messages.
 
-    This method returns the expanded value, or None if unable to 
+    This method returns the expanded value, or None if unable to
     evaluate
     """
     value = None
-    
+
     # Check for string constant
     if argument.startswith("'"):
         # Looks like a string literal
@@ -110,12 +110,11 @@ def get_attribute_parameter_value(
             #Good string literal
             tmpstr = tmpstr[:-1]
             return tmpstr
-        else:
-            #Bad string literal
-            logger.warn("Bad string literal '{}' found while processing "
-                "{}; missing final single quote".format(
-                argument, error_text))
-            return None
+        #Bad string literal
+        logger.warning(
+            "Bad string literal '%s' found while processing %s; missing final single quote",
+            argument, error_text)
+        return None
 
     # If argument if prefixed with any of the strings in attrib_sources,
     # strip the prefix and set attrib_source accordingly
@@ -132,18 +131,17 @@ def get_attribute_parameter_value(
     # Try expanding as a parameter/attribute
     # We do attribute_parameter_dict first, then allocations, then
     # resources to try to get value most specific to use case
-    if ( attribute_parameter_dict is not None and 
-        (attrib_source == ':' or attrib_source == 'APDICT:')):
+    if attribute_parameter_dict is not None and attrib_source in [':', 'APDICT:']:
         if argument in attribute_parameter_dict:
             return attribute_parameter_dict[argument]
 
-    if attrib_source == ':' or attrib_source == 'ALLOCATION:':
+    if attrib_source in [':', 'ALLOCATION:']:
         for alloc in allocations:
             tmp = alloc.get_attribute(argument)
             if tmp is not None:
                 return tmp
 
-    if attrib_source == ':' or attrib_source == 'RESOURCE:':
+    if attrib_source in [':', 'RESOURCE:']:
         for res in resources:
             tmp = res.get_attribute(argument)
             if tmp is not None:
@@ -154,7 +152,7 @@ def get_attribute_parameter_value(
         # find it.  Just return None
         return None
 
-    # If reach here, argument is not a string literal, or a 
+    # If reach here, argument is not a string literal, or a
     # parameter or attribute name, so try numeric constant
     try:
         value = int(argument)
@@ -164,14 +162,14 @@ def get_attribute_parameter_value(
             value = float(argument)
             return value
         except ValueError:
-            logger.warn("Unable to evaluate argument '{arg}' while "
-                "processing {etxt}, returning None".format(
-                arg=argument, etxt=error_text))
+            logger.warning("Unable to evaluate argument '%s' while "
+                "processing %s, returning None",
+                argument, error_text)
             return None
 
     # Should not reach here
     return None
-    
+
 def process_attribute_parameter_operation(
     opcode, oldvalue, argument, error_text):
     """Process the specified operation for attribute_parameter_dict.
@@ -227,8 +225,7 @@ def process_attribute_parameter_operation(
             # Defaulting operation
             if oldvalue is None:
                 return argument
-            else:
-                return oldvalue
+            return oldvalue
         if opcode == '+':
             # Addition/concatenation operation
             if isinstance(oldvalue, int) or isinstance(oldvalue, float):
@@ -255,15 +252,14 @@ def process_attribute_parameter_operation(
             if argument == 'floor':
                 newval = math.floor(oldvalue)
             else:
-                logger.error('Unrecognized function named {} in {}= for '
-                    '{}, returning None'.format(
-                    argument, opcode, error_text))
+                logger.error(
+                    'Unrecognized function named %s in %s= for %s, returning None',
+                    argument, opcode, error_text)
                 return None
         # If reached here, we do not recognize opcode
-        logger.error('Unrecognized operation {}= in {}, '
-            'returning None'.format( opcode, error_text))
+        logger.error('Unrecognized operation %s= in %s, returning None', opcode, error_text)
     except Exception as xcept:
-        logger.warn("Error performing operator {op}= on oldvalue='{old}' "
+        logger.warning("Error performing operator {op}= on oldvalue='{old}' "
             "and argument={arg} in {errtext}".format(
             op=opcode, old=oldvalue, arg=argument, errtext=error_text))
         return None
@@ -295,7 +291,7 @@ def process_attribute_parameter_string(
     AllocationAttribute or ResourceAttribute (which is then replaced by
     its (expanded if expandable) value).
 
-    See the methods get_attribute_parameter_value() and 
+    See the methods get_attribute_parameter_value() and
     process_attribute_parameter_operation() for more information about
     the operations and argument values.
     """
@@ -313,10 +309,9 @@ def process_attribute_parameter_string(
     if len(tmp) != 2:
         # No '=' found, so invalid format of parmstr
         # Log error and return unmodified attribute_parameter_dict
-        logger.error("Invalid parameter string '{pstr}', no '=', while "
-            "creating attribute parameter dictionary for expanding "
-            "attribute {aname}".format(
-            aname=attribute_name, pstr=parameter_string))
+        logger.error("Invalid parameter string '%s', no '=', while creating "
+            "attribute parameter dictionary for expanding attribute %s",
+            attribute_name, parameter_string)
         return attribute_parameter_dict
     pname = tmp[0]
     argument = tmp[1].strip()
@@ -337,7 +332,7 @@ def process_attribute_parameter_string(
         value = get_attribute_parameter_value(
             argument = argument,
             attribute_parameter_dict = attribute_parameter_dict,
-            resources = resources, 
+            resources = resources,
             allocations = allocations,
             error_text = error_text)
 
@@ -361,15 +356,15 @@ def make_attribute_parameter_dictionary(attribute_name,
     """Create the attribute parameter dictionary.  Used by expand_attribute.
 
     This processes the given attribute parameter string to generate a
-    dictionary that will (in expand_attribute()) be passed as the argument 
-    to the standard python format() method acting on the raw value of the 
+    dictionary that will (in expand_attribute()) be passed as the argument
+    to the standard python format() method acting on the raw value of the
     attribute to expand it.
 
     The attribute parameter string is a string consisting of one or more
     attribute parameter definitions, one per line, with the following
     general format:
     '<parameter_name> <op>= <argument>'
-    
+
     This routine processes the attribute_parameter_string line by line, in
     order top to bottom, to generate the dictionary that is returned.
 
@@ -394,15 +389,15 @@ def make_attribute_parameter_dictionary(attribute_name,
     return apdict
 
 
-def expand_attribute(raw_value, attribute_name, attriblist_string, 
+def expand_attribute(raw_value, attribute_name, attriblist_string,
     resources = [], allocations = []):
     """Main method to expand parameters in an attribute.
 
-    This takes the (raw) value raw_value of either an AllocationAttribute 
-    or ResourceAttribute, which should be in a python formatted string 
-    (f-string) format; i.e. a string with places where parameter 
-    replacement is desired to have the name of the desired replacement 
-    parameter enclosed in curly braces ('{' and '}').  The parameter name 
+    This takes the (raw) value raw_value of either an AllocationAttribute
+    or ResourceAttribute, which should be in a python formatted string
+    (f-string) format; i.e. a string with places where parameter
+    replacement is desired to have the name of the desired replacement
+    parameter enclosed in curly braces ('{' and '}').  The parameter name
     can be followed by standard format() format specifiers, as per
     standard format() rules.  The argument attribute_name should have
     the name of this attribute, for use in diagnostic messages.
@@ -456,8 +451,7 @@ def expand_attribute(raw_value, attribute_name, attriblist_string,
         # referencing a parameter not defined in apdict to divide by
         # zero errors in processing apdict.  We just log it and then
         # return raw_value
-        logger.error("Error expanding {aname}: {error}".format(
-            aname=attribute_name, error=xcept))
+        logger.error("Error expanding %s: %s", attribute_name, xcept)
         return raw_value
 
 
@@ -466,7 +460,7 @@ def convert_type(value, type_name, error_text='unknown'):
 
     Value is the value to operate on.
     Type_name is the name of the underlying attribute type (AttributeType),
-    e.g. Text, Float, Int, Date, etc.  
+    e.g. Text, Float, Int, Date, etc.
 
     If type_name ends in Int, we try to return value as a python int.
     If type_name ends in Float, we try to return value as a python float.
@@ -479,7 +473,7 @@ def convert_type(value, type_name, error_text='unknown'):
     future "Attribute Expanded ..." types.
     """
     if type_name is None:
-        logger.error('No AttributeType found for {}'.format(error_text))
+        logger.error('No AttributeType found for %s', error_text)
         return value
 
     if type_name.endswith('Text'):
@@ -487,8 +481,8 @@ def convert_type(value, type_name, error_text='unknown'):
             newval = str(value)
             return newval
         except ValueError:
-            logger.error('Error converting "{}" to {} in {}'.format(
-                value, 'Text', error_text))
+            logger.error('Error converting "%s" to %s in %s',
+                        value, 'Text', error_text)
             return value
 
     if type_name.endswith('Int'):
@@ -511,6 +505,3 @@ def convert_type(value, type_name, error_text='unknown'):
 
     #If not any of the above, just return the value (probably a string)
     return value
-
-
-

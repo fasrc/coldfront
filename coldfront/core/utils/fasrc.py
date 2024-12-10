@@ -1,5 +1,5 @@
-'''A module for fasrc-specific utility functions.
-'''
+"""A module for fasrc-specific utility functions.
+"""
 import os
 import json
 import operator
@@ -9,20 +9,28 @@ from datetime import datetime
 import pandas as pd
 from django.db.models import Q
 from django.contrib.auth import get_user_model
+from ifxbilling.models import Product
 
+from coldfront.core.utils.common import import_from_settings
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
-from coldfront.config.env import ENV
 
-from ifxbilling.models import Product
-
-from ifxbilling.models import Product
 
 MISSING_DATA_DIR = './local_data/missing/'
 
+username_ignore_list = import_from_settings('username_ignore_list', [])
+groupname_ignore_list = import_from_settings('groupname_ignore_list', [])
+
+
+def get_quarter_start_end():
+    y = datetime.today().year
+    quarter_starts = [f'{y}-01-01', f'{y}-04-01', f'{y}-07-01', f'{y}-10-01']
+    quarter_ends = [f'{y}-03-31', f'{y}-06-30', f'{y}-09-30', f'{y}-12-31']
+    quarter = (datetime.today().month-1)//3
+    return (quarter_starts[quarter], quarter_ends[quarter])
 
 def sort_by(list1, sorter, how='attr'):
-    '''split one list into two on basis of each item's ability to meet a condition
+    """split one list into two on basis of each item's ability to meet a condition
     Parameters
     ----------
     list1 : list
@@ -31,7 +39,7 @@ def sort_by(list1, sorter, how='attr'):
         attribute or function to be used to sort the list
     how : str
         type of sorter ('attr' or 'condition')
-    '''
+    """
     is_true, is_false = [], []
     for x in list1:
         if how == 'attr':
@@ -42,41 +50,43 @@ def sort_by(list1, sorter, how='attr'):
             raise Exception('unclear sorting method')
     return is_true, is_false
 
-def select_one_project_allocation(project_obj, resource_obj, dirpath=None):
-    '''
-    Get one allocation for a given project/resource pairing; handle return of
+def select_one_project_allocation(project_obj, resource_obj, dirpath):
+    """
+    Get one allocation for a given project/resource/path pairing; handle return of
     zero or multiple allocations.
-
-    If multiple allocations are in allocation_query, choose the one with the
-    similar dirpath.
 
     Parameters
     ----------
     project_obj
     resource_obj
-    '''
-    allocation_query = project_obj.allocation_set.filter(
-                                                resources__id=resource_obj.id)
-    if allocation_query.count() == 1:
-        allocation_obj = allocation_query.first()
-    elif allocation_query.count() < 1:
-        allocation_obj = None
-    elif allocation_query.count() > 1:
-        allocation_obj = next((a for a in allocation_query if a.path.lower() in dirpath.lower()),
-                                'MultiAllocationError')
-    return allocation_obj
-
+    dirpath
+    """
+    filter_vals = {'resources__id': resource_obj.id, "status__name__in": ['Active', 'Pending Deactivation']}
+    allocation_query = project_obj.allocation_set.filter(**filter_vals)
+    if allocation_query.count() < 1:
+        return None
+    else:
+        allocations = [
+            a for a in allocation_query
+            if a.path and dirpath and (a.path in dirpath or dirpath in a.path)
+        ]
+        if len(allocations) == 1:
+            return allocations[0]
+        elif len(allocations) > 1:
+            print(allocations)
+            logger.exception('multiple allocations found for project/resource/path pairing: %s', allocations)
+            raise Exception('multiple allocations found for project/resource/path pairing')
 
 def determine_size_fmt(byte_num):
-    '''Return the correct human-readable byte measurement.
-    '''
+    """Return the correct human-readable byte measurement.
+    """
     units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB']
     for u in units:
         unit = u
         if abs(byte_num) < 1024.0:
-            return round(byte_num, 3), unit
+            return (round(byte_num, 3), unit)
         byte_num /= 1024.0
-    return(round(byte_num, 3), unit)
+    return (round(byte_num, 3), unit)
 
 def convert_size_fmt(num, target_unit, source_unit='B'):
     units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB']
@@ -92,21 +102,28 @@ def convert_size_fmt(num, target_unit, source_unit='B'):
     return round(num, 3)
 
 def get_resource_rate(resource):
-    '''find Product with the name provided and return the associated rate'''
+    """find Product with the name provided and return the associated rate"""
+    try:
+        resource_obj = Resource.objects.get(name=resource)
+    except Resource.DoesNotExist:
+        return None
+    if resource_obj.resource_type.name == 'Storage Tier':
+        return None
     prod_obj = Product.objects.get(product_name=resource)
     rate_obj = prod_obj.rate_set.get(is_active=True)
+    if resource_obj.resource_type.name == "Cluster":
+        return rate_obj.decimal_price
     # return charge per TB, adjusted to dollar value
     if rate_obj.units == 'TB':
         return rate_obj.price/100
     price = convert_size_fmt(rate_obj.price, 'TB', source_unit=rate_obj.units)
     return round(price/100, 2)
 
-
 def id_present_missing_resources(resourceserver_list):
-    '''
+    """
     Collect all Resource entries with resources in param resourceserver_list;
     return tuple of all matching Resource entries and all servers with no Resource entries.
-    '''
+    """
     present_resources = Resource.objects.filter(reduce(operator.or_,
                     (Q(name__contains=x) for x in resourceserver_list)))
     res_names = [str(r.name).split('/')[0] for r in present_resources]
@@ -115,18 +132,21 @@ def id_present_missing_resources(resourceserver_list):
 
 
 def id_present_missing_projects(title_list):
-    '''
+    """
     Collect all Project entries with titles in param title_list; return tuple
     of all matching Project entries and all titles with no Project entries.
-    '''
+    """
     present_projects = Project.objects.filter(title__in=title_list)
     proj_titles = list(present_projects.values_list('title', flat=True))
-    missing_project_titles = [{'title': title} for title in title_list if title not in proj_titles]
+    missing_project_titles = [
+        {'title': title} for title in title_list
+        if title not in proj_titles and title not in groupname_ignore_list
+    ]
     return (present_projects, missing_project_titles)
 
 
 def id_present_missing_projectusers(projectuser_tuple_list):
-    '''
+    """
     Collect all User entries with usernames in position [1] of projectuser_tuple_list
     tuples; return tuple consisting of all matching User entries and a list of
     dicts recording the project and user of missing entries.
@@ -139,28 +159,33 @@ def id_present_missing_projectusers(projectuser_tuple_list):
     -------
     present_users :
     missing_projectusers :
-    '''
+    """
     username_list = [tuple[1] for tuple in projectuser_tuple_list]
     present_users = get_user_model().objects.filter(username__in=username_list)
     present_usernames = list(present_users.values_list('username', flat=True))
     missing_projusers = [{'project': tuple[0], 'username':tuple[1]}
-            for tuple in projectuser_tuple_list if tuple[1] not in present_usernames]
+        for tuple in projectuser_tuple_list
+        if tuple[1] not in present_usernames and tuple[1] not in username_ignore_list
+    ]
     return (present_users, missing_projusers)
 
 
 def id_present_missing_users(username_list):
-    '''
+    """
     Collect all User entries with usernames in param username_list; return tuple
     of all matching User entries and all usernames with no User entries.
-    '''
+    """
     present_users = get_user_model().objects.filter(username__in=username_list)
     present_usernames = list(present_users.values_list('username', flat=True))
-    missing_usernames = [{'username': name} for name in username_list if name not in present_usernames]
+    missing_usernames = [
+        {'username': n} for n in username_list
+        if n not in present_usernames and n not in username_ignore_list
+    ]
     return (present_users, missing_usernames)
 
 
 def log_missing(modelname, missing):
-    '''log missing entries for a given Coldfront model.
+    """log missing entries for a given Coldfront model.
     Add or update entries in CSV, order CSV by descending date and save.
 
     Parameters
@@ -172,11 +197,11 @@ def log_missing(modelname, missing):
             for users, "username".
             for projects, "title".
             for allocations, "resource_name", "project_title", and "path".
-    '''
+    """
     update_csv(missing, MISSING_DATA_DIR, f'missing_{modelname}s.csv')
 
 def slate_for_check(log_entries):
-    '''Add an issue encountered during runtime to a CSV for administrative review.
+    """Add an issue encountered during runtime to a CSV for administrative review.
 
     Parameters
     ----------
@@ -184,11 +209,11 @@ def slate_for_check(log_entries):
         keys should be "error" (description of issue encountered),
         "program" (where encountered), "urls" (url(s) to related object detail
         pages), "detail" (exc_info, if necessary)
-    '''
+    """
     update_csv(log_entries, 'local_data/', 'program_error_checks.csv')
 
 def update_csv(new_entries, dirpath, csv_name, date_update='date'):
-    '''Add or update entries in CSV, order CSV by descending date and save.
+    """Add or update entries in CSV, order CSV by descending date and save.
 
     Parameters
     ----------
@@ -200,7 +225,7 @@ def update_csv(new_entries, dirpath, csv_name, date_update='date'):
     dirpath : str
     csv_name : str
     date_update : str
-    '''
+    """
     if new_entries:
         locate_or_create_dirpath(dirpath)
         fpath = f'{dirpath}{csv_name}'

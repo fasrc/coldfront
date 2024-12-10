@@ -1,0 +1,232 @@
+{% extends "common/base.html" %}
+{% load common_tags %}
+{% load crispy_forms_tags %}
+{% load static %}
+
+{% block ifx_head %}
+<link rel="stylesheet" href="https://cdn.datatables.net/2.1.5/css/dataTables.dataTables.min.css"></style>
+<script src="https://cdn.jsdelivr.net/npm/js-cookie@3.0.5/dist/js.cookie.min.js"></script>
+<script src="https://cdn.datatables.net/2.1.5/js/dataTables.js"></script>
+<script src="https://cdn.datatables.net/select/2.0.5/js/dataTables.select.js"></script>
+<script src="https://cdn.datatables.net/select/2.0.5/js/select.dataTables.js"></script>
+{% endblock %}
+
+{% block title %}
+Calculate Billing Month
+{% endblock %}
+
+
+{% block content %}
+<style>
+    label {
+        margin: 0 0 0 1em;
+    }
+    .dt-input {
+        margin: 0 0 0 1em;
+        width: 200px;
+    }
+</style>
+<script>
+    (function($){
+        $(document).ready(function(){
+
+
+
+            $( "#progressbar" ).progressbar({
+                value: false
+            });
+            var dialog = $('#loading').dialog(
+                {
+                    autoOpen: false,
+                    height: 200,
+                    width: 300,
+                    modal: true,
+                    title: 'Working...'
+                }
+            )
+            $(document)
+                .ajaxStart(function () {
+                    dialog.dialog("open");
+                })
+                .ajaxStop(function () {
+                    dialog.dialog("close");
+                });
+
+
+            // Get month and year cookie and errorsOnly if it exists using js-cookie
+            var year = Cookies.get('coldfront-billing-year') || new Date().getFullYear()
+            var month = Cookies.get('coldfront-billing-month') || new Date().getMonth() - 1
+            var errorsOnly = Cookies.get('coldfront-billing-errors-only') || false
+            $("#year").val(year)
+            $("#month").val(month)
+            $("#errorsOnly").prop('checked', errorsOnly)
+
+            // Set month and year cookie when changed
+            $("#year").change(function() {
+                Cookies.set('coldfront-billing-year', $(this).val())
+            })
+            $("#month").change(function() {
+                Cookies.set('coldfront-billing-month', $(this).val())
+            })
+            $("#errorsOnly").change(function() {
+                if ($(this).is(":checked")) {
+                    Cookies.set('coldfront-billing-errors-only', 'true')
+                } else {
+                    Cookies.remove('coldfront-billing-errors-only')
+                }
+            })
+
+            $("#productUsageReload").click((ev) => {
+                ev.preventDefault()
+                if (!$("#year").val() || !$("#month").val()) {
+                    alert("Year and Month are required")
+                    return
+                } else {
+                    productUsagesTable.ajax.reload()
+                }
+            })
+
+            DataTable.defaults.layout = {
+                topStart: null,
+                topEnd: null,
+                bottomStart: null,
+                bottomEnd: null,
+            };
+            var productUsagesTable = $("#product-usages").DataTable({
+                layout: {
+                    topStart: 'search',
+                    topEnd: 'pageLength',
+                    bottomStart: 'paging',
+                },
+                columns: [
+                    {data: 'id', width: '100px'},
+                    {data: 'full_name', width: '200px'},
+                    {data: 'organization', width: '200px'},
+                    {data: 'product_name', width: '100px'},
+                    {data: 'description', width: '500px'},
+                    {data: 'error_message', width: '400px'},
+                ],
+                order: [[ 3, "asc" ], [ 2, "asc" ]],
+                select: {
+                    style: 'os',
+                    selector: 'td:first-child'
+                },
+                ajax: {
+                    url: '/ifx/api/get-product-usages/',
+                    type: 'GET',
+                    data: function (d)  {
+                        d.year = $("#year").val()
+                        d.month = $("#month").val()
+                        d.errors_only = $("#errorsOnly").is(":checked") ? 'true' : 'false'
+                    },
+                    dataSrc: '',
+                    error: function (jqXHR, status, error) {
+                        alert(status + ' ' + error)
+                    },
+                }
+            })
+
+            $("#calculate").click((ev) => {
+                ev.preventDefault()
+
+                // Get the year and month from the picker
+                const year = $("#year").val()
+                const month = $("#month").val()
+                const data = JSON.stringify({
+                    'recalculate': $("#recalculate").is(":checked") ? 'true' : 'false'
+                })
+
+                $.ajax({
+                    contentType: 'application/json',
+                    url: `/ifx/api/billing/calculate-billing-month/RC/${year}/${month}/`,
+                    method: 'POST',
+                    headers: {'X-CSRFToken': '{{ csrf_token }}'},
+                    data: data,
+                    dataType: "json",
+                    error: function (jqXHR, status, error) {
+                        alert(status + ' ' + error)
+                    },
+                }).done(
+                    function () { productUsagesTable.ajax.reload() }
+                )
+            })
+            $("#updateUserAccounts").click((ev) => {
+                ev.preventDefault()
+                $.ajax({
+                    url: '/ifx/api/update-user-accounts/',
+                    method: 'POST',
+                    headers: {'X-CSRFToken': '{{ csrf_token }}'},
+                    data: '',
+                    dataType: "json",
+                    error: function (jqXHR, status, error) {
+                        alert(status + ' ' + error)
+                    },
+                    success: function () {
+                        alert('Update started.  You will receive an email when the update is complete.')
+                    }
+                })
+            })
+        })
+    })(jQuery)
+
+</script>
+<div style="font-size: 10pt;">
+    <h2>Calculate Billing Month</h2>
+    <div id="loading">
+        <p>
+            <div id="progressbar"></div>
+        </p>
+    </div>
+    <div style="margin: 1em; width: 100%;">
+        <div style="position: relative; float: left;">
+            <label for="year">Year</label>
+            <input type="text" id="year" name="year"/>
+            <label for="month">Month</label>
+            <input type="text" id="month" name="month"/>
+            <label for="errorsOnly">Errors Only</label>
+            <input type="checkbox" id="errorsOnly" name="errorsOnly"/>
+        </div>
+        <div style="position: relative; float: left; margin-left: 1em;">
+            <input id="productUsageReload" type="submit" value="Reload Data"></input>
+        </div>
+        <div style="position: relative; float: right;">
+            <div style="position: relative; float: left">
+                <form method="post">
+                    {% csrf_token %}
+                    <input id="updateUserAccounts" style="color: white; background-color: red;" type="submit" value="Update User Accounts"></input>
+                </form>
+            </div>
+            <div style="position: relative; float: left">
+                <label for="recalculate">Recalculate</label>
+                <input type="checkbox" id="recalculate" name="recalculate" value="false"/>
+            </div>
+            <div style="position: relative; float: left; margin-left: 1em;">
+                <form method="post">
+                    {% csrf_token %}
+                    <input id="calculate" style="color: white; background-color: red;" type="submit" value="Calculate Billing Month"></input>
+                </form>
+            </div>
+            <div style="clear: both;"></div>
+        </div>
+        <div style="clear: both;"></div>
+    </div>
+    <hr/>
+    <div style="margin: 1em;">
+        <table id="product-usages" class="display" cellpadding="5px">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>User</th>
+                    <th>Organization</th>
+                    <th>Product</th>
+                    <th>Description</th>
+                    <th>Processing</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

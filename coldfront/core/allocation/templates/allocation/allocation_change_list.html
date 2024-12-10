@@ -1,6 +1,7 @@
 {% extends "common/base.html" %}
 {% load crispy_forms_tags %}
 {% load common_tags %}
+{% load fasrc_tags %}
 {% load static %}
 
 
@@ -14,7 +15,7 @@ Allocation Review New and Pending Change Requests
 
 <hr>
 
-<p class="text-justify"> 
+<p class="text-justify">
   For each allocation change request below, there is the option to activate the allocation request and to view the allocation change's detail page.
   If a change request is only for an extension to the allocation, they can be approved on this page. However if the change request includes changes to
   the allocation's attributes, the request must be reviewed and acted upon in its detail page.
@@ -31,6 +32,7 @@ Allocation Review New and Pending Change Requests
           <th scope="col">PI</th>
           <th scope="col">Resource</th>
           <th scope="col">Extension</th>
+          <th scope="col">Changes</th>
           <th scope="col">Actions</th>
         </tr>
       </thead>
@@ -42,26 +44,40 @@ Allocation Review New and Pending Change Requests
             <td><a href="{% url 'project-detail' change.allocation.project.pk %}">{{change.allocation.project.title|truncatechars:50}}</a></td>
             <td>{{change.allocation.project.pi.first_name}} {{change.allocation.project.pi.last_name}}
               ({{change.allocation.project.pi.username}})</td>
-            <td>{{change.allocation.get_parent_resource}}</td>
+            <td>{{change.allocation.get_parent_resource}}
+              {% resource_fullness_badge change.allocation.get_parent_resource %}
+            </td>
             <td>
-              {% if change.end_date_extension == 0 %}
+              {% if change.end_date_extension != 0 %}
               {% else %} {{change.end_date_extension}} days
               {% endif %}
             </td>
-            <td class="text-nowrap">
+
+            <td>
               {% if change.allocationattributechangerequest_set.all %}
-                <a href="{% url 'allocation-activate-change' change.pk %}" class="btn btn-success mr-1" aria-disabled="true" 
-                style="color:white !important;
-                      cursor: not-allowed;
-                      opacity: 0.6;
-                      pointer-events: none;">
-                      Approve
-                </a>
-                <a href="{% url 'allocation-change-detail' change.pk %}" class="btn btn-primary mr-1" style="color:white !important">Details</a>
-              {% else %}
-                <a href="{% url 'allocation-activate-change' change.pk %}" class="btn btn-success mr-1" style="color:white !important">Approve</a>
-                <a href="{% url 'allocation-change-detail' change.pk %}" class="btn btn-primary mr-1" style="color:white !important">Details</a>
+                {% for attr_change in change.allocationattributechangerequest_set.all %}
+                 {{ attr_change }} ({{attr_change.allocation_attribute.value }} to {{ attr_change.new_value }})
+                {% endfor %}
               {% endif %}
+            </td>
+            <td class="text-nowrap">
+                {% if change.allocationattributechangerequest_set.all %}
+                <button class="btn btn-success mr-1" aria-disabled="true"
+                 style="
+                       cursor: not-allowed;
+                       opacity: 0.6;
+                       pointer-events: none;">
+                       Approve
+                 </button>
+                 <a href="{% url 'allocation-change-detail' change.pk %}"><button type="button" class="btn btn-primary mr-1">Details</button></a>
+                {% else %}
+                <form method="post" action="{% url 'allocation-change-detail' change.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="end_date_extension" value="{{ change.end_date_extension }}" />
+                  <button type="submit" name="action" value="approve" class="btn btn-success mr-1">Approve</button>
+                  <a href="{% url 'allocation-change-detail' change.pk %}"><button type="button" class="btn btn-primary mr-1">Details</button></a>
+                </form>
+                {% endif %}
             </td>
           </tr>
         {% endfor %}

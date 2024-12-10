@@ -1,36 +1,40 @@
 <head>
-    <meta charset="utf-8">
-    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0/css/bootstrap.css">
-    <link rel="stylesheet" href="//cdn.datatables.net/1.10.16/css/dataTables.bootstrap4.min.css">
-    <script src="pdf.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.2/html2pdf.bundle.js"></script>
-  </head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0/css/bootstrap.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.2/html2pdf.bundle.js"></script>
+</head>
 
 {% extends "common/base.html" %}
 {% load crispy_forms_tags %}
 {% load static %}
 {% load django_tables2 %}
 {% load mathfilters %}
-
-{% render_table table %}
-
+{% load common_tags %}
+{% load fasrc_tags %}
 
 
 {% block title %}
 Allocation Detail
 {% endblock %}
 
-
 {% block content %}
+
 {% if allocation.project.status.name == 'Archived' %}
   <div class="alert alert-warning" role="alert">
-    This is a allocation from an archived project! You cannot make any changes.
+    This is an allocation from an archived project! You cannot make any changes.
+  </div>
+{% elif allocation.status.name in 'Pending Deactivation,Inactive,Denied' %}
+  <div class="alert alert-warning" role="alert">
+    This allocation is {{allocation.status.name | lower}}! You cannot make any changes.
   </div>
 {% endif %}
-<div id = "allocation">
+<div id="allocation">
 <div class="mb-3">
   <h2>Allocation Detail</h2>
-  <button class = "btn btn-primary" id = "download"> Download PDF </button>
+  <button class="btn btn-primary" id="download"> Download PDF </button>
+  {% if allocation.project.sf_zone and "tier" in allocation.get_parent_resource.name %}
+  <a class="btn btn-success" href="https://starfish.rc.fas.harvard.edu/#/browser?zone={{allocation.project.sf_zone}}" role="button" id="starfish"> View more information about your storage on Starfish </a>
+  {% endif %}
   <hr>
 </div>
 
@@ -42,27 +46,25 @@ Allocation Detail
 
 <div class="card mb-3">
   <div class="card-header">
-    {% if allocation.is_changeable and not allocation.is_locked and is_allowed_to_update_project and allocation.status.name in 'Active, Renewal Requested, Payment Pending, Payment Requested, Paid' %}
     <div class="row">
       <div class="col">
         <h3><i class="fas fa-list" aria-hidden="true"></i> Allocation Information</h3>
       </div>
+      {% if allocation.is_changeable and not allocation.is_locked and is_allowed_to_update_project and allocation.status.name in 'Active, Renewal Requested, Payment Pending, Payment Requested, Paid' %}
       <div class="col">
         <a class="btn btn-primary" href="{% url 'allocation-change' allocation.pk %}" role="button" style="float: right;">
           Request Change
         </a>
       </div>
+      {% endif %}
     </div>
-    {% else %}
-      <h3><i class="fas fa-list" aria-hidden="true"></i> Allocation Information</h3>
-    {% endif %}
   </div>
 
   <div class="card-body">
     <form method="post">
       {% csrf_token %}
       <div class="table-responsive">
-        <div class = "container mb-3 mt-3">
+        <div class="container mb-3 mt-3">
         <table class="table table-bordered table-sm">
           <tr>
             <th scope="row" class="text-nowrap">Project:</th>
@@ -76,17 +78,23 @@ Allocation Detail
               </td>
           </tr>
           <tr>
-            <th scope="row" class="text-nowrap">Resource{{ allocation.resources.all|pluralize }} in allocation:</th>
+            <th scope="row" class="text-nowrap">Allocated Resource{{ allocation.resources.all|pluralize }}:</th>
             <td>
               {% if allocation.get_resources_as_list %}
                 {% for resource in allocation.get_resources_as_list %}
-                  <a href="{% url 'resource-detail' resource.pk %}">{{ resource }}</a> <br>
+                  {% if request.user.is_superuser and allocation.status.name in "New,In Progress,On Hold" and "Tier" in allocation.get_resources_as_string %}
+                    {{ form.resource }} <a color="red">Please choose a resource.</a>
+                  {% else %}
+                    <a href="{% url 'resource-detail' resource.pk %}">{{ resource }}</a>
+                  {% endif %}
+                  <br>
                 {% endfor %}
               {% else %}
                 None
               {% endif %}
             </td>
           </tr>
+
           <tr>
             <th scope="row" class="text-nowrap">Justification:</th>
             <td>{{ allocation.justification }}</td>
@@ -103,27 +111,69 @@ Allocation Detail
           </tr>
           <tr>
               <th scope="row" class="text-nowrap">Service Period:</th>
-              <td> 1 Month
-             </td>
-            </tr>
+	      <td>
+                {% if "Storage" in allocation.get_parent_resource.resource_type.name %}
+		1 Month
+                {% else %}
+		Current Quarter
+                {% endif %}
+	      </td>
+          </tr>
+          {% if expense_code %}
             <tr>
-                <th scope="row" class="text-nowrap">Total Users in Your Bill:</th>
-                <td>{{ allocation_users.count }}</td>
+                <th scope="row" class="text-nowrap">Requested Expense Code:</th>
+                <td>
+                  {% for code in expense_code %}
+                    {{ code.value }}<br>
+                  {% endfor %}
+                </td>
             </tr>
+          {% endif %}
+          {% if invoice %}
+          <tr>
+              <th scope="row" class="text-nowrap">FIINE Expense Codes:</th>
+              <td>
+                {% for code in expense_codes %}
+                  {{ code.account.name }} ({{ code.account.code }}): {{ code.percent }}%<br>
+                {% endfor %}
+              </td>
+          </tr>
+          {% endif %}
+          <tr>
+              <th scope="row" class="text-nowrap">Total Users with Usage:</th>
+              <td>{{ allocation_users.count }}</td>
+          </tr>
+          <tr>
+              <th scope="row" class="text-nowrap">Total Usage ({{allocation.get_parent_resource.quantity_label}}):</th>
+              <td>{{ allocation.usage|floatformat:2 }}
+                <span class="float-right">Last Synced {{user_sync_dt}}</span>
+              </td>
+          </tr>
+
+          {% if "Cluster" in allocation.get_parent_resource.resource_type.name %}
             <tr>
-                <th scope="row" class="text-nowrap">Total Usage (TB):</th>
-                <td>{{ allocation_usage_tb|floatformat:2 }}</td>
+                <th scope="row" class="text-nowrap">Fairshare
+                    <a class="info-button" title="Fairshare" data-toggle="popover" data-trigger="click" data-content="Account fairshare. For more information on fairshare calculation, go <a href='https://docs.rc.fas.harvard.edu/kb/fairshare/#articleTOC_4' title='fairshare calculation'>here</a>.">
+                      <i class="fas fa-info-circle" aria-hidden="true"></i>
+                    </a>
+                  :</th>
+                <td id="fairshare">{{ allocation.fairshare }}</td>
             </tr>
+          {% elif "Storage" in allocation.get_parent_resource.resource_type.name %}
             <tr>
                 <th scope="row" class="text-nowrap">Quota (TB):</th>
-                <td id = "group_quota">{{ allocation_quota_tb|floatformat:2 }}</td>
+                <td id="group_quota">{{ allocation.size|floatformat:2 }}</td>
             </tr>
-            <tr>
-                <th  style="background-color:#D3D3D3" bordercolor="red" scope="row" class="text-nowrap">Total Amount Due:	</th>
-
-                <td style="background-color:#D3D3D3">${{allocation_quota_tb|mul:price|floatformat:2}}</td>
+            {% if invoice %}
+              <tr>
+                  <th style="background-color:#D3D3D3" bordercolor="red" scope="row" class="text-nowrap">Total Amount Due:	</th>
+                    {% cost_tb allocation.size as cost %}
+                    {% if cost %}
+                      <td style="background-color:#D3D3D3">{{ cost }}</td>
+                    {% endif %}
               </tr>
-          <tr>
+            {% endif %}
+          {% endif %}
           <tr>
             <th scope="row" class="text-nowrap">Start Date:</th>
             <td>
@@ -143,12 +193,14 @@ Allocation Detail
                 {{ allocation.end_date }}
               {% endif %}
               {% if allocation.is_locked and allocation.status.name == 'Active' and allocation.expires_in <= 60 and allocation.expires_in >= 0 %}
-              <span class="badge badge-warning"><i class="far fa-clock" aria-hidden="true"></i>
+              <span class="badge badge-warning">
+                <i class="far fa-clock" aria-hidden="true"></i>
                 Expires in {{allocation.expires_in}} day{{allocation.expires_in|pluralize}} - Not renewable
               </span>
               {% elif is_allowed_to_update_project and ALLOCATION_ENABLE_ALLOCATION_RENEWAL and allocation.status.name == 'Active' and allocation.expires_in <= 60 and allocation.expires_in >= 0 %}
                 <a href="{% url 'allocation-renew' allocation.pk %}">
-                <span class="badge badge-warning"><i class="fas fa-redo-alt" aria-hidden="true"></i>
+                <span class="badge badge-warning">
+                  <i class="fas fa-redo-alt" aria-hidden="true"></i>
                 Expires in {{allocation.expires_in}} day{{allocation.expires_in|pluralize}} - Click to renew
                 </span>
                 </a>
@@ -161,66 +213,133 @@ Allocation Detail
               {% if request.user.is_superuser %}
                 {{ form.description }}
               {% else %}
-                {{ allocation.description }}
+                {{ allocation.description|default_if_none:"" }}
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th>
+              Additional Indicators:
+            </th>
+            <td>
+              {% if allocation.heavy_io %}
+                <span class="badge badge-primary"
+                alt="Indicates expectation of heavy I/O from the cluster against this space (more than 100 cores)"
+                title="Indicates expectation of heavy I/O from the cluster against this space (more than 100 cores)">
+                  Heavy IO
+                </span>
+              {% endif %}
+              {% if allocation.dua %}
+                <span class="badge badge-primary"
+                alt="Indicates that some or all of the lab’s data is governed by DUAs"
+                title="Indicates that some or all of the lab’s data is governed by DUAs"
+                >
+                  DUA
+                </span>
+              {% endif %}
+              {% if allocation.mounted %}
+                <span class="badge badge-primary"
+                alt="Indicates expectation that storage will be mounted to a local machine as an additional drive"
+                title="Indicates expectation that storage will be mounted to a local machine as an additional drive"
+                >
+                  Mounted
+                </span>
+              {% endif %}
+              {% if allocation.external_sharing %}
+                <span class="badge badge-primary"
+                alt="Indicates that this lab intends to share some of this data with collaborators outside of Harvard"
+                title="Indicates that this lab intends to share some of this data with collaborators outside of Harvard"
+                >
+                  External Sharing
+                </span>
+              {% endif %}
+              {% if allocation.high_security %}
+                <span class="badge badge-primary"
+                alt="This allocation will store secure information (security level three or greater)"
+                title="This allocation will store secure information (security level three or greater)"
+                >
+                  High Security
+                </span>
               {% endif %}
             </td>
           </tr>
        </table>
       </div>
       <tr>
-            <th scope="row" class="text-nowrap">Created:</th>
-            <td>{{ allocation.created|date:"M. d, Y" }}</td>
-          </tr>
-          <tr>
-            <th scope="row" class="text-nowrap">Last Modified:</th>
-            <td>{{ allocation.modified|date:"M. d, Y" }}</td>
-          </tr>
-          <tr>
-            {% if request.user.is_superuser or request.user.is_staff %}
-              <th scope="row" class="text-nowrap">Lock/Unlock Allocation:</th>
-              <td>
-                {{ form.is_locked }}
-              </td>
-            {% else %}
-              {% if allocation.is_locked %}
-                <th scope="row" class="text-nowrap">Locked</th>
-                <td><i class="fas fa-lock" aria-hidden="true"></i></td>
-              {% else %}
-                <th scope="row" class="text-nowrap">Unlocked</th>
-                <td><i class="fas fa-lock-open" aria-hidden="true"></i></td>
-              {% endif %}
-            {% endif %}
-          </tr>
-          {% if request.user.is_superuser or request.user.is_staff %}
-            <tr>
-              <th scope="row" class="text-nowrap">Allow Change Requests:</th>
-              <td>
-                {{ form.is_changeable }}
-              </td>
-            </tr>
+        <th scope="row" class="text-nowrap">Created:</th>
+        <td>{{ allocation.created|date:"M. d, Y" }}</td>
+      </tr>
+      <tr>
+        <th scope="row" class="text-nowrap">Last Modified:</th>
+        <td>{{ allocation.modified|date:"M. d, Y" }}</td>
+      </tr>
+      <tr>
+        {% if request.user.is_superuser or request.user.is_staff %}
+          <th scope="row" class="text-nowrap">Lock/Unlock Allocation:</th>
+          <td>
+            {{ form.is_locked }}
+          </td>
+        {% else %}
+          {% if allocation.is_locked %}
+            <th scope="row" class="text-nowrap">Locked</th>
+            <td><i class="fas fa-lock" aria-hidden="true"></i></td>
+          {% else %}
+            <th scope="row" class="text-nowrap">Unlocked</th>
+            <td><i class="fas fa-lock-open" aria-hidden="true"></i></td>
           {% endif %}
-        </table>
-      </div>
-      {% if request.user.is_superuser %}
-      <div class="float-right">
-        {% if allocation.status.name == 'New' or allocation.status.name == 'Renewal Requested' %}
-          <a href="{% url 'allocation-activate-request' allocation.pk %}" class="btn btn-success mr-1 confirm-activate">Approve</a>
-          <a href="{% url 'allocation-deny-request' allocation.pk %}" class="btn btn-danger mr-1 confirm-deny">Deny</a>
         {% endif %}
-        <button type="submit" class="btn btn-primary"><i class="fas fa-sync" aria-hidden="true"></i> Update</button>
+      </tr>
+        {% if request.user.is_superuser or request.user.is_staff %}
+          <tr>
+            <th scope="row" class="text-nowrap">Allow Change Requests:</th>
+            <td>{{ form.is_changeable }}</td>
+          </tr>
+        {% endif %}
+      </div>
+
+      <!-- New Allocation Action Form -->
+      {% if request.user.is_superuser or request.user.is_staff and allocation.status.name in 'New,In Progress,On Hold' %}
+        <div class="container mb-3 mt-3">
+          <p class="text-justify"><i>
+            To approve the request, select a resource volume in the field above and fill out the form below before clicking "Approve". To deny the request, simply click "Deny".
+          </i></p>
+          <div id=resource_summary_table></div>
+            {% csrf_token %}
+            {{ approval_form |crispy }}
+        </div>
       {% endif %}
-    </div>
+      <!-- End New Allocation Action Form -->
+
+      {% if request.user.is_superuser %}
+        <div class="float-right">
+          <button type="submit" name="action" value="update" class="btn btn-primary"><i class="fas fa-sync" aria-hidden="true"></i> Update</button>
+          {% if allocation.status.name in 'New,Renewal Requested,In Progress,On Hold' %}
+            <button type="submit" name="action" value="approve" class="btn btn-success mr-1 confirm-activate">Approve</button>
+            <button type="submit" name="action" value="deny" class="btn btn-danger mr-1 confirm-deny">Deny</button>
+          {% endif %}
+        </div>
+      {% endif %}
+
+
     </form>
   </div>
 </div>
+
+
+<div class="html2pdf__page-break"></div>
 {% if attributes or attributes_with_usage or request.user.is_superuser %}
   <div class="card mb-3">
     <div class="card-header">
-      <h3 class="d-inline"><i class="fas fa-info-circle" aria-hidden="true"></i> Allocation Attributes</h3>
+      <h3 class="d-inline">
+        <i class="fas fa-info-circle" aria-hidden="true"></i> Allocation Attributes
+      </h3>
       <div class="float-right">
         {% if request.user.is_superuser %}
           <a class="btn btn-success" href="{% url 'allocation-attribute-add' allocation.pk %}" role="button">
             <i class="fas fa-plus" aria-hidden="true"></i> Add Allocation Attribute
+          </a>
+          <a class="btn btn-danger" href="{% url 'allocation-attribute-edit' allocation.pk %}" role="button">
+            <i class="fas fa-edit" aria-hidden="true"></i> Edit Allocation Attributes
           </a>
           <a class="btn btn-danger" href="{% url 'allocation-attribute-delete' allocation.pk %}" role="button">
             <i class="fas fa-minus" aria-hidden="true"></i> Delete Allocation Attributes
@@ -248,9 +367,7 @@ Allocation Detail
                 {% else %}
                   <tr>
                     <td>{{attribute}}</td>
-                    <td>
-                      {{attribute.value}}
-                    </td>
+                    <td>{{attribute.value}}</td>
                   </tr>
                 {% endif %}
               {% endfor %}
@@ -259,16 +376,18 @@ Allocation Detail
         </div>
       {% endif %}
 
-      {% if attributes_with_usage %}
-        <hr>
-        {% for attribute in attributes_with_usage %}
-          <div class="card mb-3 mr-1">
-            <div class="card-body">
-              <h4 class="card-title">{{attribute}}</h4>
-              <div id="gauge-{{forloop.counter0}}"></div>
+      {% if "Storage" in allocation.get_parent_resource.resource_type.name %}
+        {% if attributes_with_usage %}
+          <hr>
+          {% for attribute in attributes_with_usage %}
+            <div class="card mb-3 mr-1">
+              <div class="card-body">
+                <h4 class="card-title">{{attribute}}</h4>
+                <div id="gauge-{{forloop.counter0}}"></div>
+              </div>
             </div>
-          </div>
-        {% endfor %}
+          {% endfor %}
+        {% endif %}
       {% endif %}
     </div>
   </div>
@@ -278,7 +397,14 @@ Allocation Detail
 <!-- Start Allocation Change Requests -->
 <div class="card mb-3">
   <div class="card-header">
-    <h3 class="d-inline"><i class="fas fa-info-circle" aria-hidden="true"></i> Allocation Change Requests</h3> <span class="badge badge-secondary">{{allocation_changes.count}}</span>
+    <h3 class="d-inline">
+      <i class="fas fa-info-circle" aria-hidden="true"></i> Allocation Change Requests
+    </h3> <span class="badge badge-secondary">{{allocation_changes.count}}</span>
+    {% if allocation.is_changeable and not allocation.is_locked and is_allowed_to_update_project and allocation.status.name in 'Active, Renewal Requested, Payment Pending, Payment Requested, Paid' %}
+        <a class="btn btn-primary" href="{% url 'allocation-change' allocation.pk %}" role="button" style="float: right;">
+          Request Change
+        </a>
+    {% endif %}
   </div>
 
   <div class="card-body">
@@ -289,7 +415,7 @@ Allocation Detail
             <tr>
               <th scope="col">Date Requested</th>
               <th scope="col">Status</th>
-              <th scope="col">Notes</th>
+              <th scope="col">Justification</th>
               <th scope="col">Actions</th>
             </tr>
           </thead>
@@ -304,13 +430,15 @@ Allocation Detail
                   {% else %}
                     <td class="text-info">{{ change_request.status.name }}</td>
                   {% endif %}
-                  </td>
-                  {% if change_request.notes %}
-                    <td>{{change_request.notes}}</td>
+                  {% if change_request.justification %}
+                    <td>{{change_request.justification}}</td>
                   {% else %}
                     <td></td>
                   {% endif %}
-                  <td><a href="{% url 'allocation-change-detail' change_request.pk %}"><i class="far fa-edit" aria-hidden="true"></i><span class="sr-only">Edit</span></a></td>
+                  <td><a href="{% url 'allocation-change-detail' change_request.pk %}">
+                    <i class="far fa-edit" aria-hidden="true"></i>
+                    <span class="sr-only">Edit</span>
+                  </a></td>
                 </tr>
             {% endfor %}
           </tbody>
@@ -330,7 +458,13 @@ Allocation Detail
   <div class="card-header">
     <h3 class="d-inline"><i class="fas fa-users" aria-hidden="true"></i> Users in Allocation</h3>
     <span class="badge badge-secondary">{{allocation_users.count}}</span>
+    <!--show user_sync_dt on the right side of the div header-->
+    {% if user_sync_dt %}
+    <span class="float-right">Last Sync: {{user_sync_dt}}</span>
+    {% endif %}
     <div class="float-right">
+
+      {% comment %}
       {% if allocation.project.status.name != 'Archived' and is_allowed_to_update_project and allocation.status.name in 'Active,New,Renewal Requested' and request.user.is_superuser %}
         <a class="btn btn-success" href="{% url 'allocation-add-users' allocation.pk %}" role="button">
           <i class="fas fa-user-plus" aria-hidden="true"></i> Add Users
@@ -339,38 +473,61 @@ Allocation Detail
           <i class="fas fa-user-times" aria-hidden="true"></i> Remove Users
         </a>
       {% endif %}
-
+      {% endcomment %}
 
     </div>
   </div>
   <div class="card-body">
     <div class="table-responsive">
-    <div class = "container mb-3 mt-3">
+    <div class="container mb-3 mt-3">
       <!-- <table  class="table table-hover mydatatable" > -->
-        <table id = "mydatatable" class = "table table-striped table-bordered" filter = "off">
+        <table id="mydatatable" class="table table-striped table-bordered" filter="off">
         <thead>
           <tr>
             <!-- <th scope="col">Username</th> -->
             <th scope="col">Name</th>
             <!-- <th scope="col">Email</th> -->
-            <!-- <th scope="col">Bytes</th> -->
-
             <th scope="col">Status</th>
-            <th scope="col">Logical Usage</th>
-            <th scope="col">Percentage Usage</th>
-            <th scope="col">Cost Per User (TB/month)</th>
-
-
+            {% if "Storage" in allocation.get_parent_resource.resource_type.name %}
+              <th scope="col">Logical Usage</th>
+              <th scope="col">Percent Usage</th>
+              {% if invoice %}
+                <th scope="col">Cost Per User (TB/month)</th>
+              {% endif %}
+            {% else %}
+              <th scope="col">CPU Hours</th>
+              <th scope="col">Percent Usage</th>
+              <th scope="col">EffectvUsage
+                <a class="info-button" title="EffectvUsage" data-toggle="popover" data-trigger="click" data-content="The fraction of the cluster the account has been granted. For more information, go <a href='https://docs.rc.fas.harvard.edu/kb/fairshare/#articleTOC_4' title='fairshare calculation'>here</a>.">
+                  <i class="fas fa-info-circle" aria-hidden="true"></i>
+                </a>
+              </th>
+              <th scope="col">NormShares
+                <a class="info-button" title="NormShares" data-toggle="popover" data-trigger="click" data-content="Calculated fairshare per user. For more information on this number, go <a href='https://docs.rc.fas.harvard.edu/kb/fairshare/#articleTOC_4' title='fairshare calculation'>here</a>.">
+                  <i class="fas fa-info-circle" aria-hidden="true"></i>
+                </a>
+              </th>
+              <th scope="col">FairShare
+                <a class="info-button" title="FairShare" data-toggle="popover" data-trigger="click" data-content="User fairshare, calculated by the equation 2^(-EffectvUsage/NormShares). For more information on fairshare calculation, go <a href='https://docs.rc.fas.harvard.edu/kb/fairshare/#articleTOC_4' title='fairshare calculation'>here</a>.">
+                  <i class="fas fa-info-circle" aria-hidden="true"></i>
+                </a>
+              </th>
+            {% endif %}
             <!-- <th scope="col">Status</th> -->
             <!-- <th scope="col">Last Modified</th> -->
           </tr>
         </thead>
 
-
         <tbody>
           {% for user in allocation_users %}
-            <tr status = "{{ user.status }}">
-
+            {% if user.unit == "CPU Hours" %}
+              {% firstof user.usage as userusage %}
+              {% firstof allocation.size as allocationusage %}
+            {% else %}
+              {% firstof user.usage_bytes as userusage %}
+              {% firstof allocation.usage_exact as allocationusage %}
+            {% endif %}
+            <tr status="{{ user.status }}">
               <td>{{ user.user.first_name }} {{ user.user.last_name }}</td>
 
               {% if user.status.name == 'Active' %}
@@ -380,21 +537,32 @@ Allocation Detail
               {% else %}
                 <td class="text-info">{{ user.status.name }}</td>
               {% endif %}
-              {% if user.usage_bytes == 0.0 %}
-              <td data-sort = "{{user.usage_bytes}}" name = "usage_bytes"> 0 bytes</td>
+              <td data-sort="{{userusage}}" name="usage_bytes">
+                {% if userusage is None %}
+                  0 {{ user.unit }}
+                {% else %}
+                  {{ user.usage|floatformat:1 }} {{ user.unit }}
+                {% endif %}
+                </td>
+              {% if allocationusage == None or allocationusage == 0 %}
+                <td>0</td>
               {% else %}
-              <td data-sort = "{{user.usage_bytes}}" name = "usage_bytes">{{ user.usage|floatformat:1 }}{{ user.unit }}</td>
+                  <td>{{userusage|div:allocationusage|mul:100|floatformat:2 }}%</td>
               {% endif %}
-              {% if allocation_usage_bytes == None or allocation_usage_bytes == 0 %}
-              <td>0</td>
-              {% else %}
-              <td>{{user.usage_bytes|div:allocation_usage_bytes|mul:100|floatformat:2 }}</td>
+
+              {% if invoice %}
+                {% cost_bytes userusage as cost %}
+                {% if cost %}
+                  <td>{{ cost }}</td>
+                {% endif %}
               {% endif %}
-              <td>{{user.usage_bytes|div:1099511627776|mul:price|floatformat:2}}</td>
+              {% if 'Cluster' in allocation.get_parent_resource.resource_type.name %}
+                <td>{{ user.effectvusage }}</td>
+                <td>{{ user.normshares }}</td>
+                <td>{{ user.fairshare }}</td>
+              {% endif %}
             </tr>
-
           {% endfor %}
-
         </tbody>
 
         <script type="text/javascript">
@@ -407,7 +575,6 @@ Allocation Detail
             }
             document.getElementById('total').value = tot;
         }
-
         </script>
 
       </table>
@@ -417,7 +584,6 @@ Allocation Detail
   </div>
 </div>
 
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/dt/jszip-2.5.0/dt-1.10.24/af-2.3.5/b-1.7.0/b-colvis-1.7.0/b-html5-1.7.0/b-print-1.7.0/cr-1.5.3/date-1.0.2/fc-3.3.2/kt-2.6.1/r-2.2.7/rg-1.1.2/rr-1.2.7/sl-1.3.2/datatables.min.css"/>
 
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/pdfmake.min.js"></script>
@@ -468,52 +634,13 @@ Allocation Detail
 
       } );
   </script>
-<div class="html2pdf__page-break"></div>
-<!-- Start Admin Messages -->
-<div class="card mb-3">
-  <div class="card-header">
-    <h3 class="d-inline"><i class="fas fa-users" aria-hidden="true"></i> Notifications</h3>
-    <span class="badge badge-secondary">{{notes.count}}</span>
-    <div class="float-right">
-      {% if request.user.is_superuser %}
-        <a class="btn btn-success" href="{% url 'allocation-note-add' allocation.pk %}" role="button">
-          <i class="fas fa-plus" aria-hidden="true"></i> Add Notification
-        </a>
-      {% endif %}
-    </div>
-  </div>
-  <div class="card-body">
-    {% if notes %}
-      <div class="table-responsive">
-        <table class="table table-hover">
-          <thead>
-            <tr>
-              <th scope="col">Note</th>
-              <th scope="col">Administrator</th>
-              <th scope="col">Last Modified</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for note in notes %}
-              {% if not note.is_private or request.user.is_superuser %}
-                <tr>
-                  <td>{{ note.note }}</td>
-                  <td>{{ note.author.first_name }} {{ note.author.last_name }}</td>
-                  <td>{{ note.modified }}</td>
-                </tr>
-              {% endif %}
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="alert alert-info" role="alert">
-        <i class="fa fa-info-circle" aria-hidden="true"></i> There are no notes from system administrators.
-      </div>
-    {% endif %}
-  </div>
+  <div class="html2pdf__page-break"></div>
+  <!-- Start Admin Messages -->
+  {% note_table request.user 'allocation-note-add' allocation %}
+  <!-- End Admin Messages -->
+
 </div>
-</div>
+
 <script type="text/javascript">
 window.onload = function () {
     document.getElementById("download")
@@ -533,7 +660,32 @@ window.onload = function () {
 }
 </script>
 <script>
+
+  // if the allocation status is new and the user is an admin,
+  // when the user selects a resource in form.resource,
+  // display a link to that resource's resource detail page
+  $('#id_resource').change(function () {
+    var resource_id = $(this).val();
+    var allocation_status = '{{ allocation.status }}';
+    var user_is_admin = {{ request.user.is_superuser | lower }};
+    var code = [];
+    if (allocation_status in ['New' 'In Progress', 'On Hold'], && user_is_admin && resource_id !== '') {
+      $.ajax({
+        url: "{% url 'resource-detail' 0 %}".replace('0', resource_id),
+        type: 'GET',
+        success: function (data) {
+          code.push('<a href="{% url "resource-detail" 0 %}">'.replace('0', resource_id) + 'View Detail Page for the selected Resource</a><br/><br/>');
+          $('#resource_summary_table').html(code.join(''));
+        }
+      });
+    }
+    else {
+      $('#resource_summary_table').html('');
+    }
+  });
+
   $(document).ready(function () {
+
     var guage_data = {{ guage_data | safe }};
     drawGauges(guage_data);
 
@@ -541,6 +693,12 @@ window.onload = function () {
       lengthMenu: [5, 10, 20, 50, 100],
       "pageLength": 5,
       "ordering": false,
+      'aoColumnDefs': [{
+        'bSortable': false,
+        'aTargets': ['nosort']
+      }]
+    });
+    $('#allocationuser_table').DataTable({
       'aoColumnDefs': [{
         'bSortable': false,
         'aTargets': ['nosort']
@@ -562,7 +720,7 @@ window.onload = function () {
       });
     }
   }
-  $(".datepicker").datepicker({ dateFormat: 'yy-mm-dd' });
+  $(".datepicker").flatpickr();
   $(document).on('click', '.confirm-activate', function(){
     var attributes_num = {{ attributes | length }};
     if (attributes_num == 0) {

@@ -19,9 +19,10 @@ Request Allocation Change
 </p>
 
 <form action="{% url 'allocation-change' allocation.pk %}" method="post">
+<div id=resource_message></div>
   <div class="card mb-3">
     <div class="card-header">
-        <h3><i class="fas fa-list" aria-hidden="true"></i> Allocation Information</h3>   
+        <h3><i class="fas fa-list" aria-hidden="true"></i> Allocation Information</h3>
     </div>
 
     <div class="card-body">
@@ -48,6 +49,7 @@ Request Allocation Change
               <th scope="row" class="text-nowrap">Start Date:</th>
               <td>{{ allocation.start_date }}</td>
             </tr>
+            {% comment %}
             <tr>
               <th scope="row" class="text-nowrap">End Date:</th>
                 <td>
@@ -67,9 +69,11 @@ Request Allocation Change
                 </td>
               </tr>
             {% endif %}
+            {% endcomment %}
+
             <tr>
               <th scope="row" class="text-nowrap">Description:</th>
-              <td>{{ allocation.description }}</td>
+              <td>{{allocation.description|default_if_none:""}}</td>
             </tr>
             <tr>
               <th scope="row" class="text-nowrap">Created:</th>
@@ -94,35 +98,35 @@ Request Allocation Change
   </div>
 
   {% if formset %}
-      <div class="card mb-3">
-        <div class="card-header">
-          <h3 class="d-inline"><i class="fas fa-info-circle" aria-hidden="true"></i> Allocation Attributes</h3>
-        </div>
-        <div class="card-body">
-          <div class="table-responsive">
-            <table class="table table-bordered table-sm">
-              <thead>
-                <tr>
-                  <th scope="col">Attribute</th>
-                  <th scope="col">Current Value</th>
-                  <th scope="col">Request New Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for form in formset %}
-                    <tr>
-                      <td>{{form.name.value}}</td>
-                      <td>{{form.value.value}}</td>
-                      <td>{{form.new_value}}</td>
-                    </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {{ formset.management_form }}
-        </div>
+    <div class="card mb-3">
+      <div class="card-header">
+        <h3 class="d-inline"><i class="fas fa-info-circle" aria-hidden="true"></i> Allocation Attributes</h3>
       </div>
-    {% endif %}
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm">
+            <thead>
+              <tr>
+                <th scope="col">Attribute</th>
+                <th scope="col">Current Value</th>
+                <th scope="col">Request New Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for form in formset %}
+                  <tr>
+                    <td>{{form.name.value}}</td>
+                    <td>{{form.value.value}}</td>
+                    <td>{{form.new_value}}</td>
+                  </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {{ formset.management_form }}
+      </div>
+    </div>
+  {% endif %}
 
     <div>
       {{form.justification | as_crispy_field }}
@@ -133,5 +137,17 @@ Request Allocation Change
 </form>
 
 <script>
+    $(function (){
+    // if the resource's used_percentage is greater than 80, display a message
+    // informing the user that the resource is almost full.
+    var used_percentage = {{ used_percentage | safe }};
+      if (used_percentage > 80) {
+        message = `<div class="alert alert-warning" role="alert">Warning: the selected resource is over 80% allocated. Requests for additional space on this resource may be subject to delay. For more information, please contact <a href="mailto:rchelp@rc.fas.harvard.edu">rchelp@rc.fas.harvard.edu</a>.</div>`
+          $('#resource_message').html(message);
+      }
+      else {
+        $('#resource_message').html('<div></div>');
+      }
+  });
 </script>
 {% endblock %}

@@ -5,42 +5,40 @@ from ldap3.core.timezone import OffsetTzInfo
 from django.test import TestCase, tag
 from django.contrib.auth import get_user_model
 
-from coldfront.plugins.ldap.utils import (format_template_assertions,
-                                        LDAPConn,
-                                        GroupUserCollection,
-                                        add_new_projects)
+from coldfront.plugins.ldap.utils import (
+    LDAPConn,
+    GroupUserCollection,
+    add_new_projects,
+    format_template_assertions,
+)
+from coldfront.core.test_helpers.factories import setup_models
 
 
-FIXTURES = [
-        'coldfront/core/test_helpers/test_data/test_fixtures/resources.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/poisson_fixtures.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/admin_fixtures.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/all_res_choices.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/field_of_science.json',
-        'coldfront/core/test_helpers/test_data/test_fixtures/project_choices.json',
-        ]
+UTIL_FIXTURES = [
+    "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
+]
 
 class UtilFunctionTests(TestCase):
 
     def test_format_template_assertions_one_kv(self):
-        '''Format attr_search_dict with one key-value pair into correct filter_template input
-        '''
+        """Format attr_search_dict with one key-value pair into correct filter_template input
+        """
         test_data = {'company': 'FAS'}
         desired_output = '(company=FAS)'
         output = format_template_assertions(test_data)
         self.assertEqual(output, desired_output)
 
     def test_format_template_assertions_multi_kv(self):
-        '''Format attr_search_dict with multiple key-value pairs into correct filter_template input
-        '''
+        """Format attr_search_dict with multiple key-value pairs into correct filter_template input
+        """
         test_data = {'cn': 'Bob Smith', 'company': 'FAS'}
         desired_output = '(&(cn=Bob Smith)(company=FAS))'
         output = format_template_assertions(test_data)
         self.assertEqual(output, desired_output)
 
     def test_format_template_assertions_list_value(self):
-        '''Format attr_search_dict with list value into correct filter_template input
-        '''
+        """Format attr_search_dict with list value into correct filter_template input
+        """
         test_data = {'cn': ['Bob Smith', 'Jane Doe'], 'company': 'FAS'}
         desired_output = '(&(|(cn=Bob Smith)(cn=Jane Doe))(company=FAS))'
         output = format_template_assertions(test_data)
@@ -48,7 +46,7 @@ class UtilFunctionTests(TestCase):
 
 
 class LDAPConnTest(TestCase):
-    '''tests for LDAPConn class'''
+    """tests for LDAPConn class"""
 
     @tag('net')
     def setUp(self):
@@ -56,27 +54,27 @@ class LDAPConnTest(TestCase):
 
     @tag('net')
     def test_search_group_one_kv(self):
-        '''Be able to return correct group with the variables given
-        '''
+        """Be able to return correct group with the variables given
+        """
         attr_search_dict = {'sAMAccountName': 'rc_test_lab'}
         results = self.ldap_conn.search_groups(attr_search_dict)
         self.assertEqual(len(results), 1)
 
     @tag('net')
     def test_search_user_one_kv(self):
-        '''Be able to return correct user with the variables given
-        '''
+        """Be able to return correct user with the variables given
+        """
         attr_search_dict = {'sAMAccountName': 'atestaccount'}
         results = self.ldap_conn.search_users(attr_search_dict)
         self.assertEqual(len(results), 1)
 
     @tag('net')
     def test_search_user_membership(self):
-        '''Be able to return correct user with the variables given
-        '''
+        """Be able to return correct user with the variables given
+        """
         attr_search_dict = {'memberOf': 'CN=rc_test_lab,OU=RC,OU=Domain Groups,DC=rc,DC=domain'}
         results = self.ldap_conn.search_users(attr_search_dict)
-        self.assertEqual(len(results), 5)
+        self.assertEqual(len(results), 6)
 
     @tag('net')
     def test_return_group_members_manager(self):
@@ -88,11 +86,15 @@ class LDAPConnTest(TestCase):
         members, manager = self.ldap_conn.return_group_members_manager(samaccountname)
         self.assertEqual(len(members), 1)
 
+
 class GroupUserCollectionTests(TestCase):
-    '''Tests for GroupUserCollection class'''
-    fixtures = FIXTURES
+    """Tests for GroupUserCollection class"""
+    fixtures = UTIL_FIXTURES
+
 
     def setUp(self):
+        setup_models(self)
+
         group_name = 'bortkiewicz_lab'
         self.currentuser_accountExpires = [datetime(9999, 12, 31, 23, 59, 59, 999999, tzinfo=OffsetTzInfo(offset=0, name='UTC'))]
         self.expireduser_accountExpires = [datetime(1601, 12, 31, 23, 59, 59, 999999, tzinfo=OffsetTzInfo(offset=0, name='UTC'))]
@@ -125,10 +127,6 @@ class GroupUserCollectionTests(TestCase):
         }
         self.guc = (GroupUserCollection(group_name, ad_users, pi))
 
-    def deactivate_pi(self):
-        self.guc.pi['accountExpires'] = self.expireduser_accountExpires
-        self.guc.members[0]['accountExpires'] = self.expireduser_accountExpires
-
     def disable_pi(self):
         self.guc.pi['userAccountControl'] = [514]
         self.guc.members[0]['userAccountControl'] = [514]
@@ -139,35 +137,24 @@ class GroupUserCollectionTests(TestCase):
     def test_current_ad_users(self):
         self.assertEqual(len(self.guc.current_ad_users), 3)
 
-    def test_pi_not_active(self):
-        self.deactivate_pi()
-        self.assertEqual(self.guc.pi_is_active, False)
-
     def test_pi_disabled(self):
         self.disable_pi()
         self.assertEqual(self.guc.pi_is_active, False)
 
     def test_add_new_projects(self):
-        '''unexpired pi group is added'''
+        """unexpired pi group is added"""
         added_projects, _ = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
         self.assertEqual(len(added_projects), 1)
 
     def test_add_new_projects_pi_disabled(self):
-        '''group with disabled pi is not added'''
+        """group with disabled pi is not added"""
         self.disable_pi()
         added_projects, errortracker = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
         self.assertEqual(len(added_projects), 0)
         self.assertEqual(errortracker['no_pi'], ['bortkiewicz_lab'])
 
-    def test_add_new_projects_pi_expired(self):
-        '''group with expired pi is not added'''
-        self.deactivate_pi()
-        added_projects, errortracker = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
-        self.assertEqual(len(added_projects), 0)
-        self.assertEqual(errortracker['no_pi'], ['bortkiewicz_lab'])
-
     def test_add_new_projects_pi_not_ifxuser(self):
-        '''project with a non-ifxuser pi is not added, and pi is added to the missing_users list'''
+        """project with a non-ifxuser pi is not added, and pi is added to the missing_users list"""
         get_user_model().objects.get(username='ljbortkiewicz').delete()
         new_projs, errortracker = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
         # no project added

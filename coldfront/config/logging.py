@@ -15,21 +15,43 @@ MESSAGE_TAGS = {
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'formatters': {},
+    'formatters': {
+        'key-events': {
+            "()": "django.utils.log.ServerFormatter",
+            "format": "[{server_time}] {name} {levelname} {message}",
+            "style": "{",
+        },
+        'default': {
+            "()": "django.utils.log.ServerFormatter",
+            "format": "[{server_time}] {name} {levelname} {message}",
+            "style": "{",
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
         },
         'django-q': {
-            'class': 'logging.FileHandler',
-            'filename': 'django-q.log',
+            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'filename': 'logs/django-q.log',
+            'when': 'midnight',
+            'backupCount': 10,
+            'formatter': 'key-events',
+            'level': 'DEBUG',
+        },
+        'key-events': {
+            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'filename': 'logs/key-events.log',
+            'when': 'midnight',
+            'backupCount': 10,
+            'formatter': 'key-events',
+            'level': 'INFO',
         },
         # 'file': {
         #     'class': 'logging.FileHandler',
         #     'filename': '/tmp/debug.log',
         # },
     },
-    'formatters': {},
     'loggers': {
         'django_auth_ldap': {
             'level': 'INFO',
@@ -41,15 +63,18 @@ LOGGING = {
             'level': 'INFO',
         },
         'django-q': {
-            'handlers': ['django-q'],
-            'level': 'DEBUG',
+            'handlers': ['django-q', 'key-events'],
         },
         'ifx': {
-            'handlers': ['console'],
+            'handlers': ['console', 'key-events'],
             'level': 'INFO',
         },
         'ifxbilling': {
-            'handlers': ['console'],
+            'handlers': ['console', 'key-events'],
+            'level': 'INFO',
+        },
+        'coldfront': {
+            'handlers': ['key-events'],
             'level': 'INFO',
         },
     },
