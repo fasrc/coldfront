@@ -28,6 +28,7 @@ from coldfront.core.allocation.signals import allocation_raw_share_edit
 
 from coldfront.plugins.slurm.utils import SlurmError
 
+from coldfront.core.project.models import ProjectUser, Project
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +303,14 @@ class ResourceListView(ColdfrontListView):
 
         order_by = self.return_order()
         resource_search_form = ResourceSearchForm(self.request.GET)
+        project_list = Project.objects.filter(
+            Q(status__name__in=['New', 'Active', ]) & (
+                    Q(pi=self.request.user) | (
+                    Q(projectuser__user=self.request.user)
+                    & Q(projectuser__status__name='Active')
+            )
+            )
+        ).distinct().order_by('-created')
         resources = Resource.objects.filter(is_available=True)
 
         if order_by == 'name':
@@ -363,7 +372,12 @@ class ResourceListView(ColdfrontListView):
                     Q(resourceattribute__resource_attribute_type__name='Vendor') &
                     Q(resourceattribute__value=data.get('vendor'))
                 )
-        return resources.distinct()
+        project_title_list = [project.title for project in project_list]
+        owned_resources = [attribute.resource.pk for attribute in ResourceAttribute.objects.filter(
+            resource_attribute_type__name='Owner',
+            value__in=project_title_list
+        )]
+        return resources.filter(Q(allowed_users=self.request.user) | Q(pk__in=owned_resources)).distinct()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(
