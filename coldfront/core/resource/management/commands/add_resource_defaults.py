@@ -22,14 +22,18 @@ class Command(BaseCommand):
             AttributeType.objects.get_or_create(name=attribute_type)
 
         for resource_attribute_type, attribute_type in (
+            #FASRC
             ('capacity_tb', 'Float'),
             ('free_tb', 'Float'),
             ('used_tb', 'Float'),
             ('file_count', 'Int'),
             ('allocated_tb', 'Float'),
             ('ChangeableAllocations', 'Yes/No'),
-            ('Core Count', 'Int'),
+            ('CPU Count', 'Int'),
             ('GPU Count', 'Int'),
+            ('Features', 'Text'),
+            # UBCCR
+            ('Core Count', 'Int'),
             # ('expiry_time', 'Int'),
             # ('fee_applies', 'Yes/No'),
             ('Node Count', 'Int'),
@@ -70,7 +74,8 @@ class Command(BaseCommand):
             # ('Storage', 'NAS storage'),
         ):
             ResourceType.objects.get_or_create(
-                name=resource_type, description=description
+                name=resource_type,
+                defaults={'description': description},
             )
 
 
