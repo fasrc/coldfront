@@ -506,8 +506,16 @@ class AllocationListView(ColdfrontListView):
 
         allocation_search_form = AllocationSearchForm(self.request.GET)
 
-        allocations = Allocation.objects.prefetch_related(
-            'project', 'project__pi', 'status', 'resources'
+        allocations = Allocation.objects.select_related(
+            "status", "project__status",
+        ).prefetch_related(
+            "project__projectuser_set__user",
+            "project__projectuser_set__status",
+            "project__projectuser_set__role",
+            "allocationuser_set__user",
+            "allocationuser_set__status",
+            "resources__resource_type",
+            "resources__allowed_users",
         )
         if allocation_search_form.is_valid():
             data = allocation_search_form.cleaned_data

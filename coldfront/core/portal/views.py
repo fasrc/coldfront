@@ -38,7 +38,9 @@ def home(request):
             )
         ).distinct().order_by('-created')
 
-        allocation_list = Allocation.objects.filter(
+        allocation_list = Allocation.objects.prefetch_related(
+            'project__pi', 'project__projectuser_set', 'status', 'resources'
+        ).filter(
             Q(status__name__in=['Active', 'New', 'Renewal Requested', ]) &
             Q(project__status__name__in=['Active', 'New']) &
             (
@@ -54,7 +56,9 @@ def home(request):
                         Q(allocationuser__user=request.user) &
                         Q(allocationuser__status__name='Active')
                     )
-                ) | Q(project__pi=request.user)
+                ) |
+                Q(project__pi=request.user) |
+                Q(resources__allowed_users=request.user)
             )
         ).distinct().order_by('-created')
 

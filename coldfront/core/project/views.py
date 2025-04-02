@@ -291,7 +291,7 @@ class ProjectListView(ColdfrontListView):
     context_object_name = 'item_list'
 
     def get_queryset(self):
-        projects = Project.objects.prefetch_related('pi', 'status').filter(
+        projects = Project.objects.prefetch_related('status__name', 'pi', 'projectuser_set').filter(
             status__name__in=['New', 'Active']
         )
         projects_queried = self.search_filters(projects)
