@@ -50,6 +50,9 @@ class LDAPUserAdditionError(LDAPException):
 class LDAPUserRemovalError(LDAPException):
     """An exception raised when a user cannot be removed from an LDAP Group"""
 
+class LDAPGroupManagerIdError(LDAPException):
+    """An exception raised when a Group does not have a manager"""
+
 class LDAPConn:
     """LDAP connection object
     """
@@ -272,14 +275,14 @@ class LDAPConn:
         try:
             group_manager_dn = group_entry['managedBy'][0]
         except Exception as e:
-            return 'no manager specified'
+            raise LDAPGroupManagerIdError('no manager specified for group')
         manager_attr_list = user_attr_list + ['memberOf']
         group_manager = self.search_users(
             {'distinguishedName': group_manager_dn}, attributes=manager_attr_list
         )
         logger.debug('group_manager:\n%s', group_manager)
         if not group_manager:
-            return 'no ADUser manager found'
+            raise LDAPGropuManagerIdError('Group manager ADUser entry cannot be found')
         return (group_members, group_manager[0])
 
 
@@ -686,7 +689,7 @@ def update_new_project(sender, **kwargs):
         ad_conn = LDAPConn()
         members, manager = ad_conn.return_group_members_manager(project.title)
     except Exception as e:
-        raise ValueError(f"ldap connection error: {e}")
+        raise ValueError(f"ldap error: {e}")
     # locate field_of_science
     if 'department' in manager.keys() and manager['department']:
         field_of_science_name=manager['department'][0]
