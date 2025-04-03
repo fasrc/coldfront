@@ -216,7 +216,7 @@ class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         for pi, allocs in storage_pi_dict.items():
             pi.storage_total_price = sum(float(a.cost) for a in allocs)
         for pi, allocs in compute_pi_dict.items():
-            pi.compute_total_price = sum(float(a.cost) for a in allocs)
+            pi.compute_total_price = sum(float(a.cost) for a in allocs if a.cost)
 
         context['compute_pi_dict'] = compute_pi_dict
         context['storage_pi_dict'] = storage_pi_dict
