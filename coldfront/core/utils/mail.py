@@ -51,8 +51,11 @@ def send_email(subject, body, sender, receiver_list, cc=[]):
         email = EmailMessage(subject, body, sender, receiver_list, cc=cc)
         email.send(fail_silently=False)
     except SMTPException as e:
-        logger.exception('Failed to send email to %s from %s with subject %s: %s',
-                     ','.join(receiver_list), sender, subject, e)
+        logger.exception(
+            'Failed to send email to %s from %s with subject %s: %s',
+            ','.join(receiver_list), sender, subject, e
+        )
+        raise
 
 
 def send_email_template(
@@ -65,7 +68,10 @@ def send_email_template(
         "sent email with subject %s to receivers %s and ccs %s from sender %s",
         subject, receiver_list, cc, sender
     )
-    return send_email(subject, body, sender, receiver_list, cc=cc)
+    try:
+        send_email(subject, body, sender, receiver_list, cc=cc)
+    except SMTPException as e:
+        raise
 
 
 def email_template_context(extra_context=None):
@@ -74,6 +80,7 @@ def email_template_context(extra_context=None):
     context = {
         'center_name': EMAIL_CENTER_NAME,
         'signature': EMAIL_SIGNATURE,
+        'help_address': EMAIL_TICKET_SYSTEM_ADDRESS,
         'opt_out_instruction_url': EMAIL_OPT_OUT_INSTRUCTION_URL
     }
     if extra_context:
@@ -83,7 +90,8 @@ def email_template_context(extra_context=None):
 
 def build_link(url_path, domain_url=''):
     domain_url = domain_url or CENTER_BASE_URL
-    return f'{domain_url}{url_path}'
+    domain_url = domain_url.strip("/")
+    return f'{domain_url}/{url_path}'
 
 
 def send_allocation_admin_email(

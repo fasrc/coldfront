@@ -205,13 +205,18 @@ class UserUpgradeAccount(LoginRequiredMixin, UserPassesTestMixin, View):
 
     def post(self, request):
         if EMAIL_ENABLED:
-            send_email_template(
-                'Upgrade Account Request',
-                'email/upgrade_account_request.txt',
-                {'user': request.user},
-                request.user.email,
-                [EMAIL_TICKET_SYSTEM_ADDRESS]
-            )
+            try:
+                send_email_template(
+                    'Upgrade Account Request',
+                    'email/upgrade_account_request.txt',
+                    {'user': request.user},
+                    request.user.email,
+                    [EMAIL_TICKET_SYSTEM_ADDRESS]
+                )
+            except Exception:
+                messages.error(
+                    request, 'Request email failed to send. Please contact the administrator.'
+                )
 
         messages.success(request, 'Your request has been sent')
         return HttpResponseRedirect(reverse('user-profile'))
