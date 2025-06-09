@@ -157,5 +157,25 @@ class Command(BaseCommand):
                     ).delete()
                 report['deleted_zones'].append(zone['name'])
                 continue
+        # find zones with no active projects
+        zones = {zone['name']: zone['id'] for zone in sf.get_zones()}
+        active_project_titles = Project.objects.filter(
+            status__name='Active').values_list('title', flat=True)
+        zones_no_projects = {
+            zone:zid for zone, zid in zones.items() if zone not in active_project_titles
+        }
+        logger.info('zones without active projects: %s', zones_no_projects)
+        for zone_name, zid in zones_no_projects.items():
+            sf.delete_zone(zid)
+            zone_project = Project.objects.filter(
+                title=zone_name, projectattribute__proj_attr_type__name='Starfish Zone'
+            )
+            if zone_project.exists():
+                zone_project.projectattribute_set.get(
+                    proj_attr_type=starfish_zone_attr_type
+                ).delete()
+
+            report['deleted_zones'].append(zone_name)
+
         print(report)
         logger.warning(report)
