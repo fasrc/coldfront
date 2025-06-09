@@ -159,10 +159,10 @@ class Command(BaseCommand):
                 continue
         # find zones with no active projects
         zones = {zone['name']: zone['id'] for zone in sf.get_zones()}
-        active_project_titles = Project.objects.filter(
-            status__name='Active').values_list('title', flat=True)
+        inactive_project_titles = Project.objects.filter(
+            status__name__not='Active').values_list('title', flat=True)
         zones_no_projects = {
-            zone:zid for zone, zid in zones.items() if zone not in active_project_titles
+            zone:zid for zone, zid in zones.items() if zone in inactive_project_titles
         }
         logger.info('zones without active projects: %s', zones_no_projects)
         for zone_name, zid in zones_no_projects.items():
