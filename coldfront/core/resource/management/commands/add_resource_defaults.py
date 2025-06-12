@@ -78,6 +78,30 @@ class Command(BaseCommand):
             )
 
 
+        cluster_resourcetype = ResourceType.objects.get(name='Cluster')
+        clustername_type = ResourceAttributeType.objects.get(name='slurm_cluster')
+        # Cluster Resources
+        for name, desc, is_available, cluster_name in (
+            ('FASRC Cluster', 'odyssey compute allocations', True, 'odyssey'),
+            ('FASSE Cluster', 'FAS Secure Environment cluster for compute allocations', False, 'fasse'),
+            ('Slurm-test', 'test cluster', True, 'slurm_test'),
+        ):
+            resource_defaults = {
+                'description': desc,
+                'is_available': is_available,
+                'resource_type': cluster_resourcetype,
+                'requires_payment': False,
+            }
+
+            resource_obj, _ = Resource.objects.update_or_create(
+                name=name, defaults=resource_defaults)
+
+            resource_obj.resourceattribute_set.update_or_create(
+                resource_attribute_type=clustername_type,
+                defaults={'value': cluster_name}
+            )
+
+        # Storage Resources
         storage_tier = ResourceType.objects.get(name='Storage Tier')
         storage = ResourceType.objects.get(name='Storage')
 
