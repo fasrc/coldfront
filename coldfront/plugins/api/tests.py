@@ -1,5 +1,9 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase, APIRequestFactory
+
 from coldfront.core.test_helpers.factories import setup_models, AllocationFactory
 from coldfront.core.allocation.models import Allocation
 from coldfront.core.project.models import Project
@@ -79,3 +83,44 @@ class ColdfrontAPI(APITestCase):
         self.client.force_login(self.pi_user)
         response = self.client.get('/api/users/', format='json')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+class ColdfrontAPIUnusedAllocations(APITestCase):
+    """Tests for unused allocations report API view"""
+    @classmethod
+    def setUpTestData(cls):
+        """Create some test data"""
+        setup_models(cls)
+        cls.allocation_1 = AllocationFactory(created=timezone.now() - timedelta(days=130))
+        cls.additional_allocations = [
+            AllocationFactory() for i in list(range(50))
+        ]
+
+    def test_unusedallocation_api_permissions(self):
+        """Only admins can access unused allocations view"""
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/unused-allocations/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.client.force_login(self.pi_user)
+        response = self.client.get('/api/unused-allocations/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unusedallocation_api_contents(self):
+        """Unused allocations view displays only storage allocations over 4 months old with
+        <= 1MB of usage or no change in storage usage for at least one month
+        """
+        response = self.client.get('/api/unused-allocations/', format='json')
+
+    def test_unusedallocation_api_fields(self):
+        """Unused allocations view displays allocation id, allocation path, resource name,
+        project title, date of last change to Quota_In_Bytes usage, and current value of
+        Quota_In_Bytes usage.
+        """
+        response = self.client.get('/api/unused-allocations/', format='json')
+
+    def test_unusedallocation_api_filters(self):
+        """Unused allocations view has working filters for project title, resource name,
+        how long the Quota_In_Bytes usage value has gone unchanged, and
+        greater than/less than/equal options for Quota_In_Bytes usage value
+        """
+        response = self.client.get('/api/unused-allocations/', format='json')
