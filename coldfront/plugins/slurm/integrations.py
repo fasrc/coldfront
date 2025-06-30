@@ -1,4 +1,3 @@
-import os
 import shlex
 import struct
 import subprocess
@@ -7,8 +6,9 @@ import json
 import requests
 import csv
 from io import StringIO
+
 from coldfront.core.utils.common import import_from_settings
-from redis.cluster import command
+from coldfront.config.env import ENV
 
 logger = logging.getLogger(__name__)
 SLURM_SACCTMGR_PATH = import_from_settings('SLURM_SACCTMGR_PATH', '/usr/bin/sacctmgr')
@@ -47,25 +47,25 @@ class SlurmConnection:
               SLURM_CLUSTER2_USER_TOKEN=YOURTOKEN
         """
         clusters = {}
-        for cluster in os.getenv('SLURM_CLUSTERS', '').split(','):
+        for cluster in ENV.str('SLURM_CLUSTERS', '').split(','):
             cluster_name = f"SLURM_{cluster.upper()}"
-            cluster_type = os.getenv(f"{cluster_name}_TYPE")
+            cluster_type = ENV.str(f"{cluster_name}_TYPE")
             if cluster_type =='cli':
                 clusters[cluster] = {
                     'name': cluster,
                     'type': 'cli',
-                    'host': os.getenv(f"{cluster_name}_HOST"),
-                    'user': os.getenv(f"{cluster_name}_USER"),
-                    'ssh_key': os.getenv(f"{cluster_name}_SSH_KEY"),
-                    'path': os.getenv(f"{cluster_name}_PATH")
+                    'host': ENV.str(f"{cluster_name}_HOST"),
+                    'user': ENV.str(f"{cluster_name}_USER"),
+                    'ssh_key': ENV.str(f"{cluster_name}_SSH_KEY"),
+                    'path': ENV.str(f"{cluster_name}_PATH")
                 }
             else:
                 clusters[cluster] = {
                     'name': cluster,
                     'type': 'api',
-                    'base_url': os.getenv(f"{cluster_name}_ENDPOINT"),
-                    'user_token': os.getenv(f"{cluster_name}_USER_TOKEN"),
-                    'user_name': os.getenv(f"{cluster_name}_USER_NAME")
+                    'base_url': ENV.str(f"{cluster_name}_ENDPOINT"),
+                    'user_token': ENV.str(f"{cluster_name}_USER_TOKEN"),
+                    'user_name': ENV.str(f"{cluster_name}_USER_NAME")
                 }
         if not clusters:
             logger.warning("No clusters found in environment variables.")
