@@ -176,6 +176,8 @@ class Command(BaseCommand):
         cluster_resources = Resource.objects.filter(
             resource_type__name='Cluster', is_available=True
         )
+        if cluster_name:
+            cluster_resources = cluster_resources.filter(name=cluster_name)
         logger.debug(f"  File: {options['file']} - Cluster_resources {cluster_resources}")
         slurm_clusters = {
             cluster_resource: self._cluster_from_dump(cluster_resource, file=file)
