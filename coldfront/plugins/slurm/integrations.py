@@ -8,7 +8,6 @@ import csv
 from io import StringIO
 
 from coldfront.core.utils.common import import_from_settings
-from coldfront.config.env import ENV
 
 logger = logging.getLogger(__name__)
 SLURM_SACCTMGR_PATH = import_from_settings('SLURM_SACCTMGR_PATH', '/usr/bin/sacctmgr')
@@ -28,50 +27,9 @@ class SlurmConnection:
         """
         Initialize by reading available clusters from environment variables.
         """
-        self.clusters = self._load_clusters_from_env()
+        self.clusters = import_from_settings('CLUSTERS')
         self.active_cluster = self.clusters.get(cluster_name, None)
         assert self.active_cluster is not None, f"Unable to load cluster specs for {cluster_name} -- {self.clusters}"
-
-    def _load_clusters_from_env(self):
-        """Load multiple clusters from environment variables:
-            SLURM_CLUSTERS=hpc,cluster2
-            # Cluster 1 (CLI)
-              SLURM_HPC_TYPE=cli
-              SLURM_HPC_HOST=slurmctld
-              SLURM_HPC_USER=slurm
-              SLURM_HPC_SSH_KEY=/home/slurm/.ssh/id_ed25519
-              SLURM_HPC_PATH=/usr/bin/
-              SLURM_CLUSTER2_TYPE=api
-              SLURM_CLUSTER2_ENDPOINT=http://slurm-api:6820/slurm/v0.0.39
-              SLURM_CLUSTER2_USER_NAME=akowalska
-              SLURM_CLUSTER2_USER_TOKEN=YOURTOKEN
-        """
-        clusters = {}
-        for cluster in ENV.str('SLURM_CLUSTERS', '').split(','):
-            cluster_name = f"SLURM_{cluster.upper()}"
-            cluster_type = ENV.str(f"{cluster_name}_TYPE")
-            if cluster_type =='cli':
-                clusters[cluster] = {
-                    'name': cluster,
-                    'type': 'cli',
-                    'host': ENV.str(f"{cluster_name}_HOST"),
-                    'user': ENV.str(f"{cluster_name}_USER"),
-                    'ssh_key': ENV.str(f"{cluster_name}_SSH_KEY"),
-                    'path': ENV.str(f"{cluster_name}_PATH")
-                }
-            else:
-                clusters[cluster] = {
-                    'name': cluster,
-                    'type': 'api',
-                    'base_url': ENV.str(f"{cluster_name}_ENDPOINT"),
-                    'user_token': ENV.str(f"{cluster_name}_USER_TOKEN"),
-                    'user_name': ENV.str(f"{cluster_name}_USER_NAME")
-                }
-        if not clusters:
-            logger.warning("No clusters found in environment variables.")
-        else:
-            logger.info(f"Loaded clusters: {list(clusters.keys())}")
-        return clusters
 
     def list_partitions(self, noop=False):
         """List partitions."""
@@ -382,15 +340,15 @@ class SlurmApiConnection(SlurmConnection):
         response = self._make_request(f"/assoc/{user}/{account}")
         return response.get("exists", False)
 
-    def dump_cluster(self, fname, noop=False):
+    def dump_cluster(self, file_name, noop=False):
         data = []
         try:
             # Get a list of all accounts
             accounts_response = self._make_request("/accounts", use_slurmdb=True)
-            accounts = accounts_response.json()
-            for account in accounts:
+            account_names = [account['name'] for account in accounts_response['accounts']]
+            for account in account_names:
                 # Get all users for each account
-                users_response = self._make_request(f"/assoc//{account['name']}")
+                users_response = self._make_request(f"/associations/{account['name']}")
                 users = users_response.json()
                 for user in users:
                     user_data = {
@@ -403,9 +361,9 @@ class SlurmApiConnection(SlurmConnection):
             if noop:
                 print(data)
             else:
-                with open(fname, 'w') as f:
+                with open(file_name, 'w') as f:
                     json.dump(data, f, indent=4)
-                print(f"Cluster dump saved to {fname}")
+                print(f"Cluster dump saved to {file_name}")
 
         except Exception as e:
             print(f"Error during dump_cluster: {e}")
@@ -418,7 +376,7 @@ class SlurmApiConnection(SlurmConnection):
         return usage_data
 
     def collect_shares(self, output_file=None, noop=False):
-        share_data = self._make_request("/fairshare")
+        share_data = self._make_request("/shares")
         if output_file:
             with open(output_file, 'w') as f:
                 f.write(str(share_data))
