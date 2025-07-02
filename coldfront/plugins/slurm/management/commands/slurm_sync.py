@@ -17,6 +17,7 @@ from coldfront.core.allocation.models import (
 from coldfront.core.resource.models import Resource
 from coldfront.plugins.slurm.integrations import SlurmError, get_cluster_connection
 from coldfront.plugins.slurm.associations import SlurmCluster
+from coldfront.plugins.slurm.integrations import SlurmConnection
 
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class Command(BaseCommand):
         parser.add_argument('-c', '--cluster',
                             help='define a cluster to sync up')
 
-    def _cluster_from_dump(self, cluster, file=None):
+    def _cluster_from_dump(self, cluster, connection_type, file=None):
         slurm_cluster = None
         if file:
             logger.info("   _cluster_from_dump - Loading from file")
@@ -179,8 +180,10 @@ class Command(BaseCommand):
         if cluster_name:
             cluster_resources = cluster_resources.filter(name=cluster_name)
         logger.debug(f"  File: {options['file']} - Cluster_resources {cluster_resources}")
+        cluster_connections = [SlurmConnection(cluster.name) for cluster in cluster_resources]
+
         slurm_clusters = {
-            cluster_resource: self._cluster_from_dump(cluster_resource, file=file)
+            cluster_resource: self._cluster_from_dump(cluster_resource, connection_type, file=file)
             for cluster_resource in cluster_resources
         }
         for cluster, cluster_dump in slurm_clusters.items():
