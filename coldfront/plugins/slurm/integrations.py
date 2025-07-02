@@ -15,6 +15,7 @@ SLURM_SSHARE_PATH = import_from_settings('SLURM_SSHARE_PATH', '/usr/bin/sshare')
 SLURM_SREPORT_PATH = import_from_settings('SLURM_SREPORT_PATH', '/usr/bin/sreport')
 SLURM_SCONTROL_PATH = import_from_settings('SLURM_SCONTROL_PATH', '/usr/bin/scontrol')
 
+CLUSTERS = import_from_settings('CLUSTERS')
 
 class SlurmError(Exception):
     pass
@@ -27,9 +28,8 @@ class SlurmConnection:
         """
         Initialize by reading available clusters from environment variables.
         """
-        self.clusters = import_from_settings('CLUSTERS')
-        self.active_cluster = self.clusters.get(cluster_name, None)
-        assert self.active_cluster is not None, f"Unable to load cluster specs for {cluster_name} -- {self.clusters}"
+        self.active_cluster = CLUSTERS.get(cluster_name, None)
+        assert self.active_cluster is not None, f"Unable to load cluster specs for {cluster_name} -- {CLUSTERS}"
 
     def list_partitions(self, noop=False):
         """List partitions."""

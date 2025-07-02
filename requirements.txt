@@ -67,3 +67,4 @@ natural-keys
 knox
 jinja2
 boto3
+git+https://github.com/fasrc/slurmrest_python_sdk.git
