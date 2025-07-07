@@ -18,8 +18,8 @@ class SlurmApiConnection():
         self.slurmdb_api = self._return_apiconn(SlurmdbApi)
 
     def _return_configuration(self):
-        configuration = Configuration(host = self.active_cluster.get('base_url'))
-        configuration.api_key['token'] = self.active_cluster.get('token')
+        configuration = Configuration(host=self.active_cluster.get('base_url'))
+        configuration.api_key['token'] = self.active_cluster.get('user_token')
         return configuration
 
     def _return_apiconn(self, api):
