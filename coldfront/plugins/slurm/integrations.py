@@ -274,7 +274,6 @@ class SlurmApiConnection(SlurmConnection):
             url = url.replace('/slurm/', '/slurmdb/')
         headers = {
             'Content-Type': 'application/json',
-            'X-SLURM-USER-NAME': self.active_cluster.get('user_name'),
             'X-SLURM-USER-TOKEN': self.active_cluster.get('user_token')
         }
         try:
