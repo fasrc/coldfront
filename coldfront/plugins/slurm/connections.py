@@ -109,4 +109,19 @@ class SlurmApiConnection():
         accounts (list, default None): accounts for which to get shares
         users (list, default None): users for which to get shares
         """
-        return self.slurm_api.slurm_v0041_get_shares(accounts=accounts, users=users)
+        shares = self.slurm_api.slurm_v0041_get_shares(accounts=accounts, users=users)
+        if shares.errors:
+            raise Exception('error/s found in get_shares output: %s', shares.errors)
+        return shares.to_dict()
+
+    def get_users(self):
+        users = self.slurmdb_api.slurmdb_v0041_get_users()
+        if users.errors:
+            raise Exception('error/s found in get_users output: %s', users.errors)
+        return users.to_dict()
+
+    def get_accounts(self, with_associations=None):
+        accounts = self.slurmdb_api.slurmdb_v0041_get_accounts(with_associations=with_associations)
+        if accounts.errors:
+            raise Exception('error/s found in get_accounts output: %s', accounts.errors)
+        return accounts.to_dict()
