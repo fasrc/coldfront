@@ -14,7 +14,6 @@ from coldfront.core.project.models import Project
 from coldfront.core.resource.models import (
         Resource,
         ResourceType,
-        ResourceAttribute,
         ResourceAttributeType,
 )
 from coldfront.plugins.slurm.utils import (
@@ -22,7 +21,6 @@ from coldfront.plugins.slurm.utils import (
     SLURM_CLUSTER_ATTRIBUTE_NAME,
     SLURM_SPECS_ATTRIBUTE_NAME,
     SLURM_USER_SPECS_ATTRIBUTE_NAME,
-    slurm_collect_shares,
     slurm_collect_usage,
     slurm_list_partitions,
     slurm_fixed_width_lines_to_dict,
@@ -266,7 +264,10 @@ class SlurmCluster(SlurmBase):
             projects_without_allocations = matching_projects.exclude(
                 allocation__resources=partition_resource
             )
-            logger.info(f'projects without cluster allocations that are on a partition access list: {projects_without_allocations}')
+            logger.info(
+                'projects without cluster allocations that are on a partition access list: %s',
+                projects_without_allocations
+            )
             # for project in projects_without_allocations:
             #     new_allocation = create_allocation_attributes(
             #             project, 'slurm_sync', 1, current_cluster_resource
@@ -279,8 +280,10 @@ class SlurmCluster(SlurmBase):
         """append sshare data to accounts and users"""
         def map_shares(share_info):
             return {
-                'RawShares': share_info['RawShares'] or 0, 'NormShares': share_info['NormShares'] or 0,
-                'RawUsage': share_info['RawUsage'] or 0, 'FairShare': share_info['FairShare'] or 0
+                'RawShares': share_info['RawShares'] or 0,
+                'NormShares': share_info['NormShares'] or 0,
+                'RawUsage': share_info['RawUsage'] or 0,
+                'FairShare': share_info['FairShare'] or 0
             }
 
         if not file:

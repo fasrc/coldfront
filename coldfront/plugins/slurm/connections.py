@@ -1,5 +1,4 @@
 import logging
-from pprint import pprint
 
 from slurmrest_python_0_0_41 import SlurmApi, SlurmdbApi, ApiClient, Configuration
 
@@ -104,3 +103,10 @@ class SlurmApiConnection():
         )
         logger.info('added associations: %s', response)
         return response
+
+    def get_shares(self, accounts=None, users=None):
+        """Return share information.
+        accounts (list, default None): accounts for which to get shares
+        users (list, default None): users for which to get shares
+        """
+        return self.slurm_api.slurm_v0041_get_shares(accounts=accounts, users=users)
