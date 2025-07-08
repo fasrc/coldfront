@@ -20,10 +20,47 @@ from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project
 from ifxbilling.models import ProductUsage, Product, Facility
 from ifxbilling.fiine import create_new_product
-from ifxuser.models import Organization
+from ifxuser.models import Organization, IfxUser
 
 logger = logging.getLogger('ifx')
 
+
+class PreferredUsername(models.Model):
+    '''
+    Preferred username for a user
+    '''
+    ifxid = models.CharField(max_length=255)
+    preferred_username = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f'{self.ifxid} - {self.preferred_username}'
+
+
+class ColdfrontIfxUser(IfxUser):
+    '''
+    Proxy model for IfxUser to add custom methods or properties
+    '''
+    class Meta:
+        proxy = True
+
+    @classmethod
+    def get_preferred_username(cls, ifxid):
+        '''
+        Get the preferred username for this user.  If a PreferredUsername
+        exists, return that.  Otherwise, use objects.get to return the username.  This
+        will cause a MultipleObjectsReturned exception if there are multiple users with the same ifxid.
+        '''
+        try:
+            return PreferredUsername.objects.get(ifxid=ifxid).preferred_username
+        except PreferredUsername.DoesNotExist:
+            try:
+                return cls.objects.get(ifxid=ifxid).username
+            except cls.DoesNotExist as e:
+                logger.error(f'User cannot be found using ifxid {ifxid}')
+                raise Exception(f'User cannot be found using ifxid {ifxid}') from e
+            except cls.MultipleObjectsReturned as e:
+                logger.error(f'Multiple users found for ifxid {ifxid}')
+                raise Exception(f'Multiple users found for ifxid {ifxid}') from e
 
 class ProjectOrganization(models.Model):
     '''
@@ -419,13 +456,3 @@ def get_resource_allocation_authorization_map():
         result.append(row)
 
     return result
-
-class PreferredUsername(models.Model):
-    '''
-    Preferred username for a user
-    '''
-    ifxid = models.CharField(max_length=255)
-    preferred_username = models.CharField(max_length=255)
-
-    def __str__(self):
-        return f'{self.ifxid} - {self.preferred_username}'

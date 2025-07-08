@@ -29,4 +29,4 @@ if ENV.bool('ENABLE_SU', default=True):
     INSTALLED_APPS.insert(0, 'django_su')
     TEMPLATES[0]['OPTIONS']['context_processors'].extend(['django_su.context_processors.is_su', ])
 
-AUTH_USER_MODEL = 'ifxuser.IfxUser'
+AUTH_USER_MODEL = 'coldfront.plugins.ifx.models.ColdfrontIfxUser'
