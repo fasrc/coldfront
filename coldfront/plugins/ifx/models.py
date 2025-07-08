@@ -44,12 +44,15 @@ class ColdfrontIfxUser(IfxUser):
         proxy = True
 
     @classmethod
-    def get_preferred_username(cls, ifxid):
+    def get_preferred_username(cls, **kwargs):
         '''
         Get the preferred username for this user.  If a PreferredUsername
         exists, return that.  Otherwise, use objects.get to return the username.  This
         will cause a MultipleObjectsReturned exception if there are multiple users with the same ifxid.
         '''
+        ifxid = kwargs.get('ifxid')
+        if not ifxid:
+            raise ValueError('ifxid is required to get preferred username')
         try:
             return PreferredUsername.objects.get(ifxid=ifxid).preferred_username
         except PreferredUsername.DoesNotExist:
