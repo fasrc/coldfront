@@ -140,7 +140,7 @@ class SlurmCluster(SlurmBase):
         for allocation in resource.allocation_set.filter(
             status__name__in=['Active', 'Renewal Requested']
         ):
-            cluster.add_allocation(allocation, user_specs=user_specs)
+            cluster.allocation_to_account(allocation, user_specs=user_specs)
 
         # Process child resources
         children = Resource.objects.filter(
@@ -151,14 +151,14 @@ class SlurmCluster(SlurmBase):
             for allocation in r.allocation_set.filter(
                 status__name__in=['Active', 'Renewal Requested']
             ):
-                cluster.add_allocation(
+                cluster.allocation_to_account(
                     allocation, specs=partition_specs, user_specs=partition_user_specs
                 )
 
         return cluster
 
-    def add_allocation(self, allocation, specs=None, user_specs=None):
-        """Add accounts from a ColdFront Allocation model to SlurmCluster"""
+    def allocation_to_account(self, allocation, specs=None, user_specs=None):
+        """Create SlurmAccount object from a ColdFront Allocation model and add to SlurmCluster"""
         if specs is None:
             specs = []
 
@@ -168,7 +168,7 @@ class SlurmCluster(SlurmBase):
 
         logger.info(f"Adding allocation name={name} specs={specs} user_specs={user_specs}")
         account = self.accounts.get(name, SlurmAccount(name))
-        account.add_allocation(allocation, user_specs=user_specs)
+        account.account_users_from_allocation(allocation, user_specs=user_specs)
         account.specs += specs
         self.accounts[name] = account
 
@@ -368,6 +368,36 @@ class SlurmAccount(SlurmBase):
     def __init__(self, name, specs=None):
         super().__init__(name, specs=specs)
         self.users = {}
+        self._allocation = None
+
+    @property
+    def allocation(self):
+        """Get or create a ColdFront Allocation model from this SlurmAccount"""
+        if not self._allocation:
+            project, _ = Project.objects.get_or_create(title=self.name)
+            resource, _ = Resource.objects.get_or_create(
+                name=cluster_name,
+                resource_type=ResourceType.objects.get(name='Cluster')
+            )
+
+            allocation, created = Allocation.objects.get_or_create(
+                project=project,
+                resource=resource,
+                defaults={
+                    'description': f"Slurm account {self.name} allocation",
+                    'justification': 'Slurm account allocation',
+                    'status': AllocationStatusChoice.objects.get(name="Active"),
+                }
+            )
+            if created:
+                logger.info(
+                    "Created new allocation for account %s on resource %s",
+                    self.name, resource.name
+                )
+                allocation.set_attribute(SLURM_ACCOUNT_ATTRIBUTE_NAME, self.name)
+                allocation.set_attribute(SLURM_SPECS_ATTRIBUTE_NAME, self.format_specs())
+            self._allocation = allocation
+        return self._allocation
 
     @staticmethod
     def new_from_sacctmgr(line):
@@ -384,7 +414,7 @@ class SlurmAccount(SlurmBase):
 
         return SlurmAccount(name, specs=parts[1:])
 
-    def add_allocation(self, allocation, user_specs=None):
+    def account_users_from_allocation(self, allocation, user_specs=None):
         """Add users from a ColdFront Allocation model to SlurmAccount"""
         if user_specs is None:
             user_specs = []
@@ -405,6 +435,40 @@ class SlurmAccount(SlurmBase):
             user.specs += allocation_user_specs
             user.specs += user_specs
             self.add_user(user)
+
+    def account_to_allocation(self, cluster_name=None):
+        """get or create a ColdFront Allocation model from this SlurmAccount"""
+        project, _ = Project.objects.get_or_create(title=self.name)
+        resource, _ = Resource.objects.get_or_create(
+            name=cluster_name,
+            resource_type=ResourceType.objects.get(name='Cluster')
+        )
+
+        allocation, created = Allocation.objects.get_or_create(
+            project=project,
+            resource=resource,
+            defaults={
+                'description': f"Slurm account {self.name} allocation",
+                'justification': 'Slurm account allocation',
+                'status': AllocationStatusChoice.objects.get(name="Active"),
+            }
+        )
+        if created:
+            logger.info(
+                "Created new allocation for account %s on resource %s",
+                self.name, resource.name
+            )
+            allocation.set_attribute(SLURM_ACCOUNT_ATTRIBUTE_NAME, self.name)
+            allocation.set_attribute(SLURM_SPECS_ATTRIBUTE_NAME, self.format_specs())
+        return allocation
+
+    def account_users_to_allocationusers(self, cluster_name=None):
+        """update AllocationUser objects from SlurmAccount user list"""
+        allocation = self.allocation(cluster_name=cluster_name)
+        for user in self.users.values():
+            allocation_user = user.user_to_allocationuser(allocation)
+            allocation_user.set_attribute(SLURM_USER_SPECS_ATTRIBUTE_NAME, user.format_specs())
+            allocation_user.save()
 
     def add_user(self, user):
         if user.name not in self.users:
@@ -447,3 +511,17 @@ class SlurmUser(SlurmBase):
 
     def write(self, out):
         self._write(out, f"   User - {self.name} - Specs: {self.format_specs()} - Share: {self.format_share()}\n")
+
+    def user_to_allocationuser(self, allocation):
+        """get or create a ColdFront AllocationUser object from this SlurmUser"""
+        if not allocation:
+            raise SlurmError("Allocation must be provided to create AllocationUser")
+
+        user, _ = allocation.allocationuser_set.get_or_create(
+            user__username=self.name,
+            defaults={
+                'status': AllocationStatusChoice.objects.get(name="Active"), 'unit': 'CPU Hours'
+            }
+        )
+        user.set_attribute(SLURM_USER_SPECS_ATTRIBUTE_NAME, self.format_specs())
+        return user

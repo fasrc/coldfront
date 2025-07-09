@@ -49,8 +49,9 @@ class SlurmApiConnection():
 
         return response
 
-    def list_partitions(self, update_time=None, flags=None):
-        return self.slurm_api.slurm_v0041_get_partitions(update_time=update_time, flags=flags)
+    def get_partitions(self, update_time=None, flags=None):
+        partitions = self.slurm_api.slurm_v0041_get_partitions(update_time=update_time, flags=flags)
+        return partitions
 
     def remove_assoc(self, *, user_name=None, account_name=None, assoc_id=None, noop=False):
         """Remove association between a user and an account.
@@ -120,8 +121,11 @@ class SlurmApiConnection():
             raise Exception('error/s found in get_users output: %s', users.errors)
         return users.to_dict()
 
-    def get_accounts(self, with_associations=None):
-        accounts = self.slurmdb_api.slurmdb_v0041_get_accounts(with_associations=with_associations)
+    def get_accounts(self, with_associations='true', with_coordinators='true'):
+        accounts = self.slurmdb_api.slurmdb_v0041_get_accounts(
+            with_associations=with_associations,
+            with_coordinators=with_coordinators,
+        )
         if accounts.errors:
             raise Exception('error/s found in get_accounts output: %s', accounts.errors)
         return accounts.to_dict()

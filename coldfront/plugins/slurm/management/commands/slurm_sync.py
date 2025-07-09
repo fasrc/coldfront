@@ -80,8 +80,8 @@ class Command(BaseCommand):
                 defaults={"value": share_data}
             )
 
-        def update_allocation_users(account, project_allocation, user_status_active, slurm_specs_allocationuser_attrtype):
-            for allocationuser in project_allocation.allocationuser_set.filter(status__name='Active'):
+        def update_allocation_users(account, allocation, user_status_active, slurm_specs_allocationuser_attrtype):
+            for allocationuser in allocation.allocationuser_set.filter(status__name='Active'):
                 if allocationuser.user.username not in account.users.keys():
                     allocationuser.status = AllocationUserStatusChoice.objects.get(name='Removed')
                     allocationuser.save()
@@ -91,7 +91,7 @@ class Command(BaseCommand):
                 except Exception:
                     logger.debug(f'no user found: {user_name}')
                     continue
-                alloc_user, _ = project_allocation.allocationuser_set.get_or_create(
+                alloc_user, _ = allocation.allocationuser_set.get_or_create(
                     user=user,
                     defaults={
                         'status': user_status_active, 'unit': 'CPU Hours'
@@ -165,6 +165,7 @@ class Command(BaseCommand):
                 continue
             create_cluster_allocation_attributes(project_allocation, account, cloud_acct_name_attr_type, hours_attr_type, slurm_specs_allocation_attribute_type, slurm_acct_name_attr_type)
             # add allocationusers from account
+
             update_allocation_users(account, project_allocation, user_status_active, slurm_specs_allocationuser_attribute_type)
 
         return undetected_projects
