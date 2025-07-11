@@ -17,18 +17,18 @@ from coldfront.config.env import ENV
 #------------------------------------------------------------------------------
 
 DATABASES = {
-     'default': {
-         'ENGINE': 'django.db.backends.mysql',
-         'NAME': ENV.str('DB', default="coldfront"),
-         'USER': ENV.str('DB_USER', default="coldfront"),
-         'PASSWORD': ENV.str('DB_PASS', default=""),
-         'HOST': ENV.str('DB_HOST', default="127.0.0.1"),
-         'PORT': '3306',
-     },
-#     'default': ENV.db_url(
-#         var='DB_URL',
-#         default='sqlite:///' + os.path.join(os.getcwd(), 'coldfront.db')
-#     )
+        #     'default': {
+        #         'ENGINE': 'django.db.backends.mysql',
+        #         'NAME': ENV.str('DB', default="coldfront"),
+        #         'USER': ENV.str('DB_USER', default="coldfront"),
+        #         'PASSWORD': ENV.str('DB_PASS', default=""),
+        #         'HOST': ENV.str('DB_HOST'), #default="127.0.0.1"),
+        #         'PORT': '3306',
+        #     },
+     'default': ENV.db_url(
+         var='DB_URL',
+         default='sqlite:///' + os.path.join(os.getcwd(), 'coldfront.db')
+     )
 }
 
 # Covers regular testing and django-coverage
