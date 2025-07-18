@@ -9,6 +9,7 @@ router.register(r'allocation-change-requests', views.AllocationChangeRequestView
 router.register(r'organizations', views.OrganizationViewSet, basename='organizations')
 router.register(r'projects', views.ProjectViewSet, basename='projects')
 router.register(r'resources', views.ResourceViewSet, basename='resources')
+router.register(r'unused-allocations', views.UnusedStorageAllocationViewSet, basename='unused-allocations')
 router.register(r'users', views.UserViewSet, basename='users')
 
 urlpatterns = [

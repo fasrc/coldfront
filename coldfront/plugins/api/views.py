@@ -7,6 +7,7 @@ from django.db.models import OuterRef, Subquery, Q, F, ExpressionWrapper, Case, 
 from django.db.models.functions import Cast
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
+from django.utils import timezone
 from ifxuser.models import Organization
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
@@ -19,6 +20,7 @@ from coldfront.core.allocation.models import Allocation, AllocationChangeRequest
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
 from coldfront.plugins.api import serializers
+from coldfront.core.allocation.models import AllocationAttribute, AllocationAttributeUsage
 
 UNFULFILLED_ALLOCATION_STATUSES = ['Denied'] + import_from_settings(
     'PENDING_ALLOCATION_STATUSES', ['New', 'In Progress', 'On Hold', 'Pending Activation']
@@ -508,3 +510,61 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = get_user_model().objects.all()
         return queryset
+
+
+class UnusedStorageAllocationFilter(filters.FilterSet):
+    project = filters.CharFilter(label='Project', field_name='project__title', lookup_expr='icontains')
+    pi = filters.CharFilter(label='PI', field_name='project__pi__full_name', lookup_expr='icontains')
+    created = filters.DateFromToRangeFilter()
+
+    class Meta:
+        model = Allocation
+        fields = ['project', 'pi', 'created'] # wasn't sure what we wanted for this one. went with these three since I figure we will want to contact the PI to ask if we can delete
+
+    def filter_resource(self, queryset, name, value): 
+        return queryset.filter(resources__name__icontains=value)
+
+
+class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
+    '''
+    Active storage allocations at least 4 months old with usage < 1 MiB for the last month.
+    '''
+    serializer_class = serializers.UnusedStorageAllocationSerializer
+    filter_backends = (filters.DjangoFilterBackend,)
+    filterset_class = UnusedStorageAllocationFilter
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get_queryset(self):
+        # create 4 months var
+        four_months_ago = timezone.now() - timedelta(days=4*30) 
+        # one month var
+        one_month_ago = timezone.now() - timedelta(days=30)
+        # filter for active storage created >=4 months ago
+        queryset = Allocation.objects.filter(
+            status__name='Active', # only active
+            created__lte=four_months_ago, # less than or equal to 4 months ago
+            resources__resource_type__name__icontains='Storage', # only storage
+        ).distinct() # no duplicates
+        # empty list
+        unused_alloc_ids = []
+        # loop through the objects
+        for alloc in queryset:
+            # find the Quota_In_Bytes attribute for this allocation
+            attr = alloc.allocationattribute_set.filter(allocation_attribute_type__name='Quota_In_Bytes').first()
+            # if nothing comes up for quota in bytes, keep going
+            if not attr:
+                continue
+            # put the entire usage attribute into the object
+            try:
+                usage_obj = attr.allocationattributeusage
+            # if this also does not exist, just keep going
+            except AllocationAttributeUsage.DoesNotExist:
+                continue
+            # check all usage history values for the last month
+            onemon_history = usage_obj.history.filter(history_date__gte=one_month_ago)
+            # if there is a history and all the values are less than 1 MiB, add the allocation to the list
+            if onemon_history.exists() and all(h.value < 1048576 for h in onemon_history):
+                # add the allocation to the list
+                unused_alloc_ids.append(alloc.pk)
+        # return all allocation objects with a matching pk
+        return Allocation.objects.filter(pk__in=unused_alloc_ids)
