@@ -157,5 +157,6 @@ class Command(BaseCommand):
                     ).delete()
                 report['deleted_zones'].append(zone['name'])
                 continue
+
         print(report)
         logger.warning(report)

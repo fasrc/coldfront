@@ -211,7 +211,7 @@ class StarFishServer:
         if not zone_id:
             zone = self.get_zone_by_name(zone_name)
             zone_id = zone['id']
-        url = self.api_url + f'zone/{zone_id}'
+        url = self.api_url + f'zone/{zone_id}?force=true'
         response = requests.delete(url, headers=self.headers)
         return response
 
