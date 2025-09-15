@@ -23,7 +23,6 @@ from coldfront.core.allocation.models import (
     AllocationAttributeUsage,
     AllocationChangeRequest,
 )
-from coldfront.core.allocation.signals import xdmod_account_usage
 from coldfront.core.department.models import Department
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
