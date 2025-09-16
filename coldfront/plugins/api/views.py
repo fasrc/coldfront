@@ -15,7 +15,12 @@ from rest_framework.renderers import AdminRenderer, JSONRenderer
 from simple_history.utils import get_history_model_for_model
 
 from coldfront.core.utils.common import import_from_settings
-from coldfront.core.allocation.models import Allocation, AllocationChangeRequest
+from coldfront.core.department.models import Department
+from coldfront.core.allocation.models import (
+    Allocation,
+    AllocationChangeRequest,
+)
+from coldfront.plugins.xdmod.signals import xdmod_account_usage
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
 from coldfront.plugins.api import serializers
@@ -508,3 +513,53 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = get_user_model().objects.all()
         return queryset
+
+
+class XDModUsageViewSet(viewsets.ReadOnlyModelViewSet):
+    '''View for XDMod usage data.
+    Data:
+    - department: department name
+    - project: project title
+    - project_status: status of the project
+    - pi: full name of project PI
+    - pi_department: department of the project PI
+    '''
+    serializer_class = serializers.XDModUsageSerializer
+
+    def get_queryset(self):
+        department = Department.objects.all()
+        projects = Project.objects.prefetch_related('pi', 'status').annotate(
+            department=Subquery(
+                Department.objects.filter(
+                    projectorganization__project_id=OuterRef('pk')
+                ).values('name')[:1]
+            )
+        )
+        try:
+            usage_data = xdmod_account_usage.send(sender=self.__class__)
+        except Exception as e:
+            # If the signal fails, log the error and return an empty queryset
+            logger.error("Error fetching XDMod usage data: %s", e)
+            return projects.none()
+
+        departments = Department.objects.all()
+        try:
+            usage_data = xdmod_account_usage.send(sender=self.__class__)
+            if usage_data:
+                usage_data = usage_data[0][1]  # Extract the data from the signal
+            # If no data is returned from the signal, return an empty queryset
+            else:
+                logger.error("No usage data returned from xdmod_account_usage signal.")
+                return departments.none()
+        except Exception as e:
+            # If the signal fails, log the error and return an empty queryset
+            logger.error("Error fetching XDMod usage data: %s", e)
+            return departments.none()
+        for department in departments:
+            department.projects = department.projects.annotate(
+                xdmod_total_cpu_hours=Subquery(
+                    Project.objects.filter(
+                        pk=OuterRef('pk')
+                    ).values('xdmod_total_cpu_hours')[:1]
+                )
+            )

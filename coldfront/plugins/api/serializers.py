@@ -243,3 +243,10 @@ class ProjectSerializer(serializers.ModelSerializer):
         if request and request.query_params.get('allocations') in ['true','True']:
             return ProjAllocationSerializer(obj.allocation_set, many=True, read_only=True).data
         return None
+
+
+class XDModUsageSerializer(serializers.Serializer):
+    '''serializer for XDMod usage data'''
+    project = serializers.CharField()
+    status = serializers.CharField()
+    department = serializers.CharField()
