@@ -552,23 +552,26 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
             status__name='Active', # only active
             created__lte=four_months_ago, # less than or equal to 4 months ago
             resources__resource_type__name__icontains='Storage', # only storage
+            allocationattribute__allocation_attribute_type__name='Quota_In_Bytes',
         ).distinct() # no duplicates
         # empty list
         unused_alloc_ids = []
         # loop through the objects
         for alloc in queryset:
             # find the Quota_In_Bytes attribute for this allocation
-            attr = alloc.allocationattribute_set.filter(allocation_attribute_type__name='Quota_In_Bytes').first()
-            # if nothing comes up for quota in bytes, keep going
-            if not attr:
+            usage_obj = alloc.allocationattribute_set.get(allocation_attribute_type__name='Quota_In_Bytes').allocationattributeusage
+            # # if nothing comes up for quota in bytes, keep going
+            # if not attr:
+            #     continue
+            # # put the entire usage attribute into the object
+            # try:
+            #     usage_obj = attr.allocationattributeusage
+            # # if this also does not exist, just keep going
+            # except AllocationAttributeUsage.DoesNotExist:
+            #     continue
+            if usage_obj.value < 1048576:
                 continue
-            # put the entire usage attribute into the object
-            try:
-                usage_obj = attr.allocationattributeusage
-            # if this also does not exist, just keep going
-            except AllocationAttributeUsage.DoesNotExist:
-                continue
-            # check all usage history values for the last month
+            # # check all usage history values for the last month
             onemon_history = usage_obj.history.filter(history_date__gte=one_month_ago)
             # if there is a history and all the values are less than 1 MiB, add the allocation to the list
             if onemon_history.exists() and all(h.value < 1048576 for h in onemon_history):
