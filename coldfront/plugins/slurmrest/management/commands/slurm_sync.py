@@ -11,9 +11,9 @@ from coldfront.core.resource.models import Resource, ResourceAttribute
 from coldfront.core.utils.common import import_from_settings
 from coldfront.plugins.slurmrest.utils import (
         SlurmError,
-        SLURM_CLUSTER_ATTRIBUTE_NAME,
         SlurmApiConnection,
 )
+from coldfront.config.plugins.slurmrest import SLURMREST_CLUSTER_ATTRIBUTE_NAME
 SLURM_IGNORE_USERS = import_from_settings('SLURM_IGNORE_USERS', [])
 SLURM_IGNORE_ACCOUNTS = import_from_settings('SLURM_IGNORE_ACCOUNTS', [])
 SLURM_IGNORE_CLUSTERS = import_from_settings('SLURM_IGNORE_CLUSTERS', [])
@@ -39,12 +39,12 @@ class Command(BaseCommand):
             # Otherwise, get all clusters not on the SLURM_IGNORE_CLUSTERS list.
         if options.get('cluster'):
             query = Q(
-                Q(resourceattribute__resourceattributetype__name=SLURM_CLUSTER_ATTRIBUTE_NAME) & 
+                Q(resourceattribute__resourceattributetype__name=SLURMREST_CLUSTER_ATTRIBUTE_NAME) &
                 Q(resourceattribute__value=options.get('cluster'))
             )
         else:
             query = Q(
-                Q(resourceattribute__resourceattributetype__name=SLURM_CLUSTER_ATTRIBUTE_NAME) &
+                Q(resourceattribute__resourceattributetype__name=SLURMREST_CLUSTER_ATTRIBUTE_NAME) &
                 ~Q(resourceattribute__value__in=SLURM_IGNORE_CLUSTERS)
             )
 
@@ -54,7 +54,7 @@ class Command(BaseCommand):
             return
         # Process each cluster
         for cluster in clusters:
-            cluster_name = cluster.get_attribute(SLURM_CLUSTER_ATTRIBUTE_NAME).value
+            cluster_name = cluster.get_attribute(SLURMREST_CLUSTER_ATTRIBUTE_NAME).value
 
             logger.info("Processing cluster %s (%s)", cluster.name, cluster_name)
 
