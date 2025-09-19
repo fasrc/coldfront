@@ -5,7 +5,7 @@ from coldfront.config.logging import LOGGING
 
 if "slurmrest" not in INSTALLED_APPS:
     INSTALLED_APPS += [
-        "slurmrest",
+        "coldfront.plugins.slurmrest",
     ]
 
 SLURMREST_CLUSTER_ATTRIBUTE_NAME = ENV.str("SLURMREST_CLUSTER_ATTRIBUTE_NAME", default="slurm_cluster")
