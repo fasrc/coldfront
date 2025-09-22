@@ -3,8 +3,8 @@ from slurmrest_python_0_0_41 import SlurmApi, SlurmdbApi, ApiClient, Configurati
 from coldfront.core.utils.common import import_from_settings
 
 
-SLURMREST_CLUSTERS = import_from_settings('SLURMREST_CLUSTERS', default={})
-SLURMREST_NOOP = import_from_settings('SLURMREST_NOOP', default=False)
+SLURMREST_CLUSTERS = import_from_settings('SLURMREST_CLUSTERS', {})
+SLURMREST_NOOP = import_from_settings('SLURMREST_NOOP', False)
 
 logger = logging.getLogger(__name__)
 
