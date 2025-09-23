@@ -14,9 +14,9 @@ from coldfront.plugins.slurmrest.utils import (
         SlurmApiConnection,
 )
 from coldfront.config.plugins.slurmrest import SLURMREST_CLUSTER_ATTRIBUTE_NAME
-SLURM_IGNORE_USERS = import_from_settings('SLURM_IGNORE_USERS', [])
-SLURM_IGNORE_ACCOUNTS = import_from_settings('SLURM_IGNORE_ACCOUNTS', [])
-SLURM_IGNORE_CLUSTERS = import_from_settings('SLURM_IGNORE_CLUSTERS', [])
+SLURM_IGNORE_USERS = import_from_settings('SLURMREST_IGNORE_USERS', [])
+SLURM_IGNORE_ACCOUNTS = import_from_settings('SLURMREST_IGNORE_ACCOUNTS', [])
+SLURM_IGNORE_CLUSTERS = import_from_settings('SLURMREST_IGNORE_CLUSTERS', [])
 SLURM_NOOP = import_from_settings('SLURM_NOOP', False)
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class Command(BaseCommand):
             )
         else:
             query = Q(
-                Q(resourceattribute__resourceattributetype__name=SLURMREST_CLUSTER_ATTRIBUTE_NAME) &
+                Q(resourceattribute__resource_attribute_type__name=SLURMREST_CLUSTER_ATTRIBUTE_NAME) &
                 ~Q(resourceattribute__value__in=SLURM_IGNORE_CLUSTERS)
             )
 
