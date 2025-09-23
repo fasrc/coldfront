@@ -407,15 +407,21 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             allocation_obj.status = AllocationStatusChoice.objects.get(name='Active')
             AllocationAttribute.objects.get_or_create(
                 allocation=allocation_obj,
-                allocation_attribute_type=AllocationAttributeType.objects.get(name='RequiresPayment'),
+                allocation_attribute_type=AllocationAttributeType.objects.get(
+                    name='RequiresPayment'
+                ),
                 defaults={'value': resource.requires_payment}
             )
 
         elif action == 'deny':
             allocation_obj.status = AllocationStatusChoice.objects.get(name='Denied')
         elif action == 'update':
-            if old_status in PENDING_ALLOCATION_STATUSES and allocation_obj.status.name not in PENDING_ALLOCATION_STATUSES:
-                err = "You can only use the 'update' option on new allocations to change their statuses to New, On Hold, or In Progress."
+            new_allocation_status_options = PENDING_ALLOCATION_STATUSES + ['Inactive']
+            if (
+                old_status in PENDING_ALLOCATION_STATUSES
+                and allocation_obj.status.name not in new_allocation_status_options
+            ):
+                err = "You can only use the 'update' option on new allocations to change their statuses to New, On Hold, In Progress, or Inactive."
                 messages.error(request, err)
                 return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
 
