@@ -1,5 +1,5 @@
 import logging
-from slurmrest_python_0_0_41 import SlurmApi, SlurmdbApi, ApiClient, Configuration
+from slurmrest_python import SlurmApi, SlurmdbApi, ApiClient, Configuration
 from coldfront.core.utils.common import import_from_settings
 
 
