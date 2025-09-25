@@ -15,7 +15,7 @@ from coldfront.core.allocation.models import (
     AllocationUserStatusChoice,
 )
 from coldfront.core.resource.models import Resource
-from coldfront.plugins.slurm.utils import SlurmError, slurm_dump_cluster
+from coldfront.plugins.slurm.integrations import SlurmError, get_cluster_connection
 from coldfront.plugins.slurm.associations import SlurmCluster
 
 
@@ -28,6 +28,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('-f', '--file',
             help='designate a file with sacctmgr dump data to use as a datasource')
+        parser.add_argument('-c', '--cluster',
+                            help='define a cluster to sync up')
 
     def _cluster_from_dump(self, cluster, file=None):
         slurm_cluster = None
@@ -41,9 +43,9 @@ class Command(BaseCommand):
                 fname = os.path.join(tmpdir, 'cluster.cfg')
                 cluster_name = cluster.get_attribute("slurm_cluster")
                 try:
-                    slurm_dump_cluster(cluster_name, fname)
+                    get_cluster_connection(cluster_name).dump_cluster(fname)
                     with open(fname) as fh:
-                        logger.debug(f" Loading cluster info from stream")
+                        logger.debug(f"Loading cluster info from stream")
                         slurm_cluster = SlurmCluster.new_from_stream(fh)
                 except SlurmError as e:
                     logger.error(f'Failed to dump Slurm cluster {cluster} {e}')
@@ -170,6 +172,7 @@ class Command(BaseCommand):
         # make new SlurmCluster obj containing the dump from the cluster
         logger.debug("Loading cluster info starts", True)
         file = options['file']
+        cluster_name = options['cluster']
         cluster_resources = Resource.objects.filter(
             resource_type__name='Cluster', is_available=True
         )
