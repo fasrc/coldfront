@@ -56,7 +56,7 @@ class SlurmApiConnection():
 
     def get_partitions(self, update_time=None, flags=None):
         partitions = self.slurm_api.slurm_v0041_get_partitions(update_time=update_time, flags=flags)
-        return partitions
+        return partitions.to_dict()
 
     def get_assoc(self, *, user_name=None, account_name=None, assoc_id=None):
         if assoc_id:
@@ -67,7 +67,8 @@ class SlurmApiConnection():
             if not (user_name and account_name):
                 raise ValueError("Must supply assoc_id OR user_name/account_name.")
             args = {'user': user_name, 'account': account_name}
-        return self.slurmdb_api.slurmdb_v0041_get_association(**args)
+        associations = self.slurmdb_api.slurmdb_v0041_get_association(**args)
+        return associations.to_dict()
 
 
     def add_assoc(self, account_name, user_name, noop=SLURMREST_NOOP):
@@ -127,6 +128,16 @@ class SlurmApiConnection():
         if users.errors:
             raise Exception('error/s found in get_users output: %s', users.errors)
         return users.to_dict()
+
+    def get_account(self, account_name, with_associations='true', with_coordinators='true'):
+        account = self.slurmdb_api.slurmdb_v0041_get_single_account(
+            account_name=account_name,
+            with_associations=with_associations,
+            with_coordinators=with_coordinators,
+        )
+        if account.errors:
+            raise Exception('error/s found in get_account output: %s', account.errors)
+        return account.to_dict()
 
     def get_accounts(self, with_associations='true', with_coordinators='true'):
         accounts = self.slurmdb_api.slurmdb_v0041_get_accounts(
