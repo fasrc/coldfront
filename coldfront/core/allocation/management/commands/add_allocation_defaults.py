@@ -73,6 +73,7 @@ class Command(BaseCommand):
             ('FairShare', 'Float', False, False, False),
             ('NormShares', 'Float', False, False, False),
             ('EffectvUsage', 'Float', False, False, False),
+            ('RawShare', 'Int', False, False, False),
             ('RawUsage', 'Int', False, False, False),
             # UBCCR defaults
             ('Cloud Account Name', 'Text', False, False, False),
