@@ -560,7 +560,7 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
             created__gte=four_months_ago, # less than or equal to 4 months ago
             resources__resource_type__name__icontains='Storage', # only storage
             allocationattribute__allocation_attribute_type__name='Quota_In_Bytes',
-        ).prefetch_related('allocationattribute').distinct() # no duplicates
+        ).distinct() # no duplicates
         # empty list
         unused_alloc_ids = []
         # loop through the objects
