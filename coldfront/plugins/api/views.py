@@ -577,10 +577,11 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
             # except AllocationAttributeUsage.DoesNotExist:
             #     continue
             # # check all usage history values for the last month
-            onemon_history = usage_obj.history.filter(history_date__gte=one_month_ago)
+            onemon_history = usage_obj.history.filter(history_date__lte=one_month_ago)
             # if there is a history and all the values are less than 1 MiB, add the allocation to the list
-            if onemon_history.exists() and all(h.value < 1048576 for h in onemon_history):
+            if onemon_history.exists() and any(h.value > 1048576 for h in onemon_history):
+                continue
                 # add the allocation to the list
-                unused_alloc_ids.append(alloc.pk)
+            unused_alloc_ids.append(alloc.pk)
         # return all allocation objects with a matching pk
         return Allocation.objects.filter(pk__in=unused_alloc_ids)
