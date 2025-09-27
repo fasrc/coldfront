@@ -566,6 +566,7 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
         # loop through the objects
         for alloc in queryset:
             # find the Quota_In_Bytes attribute for this allocation
+            usage_obj = alloc.allocationattribute_set.get(allocation_attribute_type__name='Quota_In_Bytes').allocationattributeusage
             # # if nothing comes up for quota in bytes, keep going
             # if not attr:
             #     continue
