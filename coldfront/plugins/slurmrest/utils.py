@@ -54,10 +54,63 @@ class SlurmApiConnection():
 
         return response
 
-    def get_partitions(self, update_time=None, flags=None):
-        partitions = self.slurm_api.slurm_v0041_get_partitions(update_time=update_time, flags=flags)
-        return partitions.to_dict()
 
+    # account methods
+    def get_account(self, account_name, with_associations='true', with_coordinators='true'):
+        account = self.slurmdb_api.slurmdb_v0041_get_single_account(
+            account_name=account_name,
+            with_associations=with_associations,
+            with_coordinators=with_coordinators,
+        )
+        if account.errors:
+            raise Exception('error/s found in get_account output: %s', account.errors)
+        return account.to_dict()
+
+    def get_accounts(self, with_associations='true', with_coordinators='true'):
+        accounts = self.slurmdb_api.slurmdb_v0041_get_accounts(
+            with_associations=with_associations,
+            with_coordinators=with_coordinators,
+        )
+        if accounts.errors:
+            raise Exception('error/s found in get_accounts output: %s', accounts.errors)
+        return accounts.to_dict()
+
+    def add_account(self, account_name, specs=None, noop=SLURMREST_NOOP):
+        """Add a new account.
+        account_name (str): name of the account to be added
+        specs (list, default None): list of specifications for the account
+        noop (bool, default False): if True, don't actually execute the action
+        """
+        if specs is None:
+            specs = []
+        account_dict = {
+            'v0041_openapi_accounts_resp': {
+                'accounts': {'name': account_name, 'specs': specs}
+            }
+        }
+        response = self._call_api(
+            self.slurmdb_api.slurmdb_v0041_post_accounts,
+            noop=noop,
+            **account_dict
+        )
+        logger.info('added accounts: %s', response)
+        return response
+
+    def remove_account(self, account_name, noop=SLURMREST_NOOP):
+        """Remove an account.
+        account_name (str): name of the account to be removed
+        noop (bool, default False): if True, don't actually execute the action
+        """
+        response = self._call_api(
+            self.slurmdb_api.slurmdb_v0041_delete_account,
+            noop=noop,
+            **{'account_name': account_name}
+        )
+        logger.info('removed account: %s', response)
+        return response
+
+
+    # association methods
     def get_assoc(self, *, user_name=None, account_name=None, assoc_id=None):
         if assoc_id:
             if user_name or account_name:
@@ -113,15 +166,46 @@ class SlurmApiConnection():
         logger.info("deleted associations: %s", response['removed_associations'])
         return response
 
-    def get_shares(self, accounts=None, users=None):
-        """Return share information.
-        accounts (list, default None): accounts for which to get shares
-        users (list, default None): users for which to get shares
-        """
-        shares = self.slurm_api.slurm_v0041_get_shares(accounts=accounts, users=users)
-        if shares.errors:
-            raise Exception('error/s found in get_shares output: %s', shares.errors)
-        return shares.to_dict()
+    # cluster methods
+    def get_clusters(self):
+        clusters = self.slurmdb_api.slurmdb_v0041_get_clusters()
+        if clusters.errors:
+            raise Exception('error/s found in get_clusters output: %s', clusters.errors)
+        return clusters.to_dict()
+
+    # license methods
+    def get_licenses(self):
+        licenses = self.slurmdb_api.slurmdb_v0041_get_licenses()
+        if licenses.errors:
+            raise Exception('error/s found in get_licenses output: %s', licenses.errors)
+        return licenses.to_dict()
+
+    # node methods
+    def get_node(self, node_name):
+        node = self.slurm_api.slurm_v0041_get_node(node_name=node_name)
+        if node.errors:
+            raise Exception('error/s found in get_node output: %s', node.errors)
+        return node.to_dict()
+
+    def get_nodes(self, update_time=None, flags=None):
+        nodes = self.slurm_api.slurm_v0041_get_nodes(update_time=update_time, flags=flags)
+        if nodes.errors:
+            raise Exception('error/s found in get_nodes output: %s', nodes.errors)
+        return nodes.to_dict()
+
+
+    # partition methods
+    def get_partitions(self, update_time=None, flags=None):
+        partitions = self.slurm_api.slurm_v0041_get_partitions(update_time=update_time, flags=flags)
+        return partitions.to_dict()
+
+
+    # user methods
+    def get_user(self, user_name):
+        user = self.slurmdb_api.slurmdb_v0041_get_user(user_name=user_name)
+        if user.errors:
+            raise Exception('error/s found in get_user output: %s', user.errors)
+        return user.to_dict()
 
     def get_users(self):
         users = self.slurmdb_api.slurmdb_v0041_get_users()
@@ -129,61 +213,8 @@ class SlurmApiConnection():
             raise Exception('error/s found in get_users output: %s', users.errors)
         return users.to_dict()
 
-    def get_account(self, account_name, with_associations='true', with_coordinators='true'):
-        account = self.slurmdb_api.slurmdb_v0041_get_single_account(
-            account_name=account_name,
-            with_associations=with_associations,
-            with_coordinators=with_coordinators,
-        )
-        if account.errors:
-            raise Exception('error/s found in get_account output: %s', account.errors)
-        return account.to_dict()
 
-    def get_accounts(self, with_associations='true', with_coordinators='true'):
-        accounts = self.slurmdb_api.slurmdb_v0041_get_accounts(
-            with_associations=with_associations,
-            with_coordinators=with_coordinators,
-        )
-        if accounts.errors:
-            raise Exception('error/s found in get_accounts output: %s', accounts.errors)
-        return accounts.to_dict()
-
-    def add_account(self, account_name, specs=None, noop=SLURMREST_NOOP):
-        """Add a new account.
-        account_name (str): name of the account to be added
-        specs (list, default None): list of specifications for the account
-        noop (bool, default False): if True, don't actually execute the action
-        """
-        if specs is None:
-            specs = []
-        account_dict = {
-            'v0041_openapi_accounts_resp': {
-                'accounts': {'name': account_name, 'specs': specs}
-            }
-        }
-        response = self._call_api(
-            self.slurmdb_api.slurmdb_v0041_post_accounts,
-            noop=noop,
-            **account_dict
-        )
-        logger.info('added accounts: %s', response)
-        return response
-
-    def remove_account(self, account_name, noop=SLURMREST_NOOP):
-        """Remove an account.
-        account_name (str): name of the account to be removed
-        noop (bool, default False): if True, don't actually execute the action
-        """
-        response = self._call_api(
-            self.slurmdb_api.slurmdb_v0041_delete_account,
-            noop=noop,
-            **{'account_name': account_name}
-        )
-        logger.info('removed account: %s', response)
-        return response
-
-    # def block_account(self, account_name, noop=False):
-
+    # qos methods
     def get_qos_list(self):
         """Get the list of QoS (Quality of Service) entries."""
         qos_list = self.slurmdb_api.slurmdb_v0041_get_qos()
@@ -227,3 +258,14 @@ class SlurmApiConnection():
         )
         logger.info('removed qos: %s', response)
         return response
+
+    # share methods
+    def get_shares(self, accounts=None, users=None):
+        """Return share information.
+        accounts (list, default None): accounts for which to get shares
+        users (list, default None): users for which to get shares
+        """
+        shares = self.slurm_api.slurm_v0041_get_shares(accounts=accounts, users=users)
+        if shares.errors:
+            raise Exception('error/s found in get_shares output: %s', shares.errors)
+        return shares.to_dict()
