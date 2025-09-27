@@ -557,7 +557,7 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
         )).filter(
             annotated_usage__lte=1048576, # less than or equal to 1 MiB
             status__name='Active', # only active
-            created__lte=four_months_ago, # less than or equal to 4 months ago
+            created__gte=four_months_ago, # less than or equal to 4 months ago
             resources__resource_type__name__icontains='Storage', # only storage
             allocationattribute__allocation_attribute_type__name='Quota_In_Bytes',
         ).distinct() # no duplicates
