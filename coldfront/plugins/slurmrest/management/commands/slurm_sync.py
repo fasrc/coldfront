@@ -20,11 +20,15 @@ from coldfront.plugins.slurmrest.utils import (
         SlurmError,
         SlurmApiConnection,
 )
+from coldfront.plugins.slurmrest.associations import (
+    get_or_create_slurm_account_allocation,
+)
+
 SLURMREST_CLUSTER_ATTRIBUTE_NAME = import_from_settings('SLURMREST_CLUSTER_ATTRIBUTE_NAME', 'slurm_cluster')
 SLURM_IGNORE_USERS = import_from_settings('SLURMREST_IGNORE_USERS', [])
 SLURM_IGNORE_ACCOUNTS = import_from_settings('SLURMREST_IGNORE_ACCOUNTS', [])
 SLURM_IGNORE_CLUSTERS = import_from_settings('SLURMREST_IGNORE_CLUSTERS', [])
-SLURM_NOOP = import_from_settings('SLURMREST_NOOP', False)
+NOOP = import_from_settings('SLURMREST_NOOP', False)
 SLURM_SPECS_ATTRIBUTE_NAME = import_from_settings('SLURMREST_SPECS_ATTRIBUTE_NAME', 'slurm_specs')
 
 logger = logging.getLogger(__name__)
@@ -32,7 +36,7 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = '''Sync ColdFront cluster allocation data with Slurm cluster data via Slurm REST API.
     '''
-    noop = SLURM_NOOP
+    noop = NOOP
 
     def add_arguments(self, parser):
         parser.add_argument('-n', '--noop',
@@ -46,24 +50,31 @@ class Command(BaseCommand):
             # Get clusters to process. If a specific cluster is given, filter by that.
             # Otherwise, get all clusters not on the SLURM_IGNORE_CLUSTERS list.
         if options.get('cluster'):
-            query = Q(
-                Q(resourceattribute__resourceattributetype__name=SLURMREST_CLUSTER_ATTRIBUTE_NAME)
-                & Q(resourceattribute__value=options.get('cluster'))
-            )
+            additional_query = Q(resourceattribute__value=options.get('cluster'))
         else:
-            query = Q(
-                Q(resourceattribute__resource_attribute_type__name=SLURMREST_CLUSTER_ATTRIBUTE_NAME)
-                & ~Q(resourceattribute__value__in=SLURM_IGNORE_CLUSTERS)
-            )
-
-        clusters = Resource.objects.filter(query).distinct()
+            additional_query = Q(~Q(resourceattribute__value__in=SLURM_IGNORE_CLUSTERS))
+        clusters = Resource.objects.filter(Q(
+            Q(resourceattribute__resource_attribute_type__name=SLURMREST_CLUSTER_ATTRIBUTE_NAME)
+            & additional_query
+        )).distinct()
         if not clusters:
             logger.info("No clusters found to sync")
             return
         # Process each cluster
         allocationuser_active_status = AllocationUserStatusChoice.objects.get(name="Active")
-        allocation_active_status = AllocationStatusChoice.objects.get(name="Active")
-        slurm_specs_attribute_type = AllocationAttributeType.objects.get(name=SLURM_SPECS_ATTRIBUTE_NAME)
+        allocation_inactive_status = AllocationStatusChoice.objects.get(name='Inactive')
+
+        slurm_acct_name_attr_type = AllocationAttributeType.objects.get(
+            name='slurm_account_name')
+        cloud_acct_name_attr_type = AllocationAttributeType.objects.get(
+            name='Cloud Account Name')
+        hours_attr_type = AllocationAttributeType.objects.get(
+            name='Core Usage (Hours)')
+        fairshare_aattr_type = AllocationAttributeType.objects.get(name='FairShare')
+        rawshares_aattr_type = AllocationAttributeType.objects.get(name='RawShares')
+        normshares_aattr_type = AllocationAttributeType.objects.get(name='NormShares')
+        rawusage_aattr_type = AllocationAttributeType.objects.get(name='RawUsage')
+        effectvusage_aattr_type = AllocationAttributeType.objects.get(name='EffectvUsage')
         for cluster in clusters:
             cluster_name = cluster.get_attribute(SLURMREST_CLUSTER_ATTRIBUTE_NAME)
             logger.info("Processing cluster %s (%s)", cluster.name, cluster_name)
@@ -73,6 +84,16 @@ class Command(BaseCommand):
                 logger.error("Failed to get Slurm data for cluster %s: %s", cluster.name, e)
                 continue
             # get cluster data:
+            # shares
+            shares = slurm_cluster.get_shares()
+            share_dict = {
+                share for share in shares['shares']['shares']
+                if share['name'] not in SLURM_IGNORE_ACCOUNTS + SLURM_IGNORE_USERS
+            }
+            update_fairshare = True
+            if not [s for s in share_dict if s['fairshare']['factor']['number'] != 0]:
+                logger.warning("No valid fairshare values found for cluster %s, skipping update", cluster.name)
+                update_fairshare = False
             # accounts/associations
             accounts = slurm_cluster.get_accounts()
             # remove accounts in SLURMREST_IGNORE_ACCOUNTS
@@ -92,13 +113,49 @@ class Command(BaseCommand):
                     continue
                 # get or create related ColdFront allocation
                 allocation = get_or_create_allocation(project, cluster_resource)
+                allocation.allocationattribute_set.get_or_create(
+                    allocation_attribute_type=slurm_acct_name_attr_type,
+                    defaults={'value': account['name']}
+                )
+                allocation.allocationattribute_set.get_or_create(
+                    allocation_attribute_type=cloud_acct_name_attr_type,
+                    defaults={'value': account['name']}
+                )
+                allocation.allocationattribute_set.get_or_create(
+                    allocation_attribute_type=hours_attr_type,
+                    defaults={'value': 0}
+                )
+
+                # add/update slurm specs
+                group_share = next(
+                    share for share in share_dict if share['name'] == account['name']
+                )
+                spec_mapping = [
+                    {'attrtype': rawshares_aattr_type, 'value': group_share['shares']['number']},
+                    {'attrtype': normshares_aattr_type, 'value': group_share['shares_normalized']['number']},
+                    {'attrtype': rawusage_aattr_type, 'value': group_share['usage']},
+                    {'attrtype': effectvusage_aattr_type, 'value': group_share['effective_usage']['number']},
+                        ]
+                if update_fairshare:
+                    spec_mapping.append(
+                        {'attrtype': fairshare_aattr_type, 'value': group_share['fairshare']['factor']['number']}
+                    )
+
+                for spec_pair in spec_mapping:
+                    alloc_attr, created = allocation.allocationattribute_set.update_or_create(
+                        allocationattributetype=spec_pair['attrtype'],
+                        defaults={'value': spec_pair['value']}
+                    )
+
                 # make list of users and update according allocation
                 account_users = [assoc['user'] for assoc in account['associations']]
                 allocation_users = allocation.allocationuser_set.all().values_list(
                     'user__username', flat=True
                 )
-                # add slurm specs
                 # add missing users
+                user_shares = [
+                    share for share in share_dict if share['parent'] == account['name']
+                ]
                 for user_name in account_users:
                     if user_name in SLURM_IGNORE_USERS:
                         continue
