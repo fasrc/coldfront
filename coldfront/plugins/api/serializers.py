@@ -243,3 +243,28 @@ class ProjectSerializer(serializers.ModelSerializer):
         if request and request.query_params.get('allocations') in ['true','True']:
             return ProjAllocationSerializer(obj.allocation_set, many=True, read_only=True).data
         return None
+
+
+class UnusedStorageAllocationSerializer(serializers.ModelSerializer):
+    project = serializers.CharField(source='project.title', read_only=True)
+    path = serializers.CharField(read_only=True)
+    pi = serializers.ReadOnlyField(source='project.pi.full_name')
+    size = serializers.FloatField(read_only=True)
+    usage = serializers.SerializerMethodField()
+    created = serializers.DateTimeField(format="%Y-%m-%d %H:%M", read_only=True)
+
+    class Meta:
+        model = Allocation
+        fields = (
+            'id',
+            'project',
+            'path',
+            'pi',
+            'size',
+            'usage',
+            'created',
+        )
+
+    def get_usage(self, obj):
+        usage = obj.usage_exact if obj.usage_exact is not None else obj.usage
+        return int(usage) if usage is not None else 0

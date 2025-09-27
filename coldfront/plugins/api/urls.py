@@ -10,6 +10,7 @@ router.register(r'organizations', views.OrganizationViewSet, basename='organizat
 router.register(r'projects', views.ProjectViewSet, basename='projects')
 router.register(r'resources', views.ResourceViewSet, basename='resources')
 router.register(r'users', views.UserViewSet, basename='users')
+router.register(r'unused-allocations', views.UnusedStorageAllocationViewSet, basename='unused-allocations')
 
 urlpatterns = [
     path('', include(router.urls)),
