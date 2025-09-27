@@ -20,7 +20,7 @@ from coldfront.core.utils.common import import_from_settings
 from coldfront.core.allocation.models import (
     Allocation,
     AllocationAttribute,
-    AllocationAttributeUsage,
+    AllocationAttributeType,
     AllocationChangeRequest,
 )
 from coldfront.core.department.models import Department
@@ -547,8 +547,15 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
         four_months_ago = timezone.now() - timedelta(days=4*30)
         # one month var
         one_month_ago = timezone.now() - timedelta(days=30)
+        quota_in_bytes_aatype = AllocationAttributeType.objects.get(name='Quota_In_Bytes')
         # filter for active storage created >=4 months ago
-        queryset = Allocation.objects.filter(
+        queryset = Allocation.objects.annotate(annotated_usage=Subquery(
+            AllocationAttribute.objects.filter(
+                allocation_id=OuterRef('pk'),
+                allocation_attribute_type=quota_in_bytes_aatype,
+            ).values('value')[:1]
+        )).filter(
+            annotated_usage__lte=1048576, # less than or equal to 1 MiB
             status__name='Active', # only active
             created__lte=four_months_ago, # less than or equal to 4 months ago
             resources__resource_type__name__icontains='Storage', # only storage
@@ -559,7 +566,6 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
         # loop through the objects
         for alloc in queryset:
             # find the Quota_In_Bytes attribute for this allocation
-            usage_obj = alloc.allocationattribute_set.get(allocation_attribute_type__name='Quota_In_Bytes').allocationattributeusage
             # # if nothing comes up for quota in bytes, keep going
             # if not attr:
             #     continue
@@ -569,8 +575,6 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
             # # if this also does not exist, just keep going
             # except AllocationAttributeUsage.DoesNotExist:
             #     continue
-            if usage_obj.value < 1048576:
-                continue
             # # check all usage history values for the last month
             onemon_history = usage_obj.history.filter(history_date__gte=one_month_ago)
             # if there is a history and all the values are less than 1 MiB, add the allocation to the list
