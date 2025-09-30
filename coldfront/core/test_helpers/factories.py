@@ -379,7 +379,7 @@ class AllocationUserNoteFactory(DjangoModelFactory):
 def setup_models(test_case):
     """Set up models that we use in multiple tests"""
 
-    for status in ['Active', 'New', 'Inactive', 'Paid', 'Ready for Review']:
+    for status in ['Active', 'New', 'Inactive', 'Paid', 'Expired', 'Ready for Review']:
         AllocationStatusChoiceFactory(name=status)
     for status in ['Active', 'New', 'Archived']:
         ProjectStatusChoiceFactory(name=status)

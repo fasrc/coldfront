@@ -535,6 +535,13 @@ class UnusedStorageAllocationFilter(filters.FilterSet):
 class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
     '''
     Active storage allocations at least 4 months old with usage < 1 MiB for the last month.
+
+    Query parameters:
+    - project (string, partial match)
+      Project title
+    - pi (string, case-insensitive partial match)
+      PI full name
+    - created_before/created_after (structure date as 'YYYY-MM-DD')
     '''
     serializer_class = serializers.UnusedStorageAllocationSerializer
     filter_backends = (filters.DjangoFilterBackend,)
@@ -559,7 +566,7 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
         )).filter(
             annotated_usage__lte=1048576, # less than or equal to 1 MiB
             status__name='Active', # only active
-            created__gte=four_months_ago, # less than or equal to 4 months ago
+            created__lte=four_months_ago, # earlier than or equal to 4 months ago
             resources__resource_type__name__icontains='Storage', # only storage
             allocationattribute__allocation_attribute_type__name='Quota_In_Bytes',
         ).distinct() # no duplicates

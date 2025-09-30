@@ -96,6 +96,47 @@ class ProjectArchiveProjectViewTest(ProjectViewTestBase):
         utils.test_user_cannot_access(self, self.project_user, self.url)
         utils.test_user_cannot_access(self, self.nonproject_user, self.url)
 
+    def test_project_archive_project_post(self):
+        """Test project archive project post response"""
+        self.client.force_login(self.admin_user,
+                    backend='django.contrib.auth.backends.ModelBackend')
+        response = self.client.post(self.url)
+        self.assertRedirects(
+            response, f'/project/{self.project.pk}/', status_code=302, target_status_code=200)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.status.name, 'Archived')
+
+
+class ProjectUnArchiveProjectViewTest(ProjectViewTestBase):
+    """Tests for project unarchive project view"""
+
+    @classmethod
+    def setUpTestData(cls):
+        """Set up users and project for testing"""
+        super(ProjectUnArchiveProjectViewTest, cls).setUpTestData()
+        cls.project.status = ProjectStatusChoiceFactory(name='Archived')
+        cls.project.save()
+        cls.url = f'/project/{cls.project.pk}/unarchive'
+
+    def test_project_unarchive_project_access(self):
+        """Test access to project unarchive project page"""
+        # logged-out user gets redirected, admin can access unarchive project page
+        self.project_access_tstbase(self.url)
+        # pi, projectuser and nonproject user cannot access unarchive project page
+        utils.test_user_cannot_access(self, self.pi_user, self.url)
+        utils.test_user_cannot_access(self, self.project_user, self.url)
+        utils.test_user_cannot_access(self, self.nonproject_user, self.url)
+
+    def test_project_unarchive_project_post(self):
+        """Test project unarchive project post response"""
+        self.client.force_login(self.admin_user,
+                    backend='django.contrib.auth.backends.ModelBackend')
+        response = self.client.post(self.url)
+        self.assertRedirects(
+            response, f'/project/{self.project.pk}/', status_code=302, target_status_code=200)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.status.name, 'Active')
+
 
 class ProjectCreateTest(ProjectViewTestBase):
     """Tests for project create view"""

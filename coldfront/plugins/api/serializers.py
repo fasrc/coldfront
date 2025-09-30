@@ -248,9 +248,10 @@ class ProjectSerializer(serializers.ModelSerializer):
 class UnusedStorageAllocationSerializer(serializers.ModelSerializer):
     project = serializers.CharField(source='project.title', read_only=True)
     path = serializers.CharField(read_only=True)
+    resource = serializers.ReadOnlyField(source='get_parent_resource.name', allow_null=True)
     pi = serializers.ReadOnlyField(source='project.pi.full_name')
-    size = serializers.FloatField(read_only=True)
-    usage = serializers.SerializerMethodField()
+    size_tb = serializers.FloatField(read_only=True, source='size')
+    usage_bytes = serializers.SerializerMethodField()
     created = serializers.DateTimeField(format="%Y-%m-%d %H:%M", read_only=True)
 
     class Meta:
@@ -258,13 +259,14 @@ class UnusedStorageAllocationSerializer(serializers.ModelSerializer):
         fields = (
             'id',
             'project',
+            'resource',
             'path',
             'pi',
-            'size',
-            'usage',
+            'size_tb',
+            'usage_bytes',
             'created',
         )
 
-    def get_usage(self, obj):
+    def get_usage_bytes(self, obj):
         usage = obj.usage_exact if obj.usage_exact is not None else obj.usage
         return int(usage) if usage is not None else 0
