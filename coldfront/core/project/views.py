@@ -400,6 +400,30 @@ class ProjectArchivedListView(ProjectListView):
         return projects_queried
 
 
+class ProjectUnArchiveProjectView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
+    template_name = 'project/project_unarchive.html'
+
+    def test_func(self):
+        """UserPassesTestMixin Tests"""
+        if self.request.user.is_superuser:
+            return True
+        error_message = 'You do not have permission to reactivate a project.'
+        messages.error(self.request, error_message)
+        return False
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project = get_object_or_404(Project, pk=self.kwargs.get('pk'))
+        context['project'] = project
+        return context
+
+    def post(self, request, *args, **kwargs):
+        project = get_object_or_404(Project, pk=self.kwargs.get('pk'))
+        project_status_active = ProjectStatusChoice.objects.get(name='Active')
+        project.status = project_status_active
+        project.save()
+        return redirect(reverse('project-detail', kwargs={'pk': project.pk}))
+
 class ProjectArchiveProjectView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     template_name = 'project/project_archive.html'
 

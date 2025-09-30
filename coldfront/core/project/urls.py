@@ -5,6 +5,7 @@ import coldfront.core.project.views as project_views
 urlpatterns = [
     path('<int:pk>/', project_views.ProjectDetailView.as_view(), name='project-detail'),
     path('<int:pk>/archive', project_views.ProjectArchiveProjectView.as_view(), name='project-archive'),
+    path('<int:pk>/unarchive', project_views.ProjectUnArchiveProjectView.as_view(), name='project-unarchive'),
     path('', project_views.ProjectListView.as_view(), name='project-list'),
     path('project-user-update-email-notification/', project_views.project_update_email_notification, name='project-user-update-email-notification'),
     path('archived/', project_views.ProjectArchivedListView.as_view(), name='project-archived-list'),

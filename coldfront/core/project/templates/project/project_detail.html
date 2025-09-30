@@ -39,6 +39,8 @@ Project Detail
         {% if project.status.name in 'Active, New' %}
           <a class="btn btn-info" href="{% url 'project-update' project.pk %}" role="button"><i class="far fa-edit" aria-hidden="true"></i> Update Project Information</a>
           <a class="btn btn-info" href="{% url 'project-archive' project.id %}" role="button"><i class="fas fa-file-archive" aria-hidden="true"></i> Archive Project</a>
+        {% elif project.status.name == 'Archived' %}
+          <a class="btn btn-info" href="{% url 'project-unarchive' project.id %}" role="button"><i class="fas fa-file-archive" aria-hidden="true"></i> Reactivate Project</a>
         {% endif %}
       </div>
     </div>
