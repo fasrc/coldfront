@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 
-from django.db.models import OuterRef, Subquery, Q, F, ExpressionWrapper, Case, When, Value, fields, DurationField
+from django.db.models import OuterRef, Subquery, Q, F, ExpressionWrapper, Case, When, Value, fields
 from django.db.models.functions import Cast
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
@@ -19,11 +19,10 @@ from simple_history.utils import get_history_model_for_model
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.allocation.models import (
     Allocation,
-    AllocationAttribute,
+    AllocationAttributeUsage,
     AllocationAttributeType,
     AllocationChangeRequest,
 )
-from coldfront.core.department.models import Department
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
 from coldfront.plugins.api import serializers
@@ -239,11 +238,11 @@ class AllocationRequestViewSet(viewsets.ReadOnlyModelViewSet):
                     fulfilled_date__isnull=False,
                     then=ExpressionWrapper(
                         (Cast(Subquery(fulfilled_date), fields.DateTimeField()) - F('created')),
-                        output_field=DurationField()
+                        output_field=fields.DurationField()
                     )
                 ),
                 default=Value(None),  # If fulfilled_date is null, set time_to_fulfillment to None
-                output_field=DurationField()
+                output_field=fields.DurationField()
             )
         )
         return allocations
@@ -549,11 +548,14 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
         one_month_ago = timezone.now() - timedelta(days=30)
         quota_in_bytes_aatype = AllocationAttributeType.objects.get(name='Quota_In_Bytes')
         # filter for active storage created >=4 months ago
-        queryset = Allocation.objects.annotate(annotated_usage=Subquery(
-            AllocationAttribute.objects.filter(
-                allocation_id=OuterRef('pk'),
-                allocation_attribute_type=quota_in_bytes_aatype,
-            ).values('value')[:1]
+        queryset = Allocation.objects.annotate(annotated_usage=Cast(
+            Subquery(
+                AllocationAttributeUsage.objects.filter(
+                    allocation_attribute__allocation_id=OuterRef('pk'),
+                    allocation_attribute__allocation_attribute_type=quota_in_bytes_aatype,
+                ).values('value')[:1],
+                output_field=fields.BigIntegerField()
+            )
         )).filter(
             annotated_usage__lte=1048576, # less than or equal to 1 MiB
             status__name='Active', # only active
