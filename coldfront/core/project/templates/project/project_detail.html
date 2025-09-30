@@ -31,19 +31,17 @@ Project Detail
   <hr>
 </div>
 
-{% if project.status.name != 'Archived' and request.user.is_superuser %}
+{% if request.user.is_superuser %}
   <div class="card mb-3 bg-light">
     <div class="card-header">
       <h3 class="d-inline" id="manage-project"><i class="fas fa-cubes" aria-hidden="true"></i> Manage Project</h3>
+      {% if project.status.name != 'Archived' %}
       <div class="float-right">
         {% if project.status.name in 'Active, New' %}
           <a class="btn btn-info" href="{% url 'project-update' project.pk %}" role="button"><i class="far fa-edit" aria-hidden="true"></i> Update Project Information</a>
           <a class="btn btn-info" href="{% url 'project-archive' project.id %}" role="button"><i class="fas fa-file-archive" aria-hidden="true"></i> Archive Project</a>
-        {% elif project.status.name == 'Archived' %}
-          <a class="btn btn-info" href="{% url 'project-unarchive' project.id %}" role="button"><i class="fas fa-file-archive" aria-hidden="true"></i> Reactivate Project</a>
         {% endif %}
       </div>
-    </div>
     {% comment %}
       <div class="card-body">
         <a class="btn btn-success" href="{% url 'project-add-users-search' project.pk %}" role="button"><i
@@ -56,6 +54,12 @@ Project Detail
               class="far fa-newspaper" aria-hidden="true"></i> Add Research Output</a>
       </div>
     {% endcomment %}
+      {% elif project.status.name == 'Archived' %}
+      <div class="float-right">
+        <a class="btn btn-info" href="{% url 'project-unarchive' project.id %}" role="button"><i class="fas fa-file-archive" aria-hidden="true"></i> Reactivate Project</a>
+      </div>
+      {% endif %}
+    </div>
   </div>
 {% endif %}
 
