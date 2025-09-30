@@ -553,9 +553,9 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
                 AllocationAttributeUsage.objects.filter(
                     allocation_attribute__allocation_id=OuterRef('pk'),
                     allocation_attribute__allocation_attribute_type=quota_in_bytes_aatype,
-                ).values('value')[:1],
-                output_field=fields.BigIntegerField()
-            )
+                ).values('value')[:1]
+            ),
+            output_field=fields.BigIntegerField()
         )).filter(
             annotated_usage__lte=1048576, # less than or equal to 1 MiB
             status__name='Active', # only active
