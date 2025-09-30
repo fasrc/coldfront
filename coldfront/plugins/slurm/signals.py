@@ -55,4 +55,3 @@ def allocation_activate_user_handler(sender, **kwargs):
         allocationuser_attribute_type=slurm_specs_allocuser_attrtype,
         defaults={"value": result}
     )
-

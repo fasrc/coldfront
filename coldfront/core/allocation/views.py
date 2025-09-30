@@ -1048,7 +1048,10 @@ class AllocationEditUserView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             try:
                 account = allocation_obj.project.title
                 allocation_user_attribute_edit.send(
-                    sender=self.__class__, user=allocationuser_obj, account=account, raw_share=form_data['value']
+                    sender=self.__class__,
+                    user=allocationuser_obj, account=account,
+                    cluster=allocationuser_obj.allocation.get_parent_resource.get_attribute('slurm_cluster'),
+                    raw_share=form_data['value']
                 )
             except Exception as e:
                 logger.exception(f'error encountered while trying to update allocationuser {allocation_obj}:{allocationuser_obj} rawshare: {e}')
@@ -1154,7 +1157,10 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
 
                 try:
                     account = allocation_user_obj.allocation.project.title
-                    allocation_user_remove_on_slurm.send(self.__class__, account=account, username=user_obj.username)
+                    allocation_user_remove_on_slurm.send(
+                        self.__class__, account=account, username=user_obj.username,
+                        cluster=allocation_user_obj.allocation.get_parent_resource.get_attribute('slurm_cluster')
+                    )
                     allocation_user_obj.status = removed_allocuser_status
                     allocation_user_obj.save()
                     allocation_remove_user.send(
@@ -1457,6 +1463,7 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
                                 sender=self.__class__,
                                 user=user,
                                 account=account,
+                                cluster=allocation.get_parent_resource.get_attribute('slurm_cluster'),
                                 raw_share=allocationuser_new_rawshare_value
                             )
                         except Exception as e:

@@ -661,11 +661,15 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                 current_rawshare = allocation.get_slurm_spec_value('RawShares')
                 new_rawshare = allocation_rawshares.get(str(allocation.pk), None)
                 if new_rawshare and current_rawshare != new_rawshare: # Ignore unchanged values
-                    logger.info(f'recognized changes in RawShares value for {allocation.project.title} slurm account: {current_rawshare} changed to {new_rawshare}')
+                    logger.info(
+                        'recognized changes in RawShares value for %s slurm account: %s changed to %s',
+                        allocation.project.title, current_rawshare, new_rawshare
+                    )
                     try:
                         allocation_raw_share_edit.send(
                             sender=self.__class__,
                             account=allocation.project.title,
+                            cluster=resource_obj.get_attribute('cluster_name'),
                             raw_share=new_rawshare
                         )
                         msg = f'RawShares value for {allocation.project.title} slurm account successfully updated from {current_rawshare} to {new_rawshare}'
