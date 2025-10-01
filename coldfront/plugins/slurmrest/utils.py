@@ -59,8 +59,8 @@ class SlurmApiConnection():
     def get_account(self, account_name, with_associations='true', with_coordinators='true'):
         account = self.slurmdb_api.slurmdb_v0041_get_account(
             account_name=account_name,
-            with_associations=with_associations,
-            with_coordinators=with_coordinators,
+            with_assocs=with_associations,
+            with_coords=with_coordinators,
         )
         if account.errors:
             raise Exception('error/s found in get_account output: %s', account.errors)
