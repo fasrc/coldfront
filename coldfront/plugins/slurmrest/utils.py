@@ -57,7 +57,7 @@ class SlurmApiConnection():
 
     # account methods
     def get_account(self, account_name, with_associations='true', with_coordinators='true'):
-        account = self.slurmdb_api.slurmdb_v0041_get_single_account(
+        account = self.slurmdb_api.slurmdb_v0041_get_account(
             account_name=account_name,
             with_associations=with_associations,
             with_coordinators=with_coordinators,
@@ -140,7 +140,7 @@ class SlurmApiConnection():
 
     # def check_assoc(self, user, cluster, account):
 
-    def remove_assoc(self, *, user_name=None, account_name=None, assoc_id=None, noop=SLURMREST_NOOP):
+    def remove_assoc(self, user_name=None, account_name=None, assoc_id=None, noop=SLURMREST_NOOP):
         """Remove association between a user and an account.
         Kwargs:
             user_name: name of user to be removed
@@ -212,6 +212,18 @@ class SlurmApiConnection():
         if users.errors:
             raise Exception('error/s found in get_users output: %s', users.errors)
         return users.to_dict()
+
+    def update_user(self, user_name, change_dict, noop=SLURMREST_NOOP):
+        user_dict = self.get_user(user_name)
+        for key, value in change_dict.items():
+            user_dict[key] = value
+        response = self._call_api(
+            self.slurmdb_api.slurmdb_v0041_post_user,
+            noop=noop,
+            **user_dict
+        )
+        logger.info('updated user: %s', response)
+        return response
 
 
     # qos methods
