@@ -56,7 +56,7 @@ class SlurmApiConnection():
 
 
     # account methods
-    def get_account(self, account_name, with_associations='true', with_coordinators='true'):
+    def get_account(self, account_name, with_associations=True, with_coordinators=True):
         account = self.slurmdb_api.slurmdb_v0041_get_account(
             account_name=account_name,
             with_assocs=with_associations,
@@ -202,7 +202,7 @@ class SlurmApiConnection():
 
     # user methods
     def get_user(self, user_name):
-        user = self.slurmdb_api.slurmdb_v0041_get_user(user_name=user_name)
+        user = self.slurmdb_api.slurmdb_v0041_get_user(user_name)
         if user.errors:
             raise Exception('error/s found in get_user output: %s', user.errors)
         return user.to_dict()
