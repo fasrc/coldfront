@@ -45,6 +45,11 @@ class Command(BaseCommand):
 
         for name, attribute_type, is_private, is_changeable in (
             ('slurm_specs', 'Attribute Expanded Text', False, True),
+            ('FairShare', 'Float', False, False),
+            ('NormShares', 'Float', False, False),
+            ('EffectvUsage', 'Float', False, False),
+            ('RawShare', 'Int', False, False),
+            ('RawUsage', 'Int', False, False),
         ):
             AllocationUserAttributeType.objects.update_or_create(
                 name=name,
