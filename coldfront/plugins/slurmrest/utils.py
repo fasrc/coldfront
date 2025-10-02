@@ -168,7 +168,7 @@ class SlurmApiConnection():
         response = self._call_api(
             self.slurmdb_api.slurmdb_v0041_delete_association,
             noop=noop,
-            **args
+            **arg_dict
         )
         logger.info("deleted associations: %s", response['removed_associations'])
         return response
