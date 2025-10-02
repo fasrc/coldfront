@@ -126,12 +126,16 @@ class SlurmApiConnection():
 
     def add_assoc(self, account_name, user_name, noop=SLURMREST_NOOP):
         association_dict = {
-            "associations": [{
-                'account': account_name, 'user': user_name, 'cluster': self.active_cluster['name']
-            }]
+            "v0040_openapi_assocs_resp": {
+                "associations": [{
+                    'account': account_name,
+                    'user': user_name,
+                    'cluster': self.active_cluster['name']
+                }]
+            }
         }
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0040_post_user_association,
+            self.slurmdb_api.slurmdb_v0040_post_associations,
             noop=noop,
             **association_dict
         )
@@ -159,6 +163,7 @@ class SlurmApiConnection():
             args = {'user': user_name, 'account': account_name}
 
         args['cluster'] = self.active_cluster['name']
+        arg_dict = {'v0040_openapi_assocs_resp': args}
 
         response = self._call_api(
             self.slurmdb_api.slurmdb_v0041_delete_association,
