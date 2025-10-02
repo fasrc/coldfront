@@ -166,6 +166,15 @@ class SlurmApiConnection():
         logger.info("deleted associations: %s", response['removed_associations'])
         return response
 
+
+    # config methods
+    def get_config(self):
+        config = self.slurm_api.slurm_v0041_get_config()
+        if config.errors:
+            raise Exception('error/s found in get_config output: %s', config.errors)
+        return config.to_dict()
+
+
     # cluster methods
     def get_clusters(self):
         clusters = self.slurmdb_api.slurmdb_v0041_get_clusters()
@@ -274,10 +283,29 @@ class SlurmApiConnection():
     # share methods
     def get_shares(self, accounts=None, users=None):
         """Return share information.
-        accounts (list, default None): accounts for which to get shares
-        users (list, default None): users for which to get shares
+        accounts (string, default None): accounts for which to get shares
+        users (string, default None): users for which to get shares
         """
         shares = self.slurm_api.slurm_v0041_get_shares(accounts=accounts, users=users)
         if shares.errors:
             raise Exception('error/s found in get_shares output: %s', shares.errors)
         return shares.to_dict()
+
+
+    # wckey methods
+    def get_wckeys(self):
+        wckeys = self.slurmdb_api.slurmdb_v0041_get_wckeys()
+        if wckeys.errors:
+            raise Exception('error/s found in get_wckeys output: %s', wckeys.errors)
+        return wckeys.to_dict()
+
+
+def calculate_fairshare_factor(normalized_share, effective_usage):
+    """Calculate fairshare factor based on normalized share and effective usage.
+    Formula from Slurm documentation:
+    https://slurm.schedmd.com/fair_share.html#fair_share_calculation
+    """
+    if normalized_share <= 0:
+        return 0
+    factor = 2 ** (-effective_usage / normalized_share)
+    return max(factor, 0)  # Ensure factor is not negative
