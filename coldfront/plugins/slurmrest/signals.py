@@ -27,7 +27,6 @@ def allocation_add_user_handler(sender, **kwargs):
     slurm_cluster = kwargs.get('cluster')
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
-    raise NotImplementedError("Adding AllocationUser is not yet implemented for Slurm REST API integration.")
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
     api.add_assoc(kwargs['username'], kwargs['account'])
 

@@ -126,12 +126,12 @@ class SlurmApiConnection():
 
     def add_assoc(self, account_name, user_name, noop=SLURMREST_NOOP):
         association_dict = {
-            'v0041_openapi_assocs_resp': {
-                'associations': {'account': account_name, 'user': user_name}
-            }
+            "associations": [{
+                'account': account_name, 'user': user_name, 'cluster': self.active_cluster['name']
+            }]
         }
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0041_post_associations,
+            self.slurmdb_api.slurmdb_v0040_post_user_association,
             noop=noop,
             **association_dict
         )
@@ -157,6 +157,8 @@ class SlurmApiConnection():
             if not (user_name and account_name):
                 raise ValueError("Must supply assoc_id OR user_name/account_name.")
             args = {'user': user_name, 'account': account_name}
+
+        args['cluster'] = self.active_cluster['name']
 
         response = self._call_api(
             self.slurmdb_api.slurmdb_v0041_delete_association,
