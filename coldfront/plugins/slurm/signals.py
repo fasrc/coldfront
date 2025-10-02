@@ -19,26 +19,41 @@ from coldfront.plugins.slurm.utils import (
 
 @receiver(allocation_user_attribute_edit)
 def allocation_user_attribute_edit_handler(sender, **kwargs):
+    slurm_cluster = kwargs.get('cluster')
+    if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'CLI':
+        return
     slurm_update_raw_share(kwargs['user'], kwargs['account'], str(kwargs['raw_share']))
 
 
 @receiver(allocation_user_remove_on_slurm)
 def allocation_user_deactivate_handler(sender, **kwargs):
+    slurm_cluster = kwargs.get('cluster')
+    if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'CLI':
+        return
     slurm_remove_assoc(kwargs['username'], kwargs['account'])
 
 
 @receiver(allocation_raw_share_edit)
 def allocation_raw_share_edit_handler(sender, **kwargs):
+    slurm_cluster = kwargs.get('cluster')
+    if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'CLI':
+        return
     slurm_update_account_raw_share(kwargs['account'], str(kwargs['raw_share']))
 
 
 @receiver(allocation_user_add_on_slurm)
 def allocation_add_user_handler(sender, **kwargs):
+    slurm_cluster = kwargs.get('cluster')
+    if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'CLI':
+        return
     slurm_add_assoc(kwargs['username'], kwargs['cluster'], kwargs['account'], specs=['Fairshare=parent'])
 
 @receiver(allocation_activate_user)
 def allocation_activate_user_handler(sender, **kwargs):
     """import slurm data about user to coldfront when user is activated"""
+    slurm_cluster = kwargs.get('cluster')
+    if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'CLI':
+        return
     allocationuser = AllocationUser.objects.get(pk=kwargs['allocation_user_pk'])
     username = allocationuser.user.username
     project_title = allocationuser.allocation.project.title

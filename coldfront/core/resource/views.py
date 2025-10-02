@@ -679,6 +679,10 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                         err = f'Problem encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
                         logger.exception(err)
                         messages.error(request, err)
+                    except Exception as e:
+                        err = f'Problem encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
+                        logger.exception(err)
+                        messages.error(request, err)
                     spec_update = allocation.update_slurm_spec_value('RawShares', new_rawshare)
                     if spec_update != True:
                         err = f'Slurm account for {allocation.project.title} successfully updated, but a problem was encountered while reflecting the updates in ColdFront: {spec_update}'

@@ -955,7 +955,11 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         cluster=cluster
                     )
                 except Exception as e:
-                    logger.exception(f"signal processes for addition of user {username} to allocation {allocation_obj.pk} ({allocation_obj.project.title} {allocation_obj.get_parent_resource.name}) failed: {e}")
+                    logger.exception(
+                        "signal processes for addition of user %s to account %s (%s %s) failed: %s",
+                        username, allocation_obj.pk, allocation_obj.project.title,
+                        allocation_obj.get_parent_resource.name, e
+                    )
                     err = f"addition of user {username} to allocation {allocation_obj.pk} ({allocation_obj.project.title} {allocation_obj.get_parent_resource.name}) failed: {e}"
                     messages.error(request, err)
                     continue
@@ -1169,6 +1173,9 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
                     remove_users_count += 1
                 except SlurmError as e:
                     error_message = f"You can't remove this AllocationUser ({user_form_data.get('username')}) while they are running a job using this account. Try again after the job has been completed or cancelled."
+                    messages.error(request, error_message)
+                except Exception as e:
+                    error_message = f"An error occurred while trying to remove AllocationUser ({user_form_data.get('username')}): {e}"
                     messages.error(request, error_message)
 
             user_plural = 'user' if remove_users_count == 1 else 'users'
