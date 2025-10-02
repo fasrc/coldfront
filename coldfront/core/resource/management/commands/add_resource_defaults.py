@@ -32,6 +32,7 @@ class Command(BaseCommand):
             ('CPU Count', 'Int'),
             ('GPU Count', 'Int'),
             ('Features', 'Text'),
+            ('slurm_integration', 'Text'),
             # UBCCR
             ('Core Count', 'Int'),
             # ('expiry_time', 'Int'),
