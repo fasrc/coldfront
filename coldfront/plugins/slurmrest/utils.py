@@ -314,4 +314,4 @@ def calculate_fairshare_factor(normalized_share, effective_usage):
     if normalized_share <= 0:
         return 0
     factor = 2 ** (-effective_usage / normalized_share)
-    return max(factor, 0)  # Ensure factor is not negative
+    return factor
