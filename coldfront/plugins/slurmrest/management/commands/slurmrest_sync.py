@@ -21,9 +21,6 @@ from coldfront.plugins.slurmrest.utils import (
         SlurmApiConnection,
         calculate_fairshare_factor,
 )
-from coldfront.plugins.slurmrest.associations import (
-    get_or_create_slurm_account_allocation,
-)
 
 SLURMREST_CLUSTER_ATTRIBUTE_NAME = import_from_settings('SLURMREST_CLUSTER_ATTRIBUTE_NAME', 'slurm_cluster')
 SLURM_IGNORE_USERS = import_from_settings('SLURMREST_IGNORE_USERS', [])
