@@ -91,12 +91,12 @@ class Command(BaseCommand):
             # get cluster data:
             # shares
             shares = slurm_cluster.get_shares()
-            share_dict = {
+            share_list = [
                 share for share in shares['shares']['shares']
                 if share['name'] not in SLURM_IGNORE_ACCOUNTS + SLURM_IGNORE_USERS
-            }
+            ]
             calculate_fairshare = False
-            if not [s for s in share_dict if s['fairshare']['factor']['number'] != 0]:
+            if not [s for s in share_list if s['fairshare']['factor']['number'] != 0]:
                 logger.warning("No valid fairshare values found for cluster %s, skipping update", cluster.name)
                 calculate_fairshare = True
             # accounts/associations
@@ -109,7 +109,7 @@ class Command(BaseCommand):
             cluster_resource = Resource.objects.get(name=cluster.name)
             for account in account_dicts:
                 try:
-                    project = Project.objects.filter(title=account['name']).first()
+                    project = Project.objects.get(title=account['name'])
                 except Project.DoesNotExist:
                     logger.error(
                         "Project %s not in ColdFront, cannot create record for cluster %s share",
@@ -117,7 +117,7 @@ class Command(BaseCommand):
                     )
                     continue
                 # get or create related ColdFront allocation
-                allocation = get_or_create_allocation(project, cluster_resource)
+                allocation, _ = get_or_create_allocation(project, cluster_resource)
                 allocation.allocationattribute_set.get_or_create(
                     allocation_attribute_type=slurm_acct_name_attr_type,
                     defaults={'value': account['name']}
@@ -133,7 +133,7 @@ class Command(BaseCommand):
 
                 # add/update slurm specs
                 group_share = next(
-                    share for share in share_dict if share['name'] == account['name']
+                    share for share in share_list if share['name'] == account['name']
                 )
                 normshares = group_share['shares_normalized']['number']
                 effective_usage = group_share['effective_usage']['number']
@@ -145,15 +145,15 @@ class Command(BaseCommand):
                     fairshare_factor = group_share['fairshare']['factor']['number']
                 spec_mapping = [
                     {'attrtype': rawshares_aattr_type, 'value': group_share['shares']['number']},
-                    {'attrtype': normshares_aattr_type, 'value': normshares},
+                    {'attrtype': normshares_aattr_type, 'value': round(normshares, 6)},
                     {'attrtype': rawusage_aattr_type, 'value': group_share['usage']},
-                    {'attrtype': fairshare_aattr_type, 'value': fairshare_factor},
-                    {'attrtype': effectvusage_aattr_type, 'value': effective_usage},
+                    {'attrtype': fairshare_aattr_type, 'value': round(fairshare_factor, 6)},
+                    {'attrtype': effectvusage_aattr_type, 'value': round(effective_usage, 6)},
                         ]
 
                 for spec_pair in spec_mapping:
                     alloc_attr, created = allocation.allocationattribute_set.update_or_create(
-                        allocationattributetype=spec_pair['attrtype'],
+                        allocation_attribute_type=spec_pair['attrtype'],
                         defaults={'value': spec_pair['value']}
                     )
 
@@ -164,7 +164,7 @@ class Command(BaseCommand):
                 )
                 # add missing users
                 user_shares = [
-                    share for share in share_dict if share['parent'] == account['name']
+                    share for share in share_list if share['parent'] == account['name']
                 ]
                 for user_name in account_users:
                     if user_name in SLURM_IGNORE_USERS:
@@ -217,10 +217,10 @@ class Command(BaseCommand):
                         fairshare_factor = user_share['fairshare']['factor']['number']
                     spec_mapping = [
                         {'attrtype': rawshares_auattr_type, 'value': user_share['shares']['number']},
-                        {'attrtype': normshares_auattr_type, 'value': normshares},
+                        {'attrtype': normshares_auattr_type, 'value': round(normshares, 6)},
                         {'attrtype': rawusage_auattr_type, 'value': user_share['usage']},
-                        {'attrtype': fairshare_auattr_type, 'value': fairshare_factor},
-                        {'attrtype': effectvusage_auattr_type, 'value': effective_usage},
+                        {'attrtype': fairshare_auattr_type, 'value': round(fairshare_factor, 6)},
+                        {'attrtype': effectvusage_auattr_type, 'value': round(effective_usage, 6)},
                     ]
                     for spec_pair in spec_mapping:
                         alloc_user_attr, created = alloc_user.allocationuserattribute_set.update_or_create(
@@ -230,6 +230,7 @@ class Command(BaseCommand):
 
             # partitions
             partitions = slurm_cluster.get_partitions()
+            print(partitions)
             partition_names = [part['name'] for part in partitions['partitions']]
             # update allocation attributes for partitions
 

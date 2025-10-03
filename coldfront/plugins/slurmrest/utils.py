@@ -211,7 +211,7 @@ class SlurmApiConnection():
 
     # partition methods
     def get_partitions(self, update_time=None, flags=None):
-        partitions = self.slurm_api.slurm_v0041_get_partitions(update_time=update_time, flags=flags)
+        partitions = self.slurm_api.slurm_v0042_get_partitions(update_time=update_time, flags=flags)
         return partitions.to_dict()
 
 
@@ -251,7 +251,7 @@ class SlurmApiConnection():
 
     def get_qos(self, qos_name):
         """Get QoS entry by name."""
-        qos = self.slurmdb_api.slurmdb_v0041_get_single_qos(qos_name=qos_name)
+        qos = self.slurmdb_api.slurmdb_v0042_get_qos(qos_name=qos_name)
         if qos.errors:
             raise Exception('error/s found in get_qos output: %s', qos.errors)
         return qos.to_dict()
@@ -270,7 +270,7 @@ class SlurmApiConnection():
             }
         }
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0041_post_qos,
+            self.slurmdb_api.slurmdb_v0042_post_qos,
             noop=noop,
             **qos_dict
         )
@@ -279,7 +279,7 @@ class SlurmApiConnection():
 
     def remove_qos(self, qos_name, noop=SLURMREST_NOOP):
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0041_delete_single_qos,
+            self.slurmdb_api.slurmdb_v0042_delete_qos,
             noop=noop,
             **{'qos': qos_name}
         )
@@ -292,7 +292,7 @@ class SlurmApiConnection():
         accounts (string, default None): accounts for which to get shares
         users (string, default None): users for which to get shares
         """
-        shares = self.slurm_api.slurm_v0041_get_shares(accounts=accounts, users=users)
+        shares = self.slurm_api.slurm_v0042_get_shares(accounts=accounts, users=users)
         if shares.errors:
             raise Exception('error/s found in get_shares output: %s', shares.errors)
         return shares.to_dict()
@@ -300,7 +300,7 @@ class SlurmApiConnection():
 
     # wckey methods
     def get_wckeys(self):
-        wckeys = self.slurmdb_api.slurmdb_v0041_get_wckeys()
+        wckeys = self.slurmdb_api.slurmdb_v0042_get_wckeys()
         if wckeys.errors:
             raise Exception('error/s found in get_wckeys output: %s', wckeys.errors)
         return wckeys.to_dict()
