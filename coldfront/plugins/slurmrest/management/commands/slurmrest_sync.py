@@ -60,6 +60,7 @@ class Command(BaseCommand):
             return
         # Process each cluster
         allocationuser_active_status = AllocationUserStatusChoice.objects.get(name="Active")
+        allocationuser_inactive_status = AllocationUserStatusChoice.objects.get(name="Inactive")
         allocation_inactive_status = AllocationStatusChoice.objects.get(name='Inactive')
 
         slurm_acct_name_attr_type = AllocationAttributeType.objects.get(
@@ -158,7 +159,10 @@ class Command(BaseCommand):
                     )
 
                 # make list of users and update according allocation
-                account_users = [assoc['user'] for assoc in account['associations']]
+                account_users = [
+                    assoc['user'] for assoc in account['associations']
+                    if assoc['user'] not in SLURM_IGNORE_USERS
+                ]
                 allocation_users = allocation.allocationuser_set.all().values_list(
                     'user__username', flat=True
                 )
@@ -166,37 +170,40 @@ class Command(BaseCommand):
                 user_shares = [
                     share for share in share_list if share['parent'] == account['name']
                 ]
-                for user_name in account_users:
-                    if user_name in SLURM_IGNORE_USERS:
-                        continue
-                    if user_name not in allocation_users:
-                        try:
-                            user = get_user_model().objects.get(username=user_name)
-                        except get_user_model().DoesNotExist:
-                            logger.error(
-                                "User %s not found in ColdFront, cannot add to %s allocation for project %s",
-                                user_name, cluster.name, account['name']
-                            )
-                            continue
+                for user_name in allocation_users:
+                    if user_name not in account_users:
                         if not self.noop:
-                            alloc_user = allocation.allocationuser_set.create(
-                                user=user, status=allocationuser_active_status
+                            alloc_user = allocation.allocationuser_set.get(
+                                user__username=user_name
                             )
+                            alloc_user.status = allocationuser_inactive_status
+                            alloc_user.save()
                         logger.info(
-                            "Added user %s to %s allocation for project %s",
+                            "Set status to Removed for user %s in %s allocation for project %s",
                             user_name, cluster.name, account['name']
                         )
-                    else:
-                        # ensure the user is active in the allocation
-                        alloc_user = allocation.allocationuser_set.get(user__username=user_name)
-                        if not alloc_user.status == allocationuser_active_status:
-                            if not self.noop:
-                                alloc_user.status = allocationuser_active_status
-                                alloc_user.save()
+                for user_name in account_users:
+                    try:
+                        user = get_user_model().objects.get(username=user_name)
+                    except get_user_model().DoesNotExist:
+                        logger.error(
+                            "User %s not found in ColdFront, cannot add to %s allocation for project %s",
+                            user_name, cluster.name, account['name']
+                        )
+                        continue
+                    if not self.noop:
+                        alloc_user, created = allocation.allocationuser_set.update_or_create(
+                            user=user, defaults={
+                                'status': allocationuser_active_status,
+                                'unit': 'CPU Hours'
+                            }
+                        )
+                        if created:
                             logger.info(
-                                "Re-activated user %s in %s allocation for project %s",
+                                "Added user %s to %s allocation for project %s",
                                 user_name, cluster.name, account['name']
                             )
+
                     alloc_user = allocation.allocationuser_set.get(user__username=user_name)
                     user_share = next(
                         (share for share in user_shares if share['name'] == user_name), None
@@ -221,7 +228,7 @@ class Command(BaseCommand):
                         {'attrtype': effectvusage_auattr_type, 'value': round(effective_usage, 6)},
                     ]
                     for spec_pair in spec_mapping:
-                        alloc_user_attr, created = alloc_user.allocationuserattribute_set.update_or_create(
+                        alloc_user.allocationuserattribute_set.update_or_create(
                             allocationuser_attribute_type=spec_pair['attrtype'],
                             defaults={'value': spec_pair['value']}
                         )
@@ -231,6 +238,4 @@ class Command(BaseCommand):
             print(partitions)
             partition_names = [part['name'] for part in partitions['partitions']]
             # update allocation attributes for partitions
-
-
 
