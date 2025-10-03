@@ -972,9 +972,9 @@ class AllocationUser(TimeStampedModel):
 
     @property
     def effectvusage(self):
-        effectvusage = self.get_attribute('EffectiveUsage')
+        effectvusage = self.get_attribute('EffectvUsage')
         if not effectvusage:
-            effectvusage = self.get_slurm_spec_value('EffectiveUsage')
+            effectvusage = self.get_slurm_spec_value('EffectvUsage')
         return effectvusage
 
     @property
