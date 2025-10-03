@@ -54,7 +54,7 @@ class Command(BaseCommand):
         clusters = Resource.objects.filter(Q(
             Q(resourceattribute__resource_attribute_type__name=SLURMREST_CLUSTER_ATTRIBUTE_NAME)
             & additional_query
-        )).distinct()
+        )).filter(resourceattribute__value='API').distinct()
         if not clusters:
             logger.info("No clusters found to sync")
             return
