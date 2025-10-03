@@ -175,7 +175,7 @@ class SlurmApiConnection():
 
     # config methods
     def get_config(self):
-        config = self.slurm_api.slurm_v0041_get_config()
+        config = self.slurm_api.slurmdb_v0041_get_config()
         if config.errors:
             raise Exception('error/s found in get_config output: %s', config.errors)
         return config.to_dict()
@@ -251,7 +251,7 @@ class SlurmApiConnection():
 
     def get_qos(self, qos_name):
         """Get QoS entry by name."""
-        qos = self.slurmdb_api.slurmdb_v0042_get_qos(qos_name=qos_name)
+        qos = self.slurmdb_api.slurmdb_v0042_get_single_qos(qos_name=qos_name)
         if qos.errors:
             raise Exception('error/s found in get_qos output: %s', qos.errors)
         return qos.to_dict()

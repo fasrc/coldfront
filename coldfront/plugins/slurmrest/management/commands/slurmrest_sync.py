@@ -139,7 +139,7 @@ class Command(BaseCommand):
                 effective_usage = group_share['effective_usage']['number']
                 if calculate_fairshare:
                     fairshare_factor = calculate_fairshare_factor(
-                        normshares, shares['shares']['total_usage']['number']
+                        normshares, group_share['shares']['number']
                     )
                 else:
                     fairshare_factor = group_share['fairshare']['factor']['number']
@@ -209,14 +209,21 @@ class Command(BaseCommand):
                         continue
                     normshares = user_share['shares_normalized']['number']
                     effective_usage = user_share['effective_usage']['number']
+                    rawshares = user_share['shares']['number']
+                    if rawshares > 200000:
+                        rawshares = 'parent'
                     if calculate_fairshare:
+                        if rawshares == 'parent':
+                            rawshares_for_factor = group_share['shares']['number']
+                        else:
+                            rawshares_for_factor = rawshares
                         fairshare_factor = calculate_fairshare_factor(
-                            normshares, shares['shares']['total_usage']['number']
+                            normshares, rawshares_for_factor
                         )
                     else:
                         fairshare_factor = user_share['fairshare']['factor']['number']
                     spec_mapping = [
-                        {'attrtype': rawshares_auattr_type, 'value': user_share['shares']['number']},
+                        {'attrtype': rawshares_auattr_type, 'value': rawshares},
                         {'attrtype': normshares_auattr_type, 'value': round(normshares, 6)},
                         {'attrtype': rawusage_auattr_type, 'value': user_share['usage']},
                         {'attrtype': fairshare_auattr_type, 'value': round(fairshare_factor, 6)},
