@@ -48,7 +48,7 @@ class Command(BaseCommand):
             ('FairShare', 'Float', False, False),
             ('NormShares', 'Float', False, False),
             ('EffectvUsage', 'Float', False, False),
-            ('RawShare', 'Int', False, False),
+            ('RawShares', 'Int', False, False),
             ('RawUsage', 'Int', False, False),
         ):
             AllocationUserAttributeType.objects.update_or_create(
@@ -78,7 +78,7 @@ class Command(BaseCommand):
             ('FairShare', 'Float', False, False, False),
             ('NormShares', 'Float', False, False, False),
             ('EffectvUsage', 'Float', False, False, False),
-            ('RawShare', 'Int', False, False, False),
+            ('RawShares', 'Int', False, False, False),
             ('RawUsage', 'Int', False, False, False),
             # UBCCR defaults
             ('Cloud Account Name', 'Text', False, False, False),
