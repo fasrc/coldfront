@@ -69,14 +69,11 @@ def allocation_raw_share_edit_handler(sender, **kwargs):
 @receiver(allocation_activate_user)
 def allocation_activate_user_handler(sender, **kwargs):
     """import slurm data about user to coldfront when user is activated"""
-    slurm_cluster = Resource.objects.get(
-        Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
-        Q(resourceattribute__value=kwargs.get('cluster'))
-    )
-    if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
+    allocationuser = AllocationUser.objects.get(pk=kwargs['allocation_user_pk'])
+    slurm_cluster = allocationuser.allocation.get_parent_resource
+    if slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
-    allocationuser = AllocationUser.objects.get(pk=kwargs['allocation_user_pk'])
     username = allocationuser.user.username
     project_title = allocationuser.allocation.project.title
 

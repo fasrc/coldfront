@@ -77,15 +77,12 @@ def allocation_add_user_handler(sender, **kwargs):
 @receiver(allocation_activate_user)
 def allocation_activate_user_handler(sender, **kwargs):
     """import slurm data about user to coldfront when user is activated"""
-    slurm_cluster = Resource.objects.get(
-        Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
-        Q(resourceattribute__value=kwargs.get('cluster'))
-    )
-    if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'CLI':
-        return
     allocationuser = AllocationUser.objects.get(pk=kwargs['allocation_user_pk'])
     username = allocationuser.user.username
     project_title = allocationuser.allocation.project.title
+    slurm_cluster = allocationuser.allocation.get_parent_resource
+    if slurm_cluster.get_attribute('slurm_integration') != 'CLI':
+        return
     slurm_stats = slurm_get_user_info(username, project_title)
     keys = slurm_stats[0].split('|')
     values = next(i for i in slurm_stats if username in i and project_title in i).split('|')
