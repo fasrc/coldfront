@@ -1,4 +1,5 @@
 from django.dispatch import receiver
+from django.db.models import Q
 
 from coldfront.core.allocation.models import AllocationUser, AllocationUserAttributeType
 from coldfront.core.allocation.signals import (
@@ -16,8 +17,8 @@ from coldfront.plugins.slurmrest.utils import SlurmApiConnection, SlurmError
 def allocation_user_attribute_edit_handler(sender, **kwargs):
     """Update Slurm user's raw share when the AllocationUser's raw share attribute is edited."""
     slurm_cluster = Resource.objects.get(
-        resourceattribute__resource_attribute_type__name='slurm_cluster',
-        resourceattribute__value=kwargs.get('cluster')
+        Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
+        Q(resourceattribute__value=kwargs.get('cluster'))
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
@@ -29,8 +30,8 @@ def allocation_user_attribute_edit_handler(sender, **kwargs):
 @receiver(allocation_user_add_on_slurm)
 def allocation_add_user_handler(sender, **kwargs):
     slurm_cluster = Resource.objects.get(
-        resourceattribute__resource_attribute_type__name='slurm_cluster',
-        resourceattribute__value=kwargs.get('cluster')
+        Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
+        Q(resourceattribute__value=kwargs.get('cluster'))
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
@@ -42,8 +43,8 @@ def allocation_add_user_handler(sender, **kwargs):
 def allocation_user_deactivate_handler(sender, **kwargs):
     """Remove Slurm association when the AllocationUser is removed."""
     slurm_cluster = Resource.objects.get(
-        resourceattribute__resource_attribute_type__name='slurm_cluster',
-        resourceattribute__value=kwargs.get('cluster')
+        Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
+        Q(resourceattribute__value=kwargs.get('cluster'))
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
@@ -55,8 +56,8 @@ def allocation_user_deactivate_handler(sender, **kwargs):
 def allocation_raw_share_edit_handler(sender, **kwargs):
     """Update Slurm account's raw share when the Allocation's raw share attribute is edited."""
     slurm_cluster = Resource.objects.get(
-        resourceattribute__resource_attribute_type__name='slurm_cluster',
-        resourceattribute__value=kwargs.get('cluster')
+        Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
+        Q(resourceattribute__value=kwargs.get('cluster'))
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
@@ -69,8 +70,8 @@ def allocation_raw_share_edit_handler(sender, **kwargs):
 def allocation_activate_user_handler(sender, **kwargs):
     """import slurm data about user to coldfront when user is activated"""
     slurm_cluster = Resource.objects.get(
-        resourceattribute__resource_attribute_type__name='slurm_cluster',
-        resourceattribute__value=kwargs.get('cluster')
+        Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
+        Q(resourceattribute__value=kwargs.get('cluster'))
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
