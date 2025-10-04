@@ -36,7 +36,7 @@ def slurmrest_allocation_add_user_handler(sender, **kwargs):
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
-    api.add_assoc(kwargs['username'], kwargs['account'])
+    api.add_assoc(kwargs['account'], kwargs['username'])
 
 
 @receiver(allocation_user_remove_on_slurm)
