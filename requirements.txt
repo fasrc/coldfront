@@ -68,3 +68,4 @@ reportlab==4.0.5
 vastpy
 xhtml2pdf==0.2.15
 XlsxWriter
+git+https://github.com/fasrc/slurmrest_python_sdk.git

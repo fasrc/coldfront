@@ -1,9 +1,31 @@
+import logging
 from django.db.models import Q
 
-from coldfront.core.allocation.models import (AllocationUser,
+from coldfront.core.allocation.models import (Allocation,
+                                              AllocationStatusChoice,
+                                              AllocationUser,
                                               AllocationUserStatusChoice)
 from coldfront.core.resource.models import Resource
 
+logger = logging.getLogger(__name__)
+
+def get_or_create_allocation(project_obj, resource_obj):
+    """Get or create an Allocation for the given Project and Resource."""
+    created = False
+    try:
+        allocation = Allocation.objects.get(
+            project=project_obj, resources=resource_obj
+        )
+    except Allocation.DoesNotExist:
+        allocation = Allocation.objects.create(
+            project=project_obj, status=AllocationStatusChoice.objects.get(name="Active")
+        )
+        allocation.resources.add(resource_obj)
+        logger.info("Created new allocation entry for project %s with resource %s: %s",
+            project_obj.title, resource_obj.name, allocation.pk
+        )
+        created = True
+    return allocation, created
 
 def set_allocation_user_status_to_error(allocation_user_pk):
     allocation_user_obj = AllocationUser.objects.get(pk=allocation_user_pk)

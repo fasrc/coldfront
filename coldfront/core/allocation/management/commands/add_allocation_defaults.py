@@ -45,6 +45,11 @@ class Command(BaseCommand):
 
         for name, attribute_type, is_private, is_changeable in (
             ('slurm_specs', 'Attribute Expanded Text', False, True),
+            ('FairShare', 'Float', False, False),
+            ('NormShares', 'Float', False, False),
+            ('EffectvUsage', 'Float', False, False),
+            ('RawShares', 'Text', False, False),
+            ('RawUsage', 'Int', False, False),
         ):
             AllocationUserAttributeType.objects.update_or_create(
                 name=name,
@@ -73,6 +78,7 @@ class Command(BaseCommand):
             ('FairShare', 'Float', False, False, False),
             ('NormShares', 'Float', False, False, False),
             ('EffectvUsage', 'Float', False, False, False),
+            ('RawShares', 'Text', False, False, False),
             ('RawUsage', 'Int', False, False, False),
             # UBCCR defaults
             ('Cloud Account Name', 'Text', False, False, False),
