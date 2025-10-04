@@ -169,7 +169,7 @@ class SlurmApiConnection():
             noop=noop,
             **args
         )
-        logger.info("deleted associations: %s", response['removed_associations'])
+        logger.info("deleted association: %s", args)
         return response
 
 

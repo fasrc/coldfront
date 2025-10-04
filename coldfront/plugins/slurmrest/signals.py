@@ -79,8 +79,8 @@ def slurmrest_allocation_activate_user_handler(sender, **kwargs):
 
     share_data = api.get_shares()
     user_data = next(
-        e for e in share_data['shares']['shares']
-        if e['name'] == username and e['parent'] == project_title
+        (e for e in share_data['shares']['shares']
+        if e['name'] == username and e['parent'] == project_title), None
     )
     if not user_data:
         raise SlurmError(f"Unable to find Slurm user {username} for account {project_title} on cluster {slurm_cluster.name}")
