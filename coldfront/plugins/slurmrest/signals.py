@@ -8,13 +8,14 @@ from coldfront.core.allocation.signals import (
     allocation_activate_user,
     allocation_raw_share_edit
 )
+from coldfront.core.resource.models import Resource
 from coldfront.plugins.slurmrest.utils import SlurmApiConnection, SlurmError
 
 
 @receiver(allocation_user_attribute_edit)
 def allocation_user_attribute_edit_handler(sender, **kwargs):
     """Update Slurm user's raw share when the AllocationUser's raw share attribute is edited."""
-    slurm_cluster = kwargs.get('cluster')
+    slurm_cluster = Resource.objects.get(resourceattribute__value=kwargs.get('cluster'))
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
     raise NotImplementedError("Editing AllocationUser attributes is not yet implemented for Slurm REST API integration.")
@@ -24,7 +25,7 @@ def allocation_user_attribute_edit_handler(sender, **kwargs):
 
 @receiver(allocation_user_add_on_slurm)
 def allocation_add_user_handler(sender, **kwargs):
-    slurm_cluster = kwargs.get('cluster')
+    slurm_cluster = Resource.objects.get(resourceattribute__value=kwargs.get('cluster'))
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
@@ -34,10 +35,9 @@ def allocation_add_user_handler(sender, **kwargs):
 @receiver(allocation_user_remove_on_slurm)
 def allocation_user_deactivate_handler(sender, **kwargs):
     """Remove Slurm association when the AllocationUser is removed."""
-    slurm_cluster = kwargs.get('cluster')
+    slurm_cluster = Resource.objects.get(resourceattribute__value=kwargs.get('cluster'))
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
-    raise NotImplementedError("Removing AllocationUser is not yet implemented for Slurm REST API integration.")
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
     api.remove_assoc(user_name=kwargs['username'], account_name=kwargs['account'])
 
@@ -45,7 +45,7 @@ def allocation_user_deactivate_handler(sender, **kwargs):
 @receiver(allocation_raw_share_edit)
 def allocation_raw_share_edit_handler(sender, **kwargs):
     """Update Slurm account's raw share when the Allocation's raw share attribute is edited."""
-    slurm_cluster = kwargs.get('cluster')
+    slurm_cluster = Resource.objects.get(resourceattribute__value=kwargs.get('cluster'))
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
     raise NotImplementedError("Editing Allocation attributes is not yet implemented for Slurm REST API integration.")
@@ -56,7 +56,7 @@ def allocation_raw_share_edit_handler(sender, **kwargs):
 @receiver(allocation_activate_user)
 def allocation_activate_user_handler(sender, **kwargs):
     """import slurm data about user to coldfront when user is activated"""
-    slurm_cluster = kwargs.get('cluster')
+    slurm_cluster = Resource.objects.get(resourceattribute__value=kwargs.get('cluster'))
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
