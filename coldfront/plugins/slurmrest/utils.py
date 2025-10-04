@@ -42,7 +42,7 @@ class SlurmApiConnection():
             return api_kwargs
 
         try:
-            response = api_func(api_kwargs)
+            response = api_func(**api_kwargs)
         except Exception as exc:
             logger.exception("Exception when calling %s: %s", api_func.__name__, exc)
             raise
