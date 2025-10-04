@@ -949,8 +949,8 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 
                 account = allocation_obj.project.title
                 cluster = allocation_obj.get_cluster.get_attribute('slurm_cluster')
-                logger.warning(f"Username {form_data.get('username')} cluster {cluster}")
                 username = form_data.get('username')
+                logger.warning(f"Username {username} account {account} cluster {cluster}")
                 try:
                     allocation_user_add_on_slurm.send(
                         sender=self.__class__,
