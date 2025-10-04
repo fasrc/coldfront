@@ -14,7 +14,7 @@ from coldfront.plugins.slurmrest.utils import SlurmApiConnection, SlurmError
 
 
 @receiver(allocation_user_attribute_edit)
-def allocation_user_attribute_edit_handler(sender, **kwargs):
+def slurmrest_allocation_user_attribute_edit_handler(sender, **kwargs):
     """Update Slurm user's raw share when the AllocationUser's raw share attribute is edited."""
     slurm_cluster = Resource.objects.get(
         Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
@@ -28,7 +28,7 @@ def allocation_user_attribute_edit_handler(sender, **kwargs):
 
 
 @receiver(allocation_user_add_on_slurm)
-def allocation_add_user_handler(sender, **kwargs):
+def slurmrest_allocation_add_user_handler(sender, **kwargs):
     slurm_cluster = Resource.objects.get(
         Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
         Q(resourceattribute__value=kwargs.get('cluster'))
@@ -40,7 +40,7 @@ def allocation_add_user_handler(sender, **kwargs):
 
 
 @receiver(allocation_user_remove_on_slurm)
-def allocation_user_deactivate_handler(sender, **kwargs):
+def slurmrest_allocation_user_deactivate_handler(sender, **kwargs):
     """Remove Slurm association when the AllocationUser is removed."""
     slurm_cluster = Resource.objects.get(
         Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
@@ -53,7 +53,7 @@ def allocation_user_deactivate_handler(sender, **kwargs):
 
 
 @receiver(allocation_raw_share_edit)
-def allocation_raw_share_edit_handler(sender, **kwargs):
+def slurmrest_allocation_raw_share_edit_handler(sender, **kwargs):
     """Update Slurm account's raw share when the Allocation's raw share attribute is edited."""
     slurm_cluster = Resource.objects.get(
         Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
@@ -67,7 +67,7 @@ def allocation_raw_share_edit_handler(sender, **kwargs):
 
 
 @receiver(allocation_activate_user)
-def allocation_activate_user_handler(sender, **kwargs):
+def slurmrest_allocation_activate_user_handler(sender, **kwargs):
     """import slurm data about user to coldfront when user is activated"""
     allocationuser = AllocationUser.objects.get(pk=kwargs['allocation_user_pk'])
     slurm_cluster = allocationuser.allocation.get_parent_resource
