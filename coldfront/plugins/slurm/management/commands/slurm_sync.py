@@ -100,6 +100,12 @@ class Command(BaseCommand):
                         'status': user_status_active, 'unit': 'CPU Hours'
                     }
                 )
+                for key, value in user_account.share_dict.items():
+                    if key in ['RawShares', 'NormShares', 'FairShare', 'EffectvUsage', 'RawUsage']:
+                        alloc_user.allocationuserattribute_set.update_or_create(
+                            allocationuser_attribute_type=AllocationUserAttributeType.objects.get(name=key),
+                            defaults={'value': value}
+                        )
                 share_data = ','.join(f"{key}={value}" for key, value in user_account.share_dict.items())
                 alloc_user.allocationuserattribute_set.update_or_create(
                     allocationuser_attribute_type=slurm_specs_allocationuser_attrtype,
