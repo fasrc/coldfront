@@ -183,7 +183,7 @@ class Command(BaseCommand):
         logger.debug("Loading cluster info starts", True)
         file = options['file']
         cluster_resources = Resource.objects.filter(
-            resource_type__name='Cluster', is_available=True
+            resource_type__name='Cluster', is_available=True, resourceattribute__value='CLI'
         )
         logger.debug(f"  File: {options['file']} - Cluster_resources {cluster_resources}")
         slurm_clusters = {
