@@ -443,9 +443,13 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                 messages.error(request, "Allocation activated, but certain parts of the post-creation process were unsuccessful. Please contact the administrator or check the logs for more information.")
 
             for allocation_user in allocation_users:
-                allocation_activate_user.send(
-                    sender=self.__class__, allocation_user_pk=allocation_user.pk
-                )
+                try:
+                    allocation_activate_user.send(
+                        sender=self.__class__, allocation_user_pk=allocation_user.pk,
+                    )
+                except Exception as e:
+                    logger.exception(e)
+                    messages.error(request, "Allocation user(s) activated, but certain parts of the post-creation process were unsuccessful. Please contact the administrator or check the logs for more information.")
 
             send_allocation_customer_email(
                 allocation_obj, 'Allocation Activated',
@@ -968,11 +972,21 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         user=user_obj, defaults={'status': user_active_status}
                     )
                 )
-                allocation_activate_user.send(
-                    sender=self.__class__,
-                    username=username,
-                    allocation_user_pk=allocation_user_obj.pk
-                )
+                try:
+                    allocation_activate_user.send(
+                        sender=self.__class__,
+                        username=username,
+                        allocation_user_pk=allocation_user_obj.pk
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "signal processes for activation of allocationuser %s (%s %s) failed: %s",
+                        allocation_user_obj.pk, allocation_obj.project.title,
+                        allocation_obj.get_parent_resource.name, e
+                    )
+                    err = f"activation of allocationuser {allocation_user_obj.pk} ({allocation_obj.project.title} {allocation_obj.get_parent_resource.name}) failed: {e} Please contact your administrator."
+                    messages.error(request, err)
+                    continue
                 users_added_count += 1
 
             user_plural = 'user' if users_added_count == 1 else 'users'
