@@ -71,6 +71,12 @@ class Command(BaseCommand):
                 defaults={'value': 0}
             )
             # Sshare related allocation attributes
+            for key, value in account.share_dict.items():
+                if key in ['RawShares', 'NormShares', 'FairShare', 'EffectvUsage', 'RawUsage']:
+                    allocation.allocationattribute_set.update_or_create(
+                        allocation_attribute_type=AllocationAttributeType.objects.get(name=key),
+                        defaults={'value': value}
+                    )
             share_data = ','.join(f"{key}={value}" for key, value in account.share_dict.items())
             allocation.allocationattribute_set.update_or_create(
                 allocation_attribute_type=slurm_specs_attrtype,
