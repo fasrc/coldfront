@@ -449,9 +449,13 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                 messages.error(request, "Allocation activated, but certain parts of the post-creation process were unsuccessful. Please contact the administrator or check the logs for more information.")
 
             for allocation_user in allocation_users:
-                allocation_activate_user.send(
-                    sender=self.__class__, allocation_user_pk=allocation_user.pk
-                )
+                try:
+                    allocation_activate_user.send(
+                        sender=self.__class__, allocation_user_pk=allocation_user.pk,
+                    )
+                except Exception as e:
+                    logger.exception(e)
+                    messages.error(request, "Allocation user(s) activated, but certain parts of the post-creation process were unsuccessful. Please contact the administrator or check the logs for more information.")
 
             send_allocation_customer_email(
                 allocation_obj, 'Allocation Activated',
@@ -951,8 +955,8 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 
                 account = allocation_obj.project.title
                 cluster = allocation_obj.get_cluster.get_attribute('slurm_cluster')
-                logger.warning(f"Username {form_data.get('username')} cluster {cluster}")
                 username = form_data.get('username')
+                logger.warning(f"Username {username} account {account} cluster {cluster}")
                 try:
                     allocation_user_add_on_slurm.send(
                         sender=self.__class__,
@@ -961,7 +965,11 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         cluster=cluster
                     )
                 except Exception as e:
-                    logger.exception(f"signal processes for addition of user {username} to allocation {allocation_obj.pk} ({allocation_obj.project.title} {allocation_obj.get_parent_resource.name}) failed: {e}")
+                    logger.exception(
+                        "signal processes for addition of user %s to account %s (%s %s) failed: %s",
+                        username, allocation_obj.pk, allocation_obj.project.title,
+                        allocation_obj.get_parent_resource.name, e
+                    )
                     err = f"addition of user {username} to allocation {allocation_obj.pk} ({allocation_obj.project.title} {allocation_obj.get_parent_resource.name}) failed: {e}"
                     messages.error(request, err)
                     continue
@@ -970,11 +978,21 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         user=user_obj, defaults={'status': user_active_status}
                     )
                 )
-                allocation_activate_user.send(
-                    sender=self.__class__,
-                    username=username,
-                    allocation_user_pk=allocation_user_obj.pk
-                )
+                try:
+                    allocation_activate_user.send(
+                        sender=self.__class__,
+                        username=username,
+                        allocation_user_pk=allocation_user_obj.pk
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "signal processes for activation of allocationuser %s (%s %s) failed: %s",
+                        allocation_user_obj.pk, allocation_obj.project.title,
+                        allocation_obj.get_parent_resource.name, e
+                    )
+                    err = f"activation of allocationuser {allocation_user_obj.pk} ({allocation_obj.project.title} {allocation_obj.get_parent_resource.name}) failed: {e} Please contact your administrator."
+                    messages.error(request, err)
+                    continue
                 users_added_count += 1
 
             user_plural = 'user' if users_added_count == 1 else 'users'
@@ -1054,7 +1072,10 @@ class AllocationEditUserView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             try:
                 account = allocation_obj.project.title
                 allocation_user_attribute_edit.send(
-                    sender=self.__class__, user=allocationuser_obj, account=account, raw_share=form_data['value']
+                    sender=self.__class__,
+                    user=allocationuser_obj, account=account,
+                    cluster=allocationuser_obj.allocation.get_parent_resource.get_attribute('slurm_cluster'),
+                    raw_share=form_data['value']
                 )
             except Exception as e:
                 logger.exception(f'error encountered while trying to update allocationuser {allocation_obj}:{allocationuser_obj} rawshare: {e}')
@@ -1160,7 +1181,10 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
 
                 try:
                     account = allocation_user_obj.allocation.project.title
-                    allocation_user_remove_on_slurm.send(self.__class__, account=account, username=user_obj.username)
+                    allocation_user_remove_on_slurm.send(
+                        self.__class__, account=account, username=user_obj.username,
+                        cluster=allocation_user_obj.allocation.get_parent_resource.get_attribute('slurm_cluster')
+                    )
                     allocation_user_obj.status = removed_allocuser_status
                     allocation_user_obj.save()
                     allocation_remove_user.send(
@@ -1169,6 +1193,9 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
                     remove_users_count += 1
                 except SlurmError as e:
                     error_message = f"You can't remove this AllocationUser ({user_form_data.get('username')}) while they are running a job using this account. Try again after the job has been completed or cancelled."
+                    messages.error(request, error_message)
+                except Exception as e:
+                    error_message = f"An error occurred while trying to remove AllocationUser ({user_form_data.get('username')}): {e}"
                     messages.error(request, error_message)
 
             user_plural = 'user' if remove_users_count == 1 else 'users'
@@ -1463,6 +1490,7 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
                                 sender=self.__class__,
                                 user=user,
                                 account=account,
+                                cluster=allocation.get_parent_resource.get_attribute('slurm_cluster'),
                                 raw_share=allocationuser_new_rawshare_value
                             )
                         except Exception as e:

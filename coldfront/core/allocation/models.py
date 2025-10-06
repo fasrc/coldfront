@@ -167,23 +167,38 @@ class Allocation(TimeStampedModel):
 
     @property
     def rawshares(self):
-        return self.get_slurm_spec_value('RawShares')
+        rawshares = self.get_attribute('RawShares')
+        if not rawshares:
+            rawshares = self.get_slurm_spec_value('RawShares')
+        return rawshares
 
     @property
     def fairshare(self):
-        return self.get_slurm_spec_value('FairShare')
+        fairshare = self.get_attribute('FairShare')
+        if not fairshare:
+            fairshare = self.get_slurm_spec_value('FairShare')
+        return fairshare
 
     @property
     def normshares(self):
-        return self.get_slurm_spec_value('NormShares')
+        normshares = self.get_attribute('NormShares')
+        if not normshares:
+            normshares = self.get_slurm_spec_value('NormShares')
+        return normshares
 
     @property
     def effectvusage(self):
-        return self.get_attribute('EffectvUsage')
+        effectvusage = self.get_attribute('EffectvUsage')
+        if not effectvusage:
+            effectvusage = self.get_slurm_spec_value('EffectvUsage')
+        return effectvusage
 
     @property
     def rawusage(self):
-        return self.get_slurm_spec_value('RawUsage')
+        rawusage = self.get_attribute('RawUsage')
+        if not rawusage:
+            rawusage = self.get_slurm_spec_value('RawUsage')
+        return rawusage
 
     @property
     def expense_code(self):
@@ -936,23 +951,38 @@ class AllocationUser(TimeStampedModel):
 
     @property
     def rawshares(self):
-        return self.get_slurm_spec_value('RawShares')
+        rawshares = self.get_attribute('RawShares')
+        if not rawshares:
+            rawshares = self.get_slurm_spec_value('RawShares')
+        return rawshares
 
     @property
     def fairshare(self):
-        return self.get_slurm_spec_value('FairShare')
+        fairshare = self.get_attribute('FairShare')
+        if not fairshare:
+            fairshare = self.get_slurm_spec_value('FairShare')
+        return fairshare
 
     @property
     def normshares(self):
-        return self.get_slurm_spec_value('NormShares')
+        normshares = self.get_attribute('NormShares')
+        if not normshares:
+            normshares = self.get_slurm_spec_value('NormShares')
+        return normshares
 
     @property
     def effectvusage(self):
-        return self.get_slurm_spec_value('EffectvUsage')
+        effectvusage = self.get_attribute('EffectvUsage')
+        if not effectvusage:
+            effectvusage = self.get_slurm_spec_value('EffectvUsage')
+        return effectvusage
 
     @property
     def rawusage(self):
-        return self.get_slurm_spec_value('RawUsage')
+        rawusage = self.get_attribute('RawUsage')
+        if not rawusage:
+            rawusage = self.get_slurm_spec_value('RawUsage')
+        return rawusage
 
     @property
     def user_usage(self):

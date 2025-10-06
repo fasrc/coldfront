@@ -79,6 +79,7 @@ setup(
         'xhtml2pdf==0.2.15',
         'XlsxWriter',
         'django-extensions==3.2.3',
+        'git+https://github.com/fasrc/slurmrest_python_sdk.git',
     ],
     entry_points={
         'console_scripts': [
