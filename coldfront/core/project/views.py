@@ -840,7 +840,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         else:
             users_to_remove = users_list
 
-        users_no_removal = [u for u in users_list if u not in users_to_remove]
+        primary_group_users = [u for u in users_list if u not in users_to_remove]
 
         context = {}
 
@@ -850,9 +850,15 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             )
             formset = formset(initial=users_to_remove, prefix='userform')
             context['formset'] = formset
-
+        if self.request.user.is_superuser:
+            primaryuser_formset = formset_factory(
+                ProjectRemoveUserForm, max_num=len(primary_group_users)
+            )
+            primaryuser_formset = primaryuser_formset(initial=primary_group_users, prefix='userform')
+            context['primary_group_users'] = primaryuser_formset
+        else:
+            context['primary_group_users'] = primary_group_users
         context['project'] = get_object_or_404(Project, pk=pk)
-        context['users_no_removal'] = users_no_removal
         context['EMAIL_TICKET_SYSTEM_ADDRESS'] = EMAIL_TICKET_SYSTEM_ADDRESS
         return render(request, self.template_name, context)
 

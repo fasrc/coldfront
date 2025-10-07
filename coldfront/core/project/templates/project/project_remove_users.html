@@ -8,7 +8,7 @@
 <h2>Remove users from project: {{project.title}}</h2>
 <hr>
 
-{% if formset or users_no_removal %}
+{% if formset or primary_group_users %}
   <div class="card border-light">
     <div class="card-body">
       <p>
@@ -39,6 +39,7 @@
                   <input type="checkbox" class="check" id="selectAll">
                 </th>
                 <th scope="col">#</th>
+                <th scope="col">Is Primary</th>
                 <th scope="col">Username</th>
                 <th scope="col">First Name</th>
                 <th scope="col">Last Name</th>
@@ -47,21 +48,36 @@
               </tr>
             </thead>
             <tbody>
-              {% for user in users_no_removal %}
-              <tr>
-                <td></td>
-                <td></td>
-                <td style="color: gray;">{{ user.username }}</td>
-                <td style="color: gray;">{{ user.first_name }}</td>
-                <td style="color: gray;">{{ user.last_name }}</td>
-                <td style="color: gray;">{{ user.email }}</td>
-                <td style="color: gray;">{{ user.role }}</td>
-              </tr>
+              {% for user in primary_group_users %}
+                {% if request.user.is_superuser %}
+                   <tr class="font-weight-bold">
+                     <td>{{ user.selected }}</td>
+                     <td>{{ forloop.counter }}</td>
+                     <td><i class="fas fa-check" aria-hidden="true"></i></td>
+                     <td>{{ user.username.value }}</td>
+                     <td>{{ user.first_name.value }}</td>
+                     <td>{{ user.last_name.value }}</td>
+                     <td>{{ user.email.value }}</td>
+                     <td>{{ user.role.value }}</td>
+                   </tr>
+                {% else %}
+                   <tr>
+                     <td></td>
+                     <td></td>
+                     <td><i class="fas fa-check" aria-hidden="true"></i></td>
+                     <td style="color: gray;">{{ user.username }}</td>
+                     <td style="color: gray;">{{ user.first_name }}</td>
+                     <td style="color: gray;">{{ user.last_name }}</td>
+                     <td style="color: gray;">{{ user.email }}</td>
+                     <td style="color: gray;">{{ user.role }}</td>
+                   </tr>
+                {% endif %}
               {% endfor %}
               {% for form in formset %}
                 <tr>
                   <td>{{ form.selected }}</td>
                   <td>{{ forloop.counter }}</td>
+                  <td></td>
                   <td>{{ form.username.value }}</td>
                   <td>{{ form.first_name.value }}</td>
                   <td>{{ form.last_name.value }}</td>
