@@ -8,7 +8,6 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 import requests
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.dispatch import receiver
