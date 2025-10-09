@@ -88,8 +88,11 @@ def zone_report():
     # check which of these projects have zones
     project_titles = [p.title for p in projects]
     zone_names = [z['name'] for z in zones]
-    projs_no_zones, projs_with_zones, zones_no_projs = uniques_and_intersection(project_titles, zone_names)
-    report['projs_with_zones'] = {p['name']:p['id'] for p in [z for z in zones if z['name'] in projs_with_zones]}
+    projs_no_zones, projs_with_zones, zones_no_projs = uniques_and_intersection(
+        project_titles, zone_names)
+    report['projs_with_zones'] = {
+            p['name']:p['id'] for p in [z for z in zones if z['name'] in projs_with_zones]
+    }
     report['projects_with_allocations_no_zones'] = projs_no_zones
     report['zones_with_no_projects'] = zones_no_projs
     no_group_zones = [z['name'] for z in zones if not z['managing_groups']]
@@ -124,6 +127,19 @@ def allocation_to_zone(allocation):
     else:
         zone = server.zone_from_project(project.title)
     return zone
+
+def add_zone_manager_to_ad(username):
+    if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
+        ldap_conn = LDAPConn()
+        try:
+            ldap_conn.add_user_to_group(username, 'starfish_users')
+        except Exception as e:
+            # no exception if user is already present
+            # exception if user doesn't exist
+            error = f'Error adding {username} to starfish_users: {e}'
+            print(error)
+            logger.warning(error)
+            raise
 
 def add_zone_group_to_ad(group_name):
     if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
@@ -173,6 +189,30 @@ class StarFishServer:
         volnames = [i['vol'] for i in response]
         return volnames
 
+    def add_paths_to_zone(self, zone_id, paths):
+        """Add paths to an existing zone
+        Because the API will reject a full creation or update call if any of the
+        paths are not found in Starfish, loop through the path_list to add paths to the zone
+        if the initial update fails and record any paths that cannot be added.
+        """
+        #1. get the existing paths
+        zone = self.get_zones(zone_id)
+        existing_paths = zone['paths']
+        failed_paths = []
+        try:
+            new_paths = list(set(existing_paths + list(paths)))
+            self.update_zone(zone['name'], paths=new_paths)
+        except Exception as e:
+            logger.warning('Error adding paths to zone %s: %s', zone['name'], e)
+            for path in paths:
+                try:
+                    new_paths = list(set(existing_paths + [path]))
+                    self.update_zone(zone['name'], paths=new_paths)
+                    existing_paths.append(path)
+                except Exception as e:
+                    logger.warning('Error adding path %s to zone %s: %s', path, zone['name'], e)
+                    failed_paths.append(path)
+
     def get_groups(self):
         """get set of group names on starfish"""
         url = self.api_url + 'mapping/group/'
@@ -197,13 +237,14 @@ class StarFishServer:
         url = self.api_url + 'zone/'
         data = {
             "name": zone_name,
-            "paths": paths,
             "managers": managers,
             "managing_groups": managing_groups,
         }
         logger.debug(data)
         response = return_post_json(url, data=data, headers=self.headers)
         logger.debug(response)
+        if paths:
+            self.add_paths_to_zone(response['id'], paths)
         return response
 
     def delete_zone(self, zone_id, zone_name=None):
@@ -211,11 +252,13 @@ class StarFishServer:
         if not zone_id:
             zone = self.get_zone_by_name(zone_name)
             zone_id = zone['id']
-        url = self.api_url + f'zone/{zone_id}'
+        url = self.api_url + f'zone/{zone_id}?force=True'
         response = requests.delete(url, headers=self.headers)
+        if response.status_code not in [204]:
+            raise ValueError(f'Cannot delete zone {zone_name} ({zone_id}): {response.text}')
         return response
 
-    def update_zone(self, zone_name, paths=[], managers=[], managing_groups=[]):
+    def update_zone(self, zone_name, paths=(), managers=(), managing_groups=()):
         """Update a zone via the API"""
         zone_data = self.get_zone_by_name(zone_name)
         zone_id = zone_data['id']
@@ -228,6 +271,28 @@ class StarFishServer:
             add_zone_group_to_ad(group['groupname'])
         response = return_put_json(url, data=data, headers=self.headers)
         return response
+
+    def zone_from_department(self, department_obj):
+        """Create a zone from a department object"""
+        zone_name = f"{department_obj.code}_Labs"
+        paths = [
+            f"{a.resources.first().name.split('/')[0]}:{a.path}"
+            for p in department_obj.get_projects().filter(
+                status__name__in=['Active', 'New'],
+                )
+            for a in p.allocation_set.filter(
+                status__name__in=['Active', 'New'],
+                resources__in=self.get_corresponding_coldfront_resources()
+            )
+            if a.path
+        ]
+        approvers = list(
+            department_obj.members.filter(role='Approver').values_list('user__username', flat=True)
+        )
+        for approver_name in approvers:
+            add_zone_manager_to_ad(approver_name)
+        managers = [{'name': u} for u in approvers]
+        return self.create_zone(zone_name, paths, managers, [])
 
     def zone_from_project(self, project_obj):
         """Create a zone from a project object"""
@@ -406,7 +471,7 @@ class StarFishRedash:
         if 'query_result' in result and result['query_result']:
             data = result['query_result']['data']['rows']
         else:
-            print('no query_result value found:\n', result)
+            raise ValueError('no query_result value found:\n', result)
         if volumes:
             data = [d for d in data if d['vol_name'] in volumes]
         return data
