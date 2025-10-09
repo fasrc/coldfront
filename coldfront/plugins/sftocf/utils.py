@@ -32,8 +32,11 @@ from coldfront.core.allocation.models import (
     AllocationAttributeType,
     AllocationUserStatusChoice,
 )
-if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
-    from coldfront.plugins.ldap.utils import LDAPConn
+from coldfront.plugins.sftocf.signals import (
+    starfish_add_aduser,
+    starfish_remove_aduser,
+    starfish_add_adgroup,
+)
 
 DATESTR = datetime.today().strftime('%Y%m%d')
 DATAPATH = './coldfront/plugins/sftocf/data/'
@@ -129,30 +132,28 @@ def allocation_to_zone(allocation):
     return zone
 
 def add_zone_manager_to_ad(username):
-    if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
-        ldap_conn = LDAPConn()
-        try:
-            ldap_conn.add_user_to_group(username, 'starfish_users')
-        except Exception as e:
-            # no exception if user is already present
-            # exception if user doesn't exist
-            error = f'Error adding {username} to starfish_users: {e}'
-            print(error)
-            logger.warning(error)
-            raise
+    try:
+        starfish_add_aduser.send_robust(user=username)
+    except Exception as e:
+        print(f'Error adding {username} to starfish_users: {e}')
+        logger.exception('Error adding %s to starfish_users: %s', username, e)
+        raise
 
 def add_zone_group_to_ad(group_name):
-    if 'coldfront.plugins.ldap' in settings.INSTALLED_APPS:
-        ldap_conn = LDAPConn()
-        try:
-            ldap_conn.add_group_to_group(group_name, 'starfish_users')
-        except Exception as e:
-            # no exception if group is already present
-            # exception if group doesn't exist
-            error = f'Error adding {group_name} to starfish_users: {e}'
-            print(error)
-            logger.warning(error)
-            raise
+    try:
+        starfish_add_adgroup.send_robust(group=group_name)
+    except Exception as e:
+        print(f'Error adding {group_name} to starfish_users: {e}')
+        logger.exception('Error adding %s to starfish_users: %s', group_name, e)
+        raise
+
+def remove_zone_member_from_ad(username):
+    try:
+        starfish_remove_aduser.send_robust(user=username)
+    except Exception as e:
+        print(f'Error removing {username} from starfish_users: {e}')
+        logger.exception('Error removing %s from starfish_users: %s', username, e)
+        raise
 
 
 class StarFishServer:

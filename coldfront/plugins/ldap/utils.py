@@ -37,6 +37,13 @@ from coldfront.core.project.models import (
     ProjectUser,
 )
 
+if 'coldfront.plugins.sftocf' in import_from_settings('INSTALLED_APPS', []):
+    from coldfront.plugins.sftocf.signals import (
+        starfish_add_aduser,
+        starfish_remove_aduser,
+        starfish_add_adgroup,
+    )
+
 logger = logging.getLogger(__name__)
 
 username_ignore_list = import_from_settings('username_ignore_list', [])
@@ -766,3 +773,19 @@ def add_user_to_group(sender, **kwargs):
 def remove_member_from_group(sender, **kwargs):
     ldap_conn = LDAPConn()
     ldap_conn.remove_member_from_group(kwargs['user_name'], kwargs['group_name'])
+
+if 'coldfront.plugins.sftocf' in import_from_settings('INSTALLED_APPS', []):
+    @receiver(starfish_add_aduser)
+    def starfish_add_user(sender, **kwargs):
+        ldap_conn = LDAPConn()
+        ldap_conn.add_user_to_group(kwargs['username'], 'starfish_users')
+
+    @receiver(starfish_remove_aduser)
+    def starfish_remove_user(sender, **kwargs):
+        ldap_conn = LDAPConn()
+        ldap_conn.remove_member_from_group(kwargs['username'], 'starfish_users')
+
+    @receiver(starfish_add_adgroup)
+    def starfish_add_group(sender, **kwargs):
+        ldap_conn = LDAPConn()
+        ldap_conn.add_group_to_group(kwargs['groupname'], 'starfish_users')
