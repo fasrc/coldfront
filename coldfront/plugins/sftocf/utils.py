@@ -189,37 +189,6 @@ class StarFishServer:
         volnames = [i['vol'] for i in response]
         return volnames
 
-    def update_zone_paths(self, zone_id, paths):
-        """Add paths to an existing zone
-        Because the API will reject a full creation or update call if any of the
-        paths are not found in Starfish, loop through the path_list to add paths to the zone
-        if the initial update fails and record any paths that cannot be added.
-        """
-        #1. get the existing paths
-        zone = self.get_zones(zone_id)
-        try:
-            self.update_zone(zone['name'], paths=paths)
-        except Exception as e:
-            logger.warning('Error adding paths to zone %s: %s', zone['name'], e)
-            failed_paths = []
-            existing_paths = zone['paths']
-            paths_to_remove = [p for p in existing_paths if p not in paths]
-            if paths_to_remove:
-                logger.warning('Removing paths from zone %s: %s', zone['name'], paths_to_remove)
-                new_paths = [p for p in existing_paths if p not in paths_to_remove]
-                self.update_zone(zone['name'], paths=new_paths)
-                existing_paths = new_paths
-            for path in paths:
-                if path not in existing_paths:
-                    try:
-                        new_paths = list(set(existing_paths + [path]))
-                        self.update_zone(zone['name'], paths=new_paths)
-                        existing_paths.append(path)
-                    except Exception as e:
-                        logger.warning(
-                            'Error adding path %s to zone %s: %s', path, zone['name'], e)
-                        failed_paths.append(path)
-
     def get_groups(self):
         """get set of group names on starfish"""
         url = self.api_url + 'mapping/group/'
@@ -265,22 +234,61 @@ class StarFishServer:
             raise ValueError(f'Cannot delete zone {zone_name} ({zone_id}): {response.text}')
         return response
 
-    def update_zone(self, zone_name, paths=(), managers=(), managing_groups=()):
+    def put_zone(self, zone_name, paths=None, managers=None, managing_groups=None):
         """Update a zone via the API"""
         zone_data = self.get_zone_by_name(zone_name)
         zone_id = zone_data['id']
         url = self.api_url + f'zone/{zone_id}/'
         data = {'name': zone_name}
-        data['paths'] = zone_data['paths']
+        data['paths'] = paths if paths else zone_data['paths']
         data['managers'] = managers if managers else zone_data['managers']
         data['managing_groups'] = managing_groups if managing_groups else zone_data['managing_groups']
+        response = return_put_json(url, data=data, headers=self.headers)
+        return response
+
+    def update_zone(self, zone_name, paths=None, managers=None, managing_groups=None):
+        """Update a zone via the API"""
+        zone_data = self.get_zone_by_name(zone_name)
+        zone_id = zone_data['id']
         for group in managing_groups:
             add_zone_group_to_ad(group['groupname'])
-        response = return_put_json(url, data=data, headers=self.headers)
-        if paths:
+        response = self.put_zone(
+            zone_id, paths=paths, managers=managers, managing_groups=managing_groups
+        )
+        if paths and paths != zone_data['paths']:
             self.update_zone_paths(zone_id, paths)
-
         return response
+
+    def update_zone_paths(self, zone_id, paths):
+        """Add paths to an existing zone
+        Because the API will reject a full creation or update call if any of the
+        paths are not found in Starfish, loop through the path_list to add paths to the zone
+        if the initial update fails and record any paths that cannot be added.
+        """
+        #1. get the existing paths
+        zone = self.get_zones(zone_id)
+        try:
+            self.put_zone(zone['name'], paths=paths)
+        except Exception as e:
+            logger.warning('Error adding paths to zone %s: %s', zone['name'], e)
+            failed_paths = []
+            existing_paths = zone['paths']
+            paths_to_remove = [p for p in existing_paths if p not in paths]
+            if paths_to_remove:
+                logger.warning('Removing paths from zone %s: %s', zone['name'], paths_to_remove)
+                new_paths = [p for p in existing_paths if p not in paths_to_remove]
+                self.update_zone(zone['name'], paths=new_paths)
+                existing_paths = new_paths
+            for path in paths:
+                if path not in existing_paths:
+                    try:
+                        new_paths = list(set(existing_paths + [path]))
+                        self.put_zone(zone['name'], paths=new_paths)
+                        existing_paths.append(path)
+                    except Exception as e:
+                        logger.warning(
+                            'Error adding path %s to zone %s: %s', path, zone['name'], e)
+                        failed_paths.append(path)
 
     def zone_from_department(self, department_obj):
         """Create a zone from a department object"""
