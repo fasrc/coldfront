@@ -291,7 +291,7 @@ class StarFishServer:
         )
         for approver_name in approvers:
             add_zone_manager_to_ad(approver_name)
-        managers = [{'name': u} for u in approvers]
+        managers = [{'username': u} for u in approvers]
         return self.create_zone(zone_name, paths, managers, [])
 
     def zone_from_project(self, project_obj):
