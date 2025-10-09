@@ -67,10 +67,10 @@ class DepartmentContactsInline(admin.TabularInline):
 
 @admin.register(Department)
 class DepartmentAdmin(SimpleHistoryAdmin):
-    readonly_fields_change = ('created', 'modified')
+    readonly_fields_change = ('created', 'modified', 'code', 'slug')
     fields_change = ('name', 'rank')
-    list_display = ('pk', 'name', 'rank', 'org_tree')
-    search_fields = ('name', 'rank', 'slug', 'org_tree')
+    list_display = ('pk', 'name', 'rank', 'code', 'org_tree')
+    search_fields = ('name', 'rank', 'slug',  'org_tree')
     list_filter = ('org_tree', 'rank')
     inlines = [
         DepartmentParentsInline,
