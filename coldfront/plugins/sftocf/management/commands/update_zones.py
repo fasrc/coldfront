@@ -14,8 +14,10 @@ import logging
 from requests.exceptions import HTTPError
 
 from django.core.management.base import BaseCommand
+from django.db.models import Count, Q
 
 from coldfront.core.project.models import Project, ProjectAttributeType
+from coldfront.core.department.models import Department
 from coldfront.plugins.sftocf.utils import StarFishServer
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,58 @@ class Command(BaseCommand):
         sf = StarFishServer()
         starfish_zone_attr_type = ProjectAttributeType.objects.get(name='Starfish Zone')
         # collect all projects that have active allocations on Starfish
+
+        # have zones for departments with more than 10 active projects
+        zoned_departments = [
+            dept for dept in Department.objects.all()
+            if dept.get_projects().filter(status__name='Active').distinct().count() > 10
+        ]
+        # departments get matched with zones not via attributes, but by comparing the department name to the zone name
+        starfish_zoned_department_names = [
+            z['name'] for z in sf.get_zones()
+            if z['name'] in [f"{d.code}_Labs" for d in zoned_departments]
+        ]
+        departments_with_zones = [
+            d for d in Department.objects.all()
+            if f"{d.code}_Labs" in starfish_zoned_department_names
+        ]
+
+        for dept in zoned_departments:
+            if dept not in departments_with_zones:
+                if not dry_run:
+                    try:
+                        zone = sf.zone_from_department(dept)
+                    except HTTPError as e:
+                        if e.response.status_code == 409:
+                            logger.warning('zone for %s already exists; breaking', dept.code)
+                            continue
+                        if e.response.status_code == 402:
+                            logger.error('zone quota reached; can no longer add any zones.')
+                            continue
+                        err = f'unclear error prevented creation of zone for department {dept.code}. error: {e.response}'
+                        logger.error(err)
+                        print(err)
+                        continue
+                    except ValueError as e:
+                        err = f"error encountered. If no groups returned, LDAP group doesn't exist: {e}, {dept.code}"
+                        logger.error(err)
+                        print(err)
+                        continue
+                report['created_zones'].append(f"{dept.code}_Lab")
+            else:
+                print(f"department {dept.code} already has a zone")
+                # ensure the zone has all the paths and managing groups
+                zone_name = f"{dept.code}_Labs"
+                paths = [
+                    f'{a.resources.first().name.split("/")[0]}:{a.path}'
+                    for a in dept.get_projects().filter(
+                        status__name__in=['Active', 'New'],
+                        resources__in=sf.get_corresponding_coldfront_resources()
+                    )
+                ]
+                sf.update_zone(zone_name, paths=list(paths))
+
+
         projects_with_allocations = Project.objects.filter(
             status__name='Active',
             allocation__status__name='Active',
@@ -150,7 +204,13 @@ class Command(BaseCommand):
             # delete any zones that have no paths
             if not zone_paths_not_in_cf:
                 if not dry_run:
-                    sf.delete_zone(zone['id'])
+                    try:
+                        sf.delete_zone(zone['id'])
+                    except ValueError as e:
+                        err = f"error encountered when deleting zone {zone['name']}: {e}"
+                        logger.error(err)
+                        print(err)
+                        continue
                     # delete projectattribute
                     project.projectattribute_set.get(
                         proj_attr_type=starfish_zone_attr_type,
