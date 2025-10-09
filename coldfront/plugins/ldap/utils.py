@@ -184,6 +184,11 @@ class LDAPConn:
             raise ValueError("no groups returned")
         return group[0]
 
+    def add_user_to_group(self, user_name, group_name):
+        user = self.return_user_by_name(user_name)
+        group = self.return_group_by_name(group_name)
+        self.add_member_to_group(user, group)
+
     def add_group_to_group(self, group_name, parent_group_name):
         group = self.return_group_by_name(group_name)
         parent_group = self.return_group_by_name(parent_group_name)
@@ -690,7 +695,10 @@ def identify_ad_group(sender, **kwargs):
         ad_conn = LDAPConn()
         members, manager = ad_conn.return_group_members_manager(project_title)
     except Exception as e:
-        logger.exception("error encountered retrieving members and manager for Project %s: %s", project_title, e)
+        logger.exception(
+            "error encountered retrieving members and manager for Project %s: %s",
+            project_title, e
+        )
         raise ValueError(f"ldap error: {e}") from e
 
     try:
@@ -752,9 +760,7 @@ def filter_project_users_to_remove(sender, **kwargs):
 @receiver(project_make_projectuser)
 def add_user_to_group(sender, **kwargs):
     ldap_conn = LDAPConn()
-    group = ldap_conn.return_group_by_name(kwargs['group_name'])
-    user = ldap_conn.return_user_by_name(kwargs['user_name'])
-    ldap_conn.add_member_to_group(user, group)
+    ldap_conn.add_user_to_group(kwargs['user_name'], kwargs['group_name'])
 
 @receiver(project_preremove_projectuser)
 def remove_member_from_group(sender, **kwargs):
