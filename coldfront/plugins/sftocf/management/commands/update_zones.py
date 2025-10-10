@@ -66,6 +66,9 @@ class Command(BaseCommand):
         ]
 
         for dept in zoned_departments:
+            if not dept.code:
+                print('no code for department', dept.name)
+                continue
             if dept not in departments_with_zones:
                 if not dry_run:
                     try:
@@ -92,11 +95,15 @@ class Command(BaseCommand):
                 # ensure the zone has all the paths and managing groups
                 zone_name = f"{dept.code}_Labs"
                 paths = [
-                    f'{a.resources.first().name.split("/")[0]}:{a.path}'
-                    for a in dept.get_projects().filter(
+                    f"{a.resources.first().name.split('/')[0]}:{a.path}"
+                    for p in dept.get_projects().filter(
                         status__name__in=['Active', 'New'],
-                        resources__in=sf.get_corresponding_coldfront_resources()
+                        )
+                    for a in p.allocation_set.filter(
+                        status__name__in=['Active', 'New'],
+                        resources__in=self.get_corresponding_coldfront_resources()
                     )
+                    if a.path
                 ]
                 sf.update_zone(zone_name, paths=list(paths))
 
