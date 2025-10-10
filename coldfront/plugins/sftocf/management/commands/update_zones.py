@@ -101,7 +101,7 @@ class Command(BaseCommand):
                         )
                     for a in p.allocation_set.filter(
                         status__name__in=['Active', 'New'],
-                        resources__in=self.get_corresponding_coldfront_resources()
+                        resources__in=sf.get_corresponding_coldfront_resources()
                     )
                     if a.path
                 ]
