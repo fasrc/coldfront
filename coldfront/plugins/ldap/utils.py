@@ -425,9 +425,12 @@ def collect_update_project_status_membership():
     groupusercollections = [
         GroupUserCollection(k.title, v[0], v[1], project=k) for k, v in proj_membs_mans.items()
     ]
-
     active_pi_groups, inactive_pi_groups = remove_inactive_disabled_managers(groupusercollections)
-    projects_to_deactivate = Project.objects.filter(pk__in=[g.project.pk for g in inactive_pi_groups])
+    projects_to_deactivate = Project.objects.filter(
+        pk__in=[g.project.pk for g in inactive_pi_groups]
+    ).exclude(
+        allocation__resources__resource_type__name="Storage", allocation__status__name="Active"
+    )
     projects_to_deactivate.update(status=ProjectStatusChoice.objects.get(name='Archived'))
     logger.debug('projects_to_deactivate %s', projects_to_deactivate)
     if projects_to_deactivate:

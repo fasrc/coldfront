@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import urllib3
 
 from django.core.management.base import BaseCommand
 from django.db.models import Q
@@ -22,6 +23,7 @@ from coldfront.plugins.xdmod.utils import (XDMOD_ACCOUNT_ATTRIBUTE_NAME,
                                            XDModFetcher)
 
 logger = logging.getLogger(__name__)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class Command(BaseCommand):
@@ -66,16 +68,16 @@ class Command(BaseCommand):
         if not rname and resource.parent_resource:
             rname = resource.parent_resource.get_attribute(
                 XDMOD_RESOURCE_ATTRIBUTE_NAME)
-        if self.filter_resource and self.filter_resource != rname:
-            return None
         return rname
 
     def id_allocation_resources(self, s):
         resources = []
         for r in s.resources.all():
             rname = self.run_resource_checks(r)
+            if self.filter_resource and self.filter_resource != rname:
+                continue
             resources.append(rname)
-        return resources
+        return list(set(resources))
 
     def attribute_check(self, s, attr_name, num=False):
         attr = s.get_attribute(attr_name)
@@ -92,6 +94,11 @@ class Command(BaseCommand):
         cleared_resources = Resource.objects.filter(
             Q(resourceattribute__resource_attribute_type__name=XDMOD_RESOURCE_ATTRIBUTE_NAME) |
             Q(parent_resource__resourceattribute__resource_attribute_type__name=XDMOD_RESOURCE_ATTRIBUTE_NAME)
+            )
+        if self.filter_resource:
+            cleared_resources = cleared_resources.filter(
+                resourceattribute__value=self.filter_resource,
+                resourceattribute__resource_attribute_type__name=XDMOD_RESOURCE_ATTRIBUTE_NAME
             )
 
         allocations = (
@@ -322,6 +329,7 @@ class Command(BaseCommand):
                     allocation_attribute_type__name=XDMOD_CPU_HOURS_ATTRIBUTE_NAME)
                 cpu_hours_attr.value = usage
                 cpu_hours_attr.save()
+                print("Set usage for %s to %s", s, usage)
                 s.set_usage(XDMOD_CPU_HOURS_ATTRIBUTE_NAME, usage)
 
             self.write('\t'.join([
@@ -402,6 +410,9 @@ class Command(BaseCommand):
             'resource': self.filter_resource,
         }
         # print(filters.items())
+        if options['resource']:
+            self.filter_resource = options['resource']
+
         for filter_name, filter_attr in filters.items():
             if options[filter_name]:
                 logger.info("Filtering output by %s: %s", filter_name, options[filter_name])

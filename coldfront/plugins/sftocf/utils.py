@@ -132,7 +132,7 @@ def allocation_to_zone(allocation):
 
 def add_zone_manager_to_ad(username):
     try:
-        starfish_add_aduser.send_robust(user=username)
+        starfish_add_aduser.send_robust(sender='sftocf', username=username)
     except Exception as e:
         print(f'Error adding {username} to starfish_users: {e}')
         logger.exception('Error adding %s to starfish_users: %s', username, e)
@@ -140,7 +140,7 @@ def add_zone_manager_to_ad(username):
 
 def add_zone_group_to_ad(group_name):
     try:
-        starfish_add_adgroup.send_robust(group=group_name)
+        starfish_add_adgroup.send_robust(sender='sftocf', groupname=group_name)
     except Exception as e:
         print(f'Error adding {group_name} to starfish_users: {e}')
         logger.exception('Error adding %s to starfish_users: %s', group_name, e)
@@ -148,7 +148,7 @@ def add_zone_group_to_ad(group_name):
 
 def remove_zone_member_from_ad(username):
     try:
-        starfish_remove_aduser.send_robust(user=username)
+        starfish_remove_aduser.send_robust(sender='sftocf', username=username)
     except Exception as e:
         print(f'Error removing {username} from starfish_users: {e}')
         logger.exception('Error removing %s from starfish_users: %s', username, e)
@@ -234,26 +234,25 @@ class StarFishServer:
             raise ValueError(f'Cannot delete zone {zone_name} ({zone_id}): {response.text}')
         return response
 
-    def put_zone(self, zone_name, paths=None, managers=None, managing_groups=None):
+    def put_zone(self, zone_id, paths=(), managers=(), managing_groups=()):
         """Update a zone via the API"""
-        zone_data = self.get_zone_by_name(zone_name)
-        zone_id = zone_data['id']
+        zone_data = self.get_zones(zone_id=zone_id)
         url = self.api_url + f'zone/{zone_id}/'
-        data = {'name': zone_name}
+        data = {'name': zone_data['name']}
         data['paths'] = paths if paths else zone_data['paths']
         data['managers'] = managers if managers else zone_data['managers']
         data['managing_groups'] = managing_groups if managing_groups else zone_data['managing_groups']
         response = return_put_json(url, data=data, headers=self.headers)
         return response
 
-    def update_zone(self, zone_name, paths=None, managers=None, managing_groups=None):
+    def update_zone(self, zone_name, paths=(), managers=(), managing_groups=()):
         """Update a zone via the API"""
         zone_data = self.get_zone_by_name(zone_name)
         zone_id = zone_data['id']
         for group in managing_groups:
             add_zone_group_to_ad(group['groupname'])
         response = self.put_zone(
-            zone_id, paths=paths, managers=managers, managing_groups=managing_groups
+            zone_id, managers=managers, managing_groups=managing_groups
         )
         if paths and paths != zone_data['paths']:
             self.update_zone_paths(zone_id, paths)
@@ -266,7 +265,7 @@ class StarFishServer:
         if the initial update fails and record any paths that cannot be added.
         """
         #1. get the existing paths
-        zone = self.get_zones(zone_id)
+        zone = self.get_zones(zone_id=zone_id)
         try:
             self.put_zone(zone['name'], paths=paths)
         except Exception as e:
@@ -277,13 +276,13 @@ class StarFishServer:
             if paths_to_remove:
                 logger.warning('Removing paths from zone %s: %s', zone['name'], paths_to_remove)
                 new_paths = [p for p in existing_paths if p not in paths_to_remove]
-                self.update_zone(zone['name'], paths=new_paths)
+                self.put_zone(zone['id'], paths=new_paths)
                 existing_paths = new_paths
             for path in paths:
                 if path not in existing_paths:
                     try:
                         new_paths = list(set(existing_paths + [path]))
-                        self.put_zone(zone['name'], paths=new_paths)
+                        self.put_zone(zone['id'], paths=new_paths)
                         existing_paths.append(path)
                     except Exception as e:
                         logger.warning(

@@ -544,9 +544,11 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
     - created_before/created_after (structure date as 'YYYY-MM-DD')
     '''
     serializer_class = serializers.UnusedStorageAllocationSerializer
+    renderer_classes = [CustomAdminRenderer, JSONRenderer]
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = UnusedStorageAllocationFilter
     permission_classes = [IsAuthenticated, IsAdminUser]
+    csv_filename = 'unused_storage_allocations.csv'
 
     def get_queryset(self):
         # create 4 months var
@@ -594,3 +596,33 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
             unused_alloc_ids.append(alloc.pk)
         # return all allocation objects with a matching pk
         return Allocation.objects.filter(pk__in=unused_alloc_ids)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        # Check if the export query parameter is present
+        if request.GET.get('export') == 'csv':
+            return self.export_to_csv(queryset)
+
+        # Otherwise, use the default list implementation
+        return super().list(request, *args, **kwargs)
+
+    def export_to_csv(self, queryset):
+        # Create the HttpResponse object with CSV header.
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{self.csv_filename}"'
+
+        # Create a CSV writer object
+        writer = csv.writer(response)
+
+        serializer = self.get_serializer()
+        field_names = [field.label or field_name for field_name, field in serializer.fields.items()]
+        # Write the header row
+        writer.writerow(field_names)
+
+        # Write data rows
+        for item in queryset:
+            serializer_instance = self.get_serializer(item)
+            row = [serializer_instance.data[field_name] for field_name in serializer.fields.keys()]
+            writer.writerow(row)
+
+        return response
