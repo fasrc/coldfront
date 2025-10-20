@@ -205,6 +205,10 @@ class Allocation(TimeStampedModel):
         return self.get_attribute('Expense Code')
 
     @property
+    def is_l3(self):
+        return self.get_attribute('L3')
+
+    @property
     def heavy_io(self):
         return self.get_attribute('Heavy IO')
 
