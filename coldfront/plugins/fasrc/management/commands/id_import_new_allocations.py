@@ -32,6 +32,25 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
 
+    def check_l3_tag(self, allocation, resource):
+        """Check whether an allocation should be tagged as l3, and add the tag if so.
+        Criteria for l3 tagging:
+            Any allocation for a project named .*_l3
+            Any allocation on a lustre resource, with path matching ^F/|/F/ (I think?)
+            Any allocation on an isilon resource, with path matching rc_fasse_labs
+            Any allocation on h-nfse-01p
+        """
+        if allocation.project.title.endswith('_l3'):
+            return True
+        if 'lfs' in resource.name.lower() and 'F/' in allocation.path:
+            return True
+        if 'isilon' in resource.name.lower() and 'rc_fasse_labs' in allocation.path:
+            return True
+        if 'h-nfse-01p' in resource.name.lower():
+            return True
+        return False
+
+
     def handle(self, *args, **options):
 
         added_allocations_df = pd.DataFrame()
@@ -62,6 +81,7 @@ class Command(BaseCommand):
         projectstatuschoice_active = ProjectStatusChoice.objects.get(name='Active')
         allocationstatuschoice_active = AllocationStatusChoice.objects.get(name='Active')
         allocationuserstatuschoice_active = AllocationUserStatusChoice.objects.get(name='Active')
+        allocationattrtype_l3tag = AllocationAttributeType.objects.get(name='L3 Tag')
         allocationattrtype_payment = AllocationAttributeType.objects.get(
                     name='RequiresPayment')
 
@@ -113,6 +133,13 @@ class Command(BaseCommand):
                         allocation_attribute_type_id=allocationattrtype_payment.pk,
                         value=resource.requires_payment
                     )
+                    # if the allocation is new, check whether to add L3 tag
+                    if self.check_l3_tag(allocation, resource):
+                        AllocationAttribute.objects.create(
+                            allocation=allocation,
+                            allocation_attribute_type_id=allocationattrtype_l3tag.pk,
+                            value=True
+                        )
                     print(f'allocation created: {allocation_str}')
                     logger.info('allocation created: %s', allocation_str)
                     allocation.save()
