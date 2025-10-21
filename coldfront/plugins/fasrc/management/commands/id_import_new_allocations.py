@@ -81,7 +81,7 @@ class Command(BaseCommand):
         projectstatuschoice_active = ProjectStatusChoice.objects.get(name='Active')
         allocationstatuschoice_active = AllocationStatusChoice.objects.get(name='Active')
         allocationuserstatuschoice_active = AllocationUserStatusChoice.objects.get(name='Active')
-        allocationattrtype_l3tag = AllocationAttributeType.objects.get(name='L3 Tag')
+        allocationattrtype_l3tag = AllocationAttributeType.objects.get(name='L3')
         allocationattrtype_payment = AllocationAttributeType.objects.get(
                     name='RequiresPayment')
 
