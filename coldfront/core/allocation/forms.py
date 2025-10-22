@@ -2,6 +2,7 @@ import logging
 import re
 
 from django import forms
+from django.conf import settings
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
@@ -16,6 +17,9 @@ from coldfront.core.allocation.utils import get_user_resources
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource, ResourceType
 from coldfront.core.utils.common import import_from_settings
+
+if 'ifxbilling' in settings.INSTALLED_APPS:
+    from ifxbilling.models import Account
 
 ALLOCATION_ACCOUNT_ENABLED = import_from_settings(
     'ALLOCATION_ACCOUNT_ENABLED', False)
