@@ -91,8 +91,18 @@ class Command(BaseCommand):
                     logger.info("No starfish usage data found for %s %s %s", lab_name, lab_server, lab_path)
                     continue
 
+                # don't create allocation if it appears to correspond to an open allocation request
+                open_alloc_reqs = project.allocation_set.filter(
+                    status__name__in=['New', 'In Progress', 'Pending Activation', 'On Hold'],
+                    resources__name=resource.name,
+                )
+                if open_alloc_reqs.exists():
+                    logger.info("Skipping allocation creation for %s %s %s - open allocation request exists",
+                                lab_name, lab_server, lab_path)
+                    continue
+
                 allocation, created = project.allocation_set.get_or_create(
-                    resources__name=resource,
+                    resources__name=resource.name,
                     allocationattribute__value=lab_path,
                     defaults={
                         'status': allocationstatuschoice_active,
