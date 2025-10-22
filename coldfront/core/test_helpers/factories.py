@@ -40,7 +40,6 @@ from coldfront.core.allocation.models import (
 from coldfront.core.grant.models import GrantFundingAgency, GrantStatusChoice
 from coldfront.core.publication.models import PublicationSource
 
-from coldfront.core.allocation.models import AttributeType
 from coldfront.core.resource.models import ResourceAttribute, ResourceAttributeType
 
 ### Default values and Faker provider setup ###
@@ -425,6 +424,7 @@ def setup_models(test_case):
         ('Core Usage (Hours)', 'Int', True, False),
         ('EffectvUsage', 'Int', True, False),
         ('RequiresPayment', 'Yes/No', False, False),
+        ('Subdirectory', 'Text', False, False),
     ):
         AllocationAttributeTypeFactory(
             name=name,
