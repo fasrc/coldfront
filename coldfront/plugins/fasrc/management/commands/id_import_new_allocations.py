@@ -19,6 +19,7 @@ from coldfront.core.allocation.models import (
     AllocationAttributeType,
     AllocationUserStatusChoice,
 )
+from coldfront.core.allocation.utils import check_l3_tag
 from coldfront.core.utils.fasrc import update_csv, select_one_project_allocation, save_json
 from coldfront.core.resource.models import Resource
 from coldfront.plugins.sftocf.utils import StarFishRedash, RedashDataPipeline
@@ -62,6 +63,7 @@ class Command(BaseCommand):
         projectstatuschoice_active = ProjectStatusChoice.objects.get(name='Active')
         allocationstatuschoice_active = AllocationStatusChoice.objects.get(name='Active')
         allocationuserstatuschoice_active = AllocationUserStatusChoice.objects.get(name='Active')
+        allocationattrtype_l3tag = AllocationAttributeType.objects.get(name='L3')
         allocationattrtype_payment = AllocationAttributeType.objects.get(
                     name='RequiresPayment')
 
@@ -89,8 +91,18 @@ class Command(BaseCommand):
                     logger.info("No starfish usage data found for %s %s %s", lab_name, lab_server, lab_path)
                     continue
 
+                # don't create allocation if it appears to correspond to an open allocation request
+                open_alloc_reqs = project.allocation_set.filter(
+                    status__name__in=['New', 'In Progress', 'Pending Activation', 'On Hold'],
+                    resources__name=resource.name,
+                )
+                if open_alloc_reqs.exists():
+                    logger.info("Skipping allocation creation for %s %s %s - open allocation request exists",
+                                lab_name, lab_server, lab_path)
+                    continue
+
                 allocation, created = project.allocation_set.get_or_create(
-                    resources__name=resource,
+                    resources__name=resource.name,
                     allocationattribute__value=lab_path,
                     defaults={
                         'status': allocationstatuschoice_active,
@@ -113,6 +125,13 @@ class Command(BaseCommand):
                         allocation_attribute_type_id=allocationattrtype_payment.pk,
                         value=resource.requires_payment
                     )
+                    # if the allocation is new, check whether to add L3 tag
+                    if check_l3_tag(allocation, resource):
+                        AllocationAttribute.objects.create(
+                            allocation=allocation,
+                            allocation_attribute_type_id=allocationattrtype_l3tag.pk,
+                            value=True
+                        )
                     print(f'allocation created: {allocation_str}')
                     logger.info('allocation created: %s', allocation_str)
                     allocation.save()

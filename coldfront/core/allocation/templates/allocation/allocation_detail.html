@@ -65,6 +65,11 @@ Allocation Detail
       {% csrf_token %}
       <div class="table-responsive">
         <div class="container mb-3 mt-3">
+          {% if allocation.is_l3 %}
+            <div class="alert alert-danger" role="alert">
+              This allocation is for Level 3 (L3) secure data.
+            </div>
+          {% endif %}
           <table class="table table-bordered table-sm">
             <tr>
               <th scope="row" class="text-nowrap">Project:</th>

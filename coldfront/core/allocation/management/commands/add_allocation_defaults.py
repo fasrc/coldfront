@@ -80,6 +80,7 @@ class Command(BaseCommand):
             ('EffectvUsage', 'Float', False, False, False),
             ('RawShares', 'Text', False, False, False),
             ('RawUsage', 'Int', False, False, False),
+            ('L3', 'Boolean', False, False, False),
             # UBCCR defaults
             ('Cloud Account Name', 'Text', False, False, False),
             # ('CLOUD_USAGE_NOTIFICATION', 'Yes/No', False, True),

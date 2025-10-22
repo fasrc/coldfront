@@ -407,6 +407,7 @@ class AllocationDetailViewPostTest(AllocationViewBaseTest):
             'resource': self.new_allocation.resources.first().pk,
             'action': 'approve',
             'auto_create_opts': '1',
+            'path': 'testpath',
         }
         response = self.client.post(self.url, data=form_data, follow=True)
         # confirm that messages in response contains "Allocation Activated"
