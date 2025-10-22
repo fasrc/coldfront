@@ -9,6 +9,24 @@ from coldfront.core.resource.models import Resource
 
 logger = logging.getLogger(__name__)
 
+def check_l3_tag(allocation, resource):
+    """Check whether an allocation should be tagged as l3, and add the tag if so.
+    Criteria for l3 tagging:
+        Any allocation for a project named .*_l3
+        Any allocation on a lustre resource, with path matching ^F/|/F/ (I think?)
+        Any allocation on an isilon resource, with path matching rc_fasse_labs
+        Any allocation on h-nfse-01p
+    """
+    if allocation.project.title.endswith('_l3'):
+        return True
+    if 'lfs' in resource.name.lower() and 'F/' in allocation.path:
+        return True
+    if 'isilon' in resource.name.lower() and 'rc_fasse_labs' in allocation.path:
+        return True
+    if 'h-nfse-01p' in resource.name.lower():
+        return True
+    return False
+
 def get_or_create_allocation(project_obj, resource_obj):
     """Get or create an Allocation for the given Project and Resource."""
     created = False

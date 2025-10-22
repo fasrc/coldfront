@@ -2,28 +2,20 @@ import logging
 import re
 
 from django import forms
-from django.conf import settings
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator, MaxValueValidator
 
 from coldfront.core.allocation.models import (
     AllocationAccount,
     AllocationAttributeType,
     AllocationAttribute,
     AllocationStatusChoice,
-    AllocationUserAttribute,
-    AllocationUser
 )
 from coldfront.core.allocation.utils import get_user_resources
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource, ResourceType
 from coldfront.core.utils.common import import_from_settings
-
-if 'ifxbilling' in settings.INSTALLED_APPS:
-    from fiine.client import API as FiineAPI
-    from ifxbilling.models import Account, UserProductAccount
 
 ALLOCATION_ACCOUNT_ENABLED = import_from_settings(
     'ALLOCATION_ACCOUNT_ENABLED', False)
@@ -63,7 +55,7 @@ class ExpenseCodeField(forms.CharField):
         return value
 
 
-class AllocationUserRawSareField(forms.CharField):
+class AllocationUserRawShareField(forms.CharField):
     """custom field for rawshare"""
 
     def validate(self, value):
@@ -200,6 +192,11 @@ class AllocationApprovalForm(forms.Form):
         widget=forms.RadioSelect,
         choices=ALLOCATION_AUTOCREATE_OPTIONS,
     )
+    path = forms.CharField(
+        label='If you have opted for manual allocation creation, please input the path where the allocation will be created. Start it with C/ or F/ for lfs (e.g., C/example_lab) and rc_labs/ or rc_fasse_labs for isilon (e.g., rc_labs/example_lab)',
+        max_length=255,
+        required=False,
+    )
 
     automation_specifications = forms.MultipleChoiceField(
         label='If you have opted for automatic allocation creation, please select from the following options:',
@@ -222,7 +219,13 @@ class AllocationApprovalForm(forms.Form):
                 'auto_create_opts',
                 'You must select an option for how the allocation will be created.'
             )
-        if auto_create_opts == '2':
+        if auto_create_opts == '1':
+            if not cleaned_data.get('path'):
+                self.add_error(
+                    'path',
+                    'You must provide the path where the allocation will be created if you choose to create the allocation manually.'
+                )
+        elif auto_create_opts == '2':
             if not automation_specifications:
                 self.add_error(
                     'automation_specifications',
@@ -439,7 +442,7 @@ class AllocationAttributeUpdateForm(forms.Form):
 
 class AllocationUserAttributeUpdateForm(forms.Form):
     allocationuser_pk = forms.IntegerField(required=True)
-    value = AllocationUserRawSareField(required=True)
+    value = AllocationUserRawShareField(required=True)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -500,6 +503,7 @@ class AllocationAttributeCreateForm(forms.ModelForm):
     class Meta:
         model = AllocationAttribute
         fields = '__all__'
+
     def __init__(self, *args, **kwargs):
         super(AllocationAttributeCreateForm, self).__init__(*args, **kwargs)
         self.fields['allocation_attribute_type'].queryset = self.fields['allocation_attribute_type'].queryset.order_by(Lower('name'))

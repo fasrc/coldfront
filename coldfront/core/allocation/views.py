@@ -71,6 +71,7 @@ from coldfront.core.allocation.signals import (allocation_activate,
                                                allocation_user_attribute_edit,
                                                allocation_user_remove_on_slurm)
 from coldfront.core.allocation.utils import (generate_guauge_data_from_usage,
+                                            check_l3_tag,
                                              get_user_resources)
 from coldfront.core.project.models import (Project, ProjectPermission,
                                            ProjectUserStatusChoice)
@@ -376,8 +377,13 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             if action == 'approve':
                 # ensure that sheetcheck and auto_create_opts are selected
                 autoapproval_choice = approval_form.data.get('auto_create_opts')
-
-                if autoapproval_choice == '2':
+                if autoapproval_choice == '1':
+                    path_attrtype = AllocationAttributeType.objects.get(name='Subdirectory')
+                    allocation_obj.allocationattribute_set.get_or_create(
+                        allocation_attribute_type=path_attrtype,
+                        defaults={'value': approval_form.data.get('path')}
+                    )
+                elif autoapproval_choice == '2':
                     error = None
                     try:
                         preactivation_responses = allocation_autocreate.send(
@@ -397,6 +403,14 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                     if error:
                         messages.error(request, error)
                         return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
+                if check_l3_tag(allocation_obj, resource):
+                    AllocationAttribute.objects.get_or_create(
+                        allocation=allocation_obj,
+                        allocation_attribute_type=AllocationAttributeType.objects.get(
+                            name='L3'
+                        ),
+                        defaults={'value': 'True'}
+                    )
 
             if 'Tier ' in allocation_obj.get_resources_as_string:
                 # remove current resource from resources

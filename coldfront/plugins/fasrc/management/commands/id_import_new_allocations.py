@@ -19,6 +19,7 @@ from coldfront.core.allocation.models import (
     AllocationAttributeType,
     AllocationUserStatusChoice,
 )
+from coldfront.core.allocation.utils import check_l3_tag
 from coldfront.core.utils.fasrc import update_csv, select_one_project_allocation, save_json
 from coldfront.core.resource.models import Resource
 from coldfront.plugins.sftocf.utils import StarFishRedash, RedashDataPipeline
@@ -31,25 +32,6 @@ from coldfront.plugins.fasrc.utils import (
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
-
-    def check_l3_tag(self, allocation, resource):
-        """Check whether an allocation should be tagged as l3, and add the tag if so.
-        Criteria for l3 tagging:
-            Any allocation for a project named .*_l3
-            Any allocation on a lustre resource, with path matching ^F/|/F/ (I think?)
-            Any allocation on an isilon resource, with path matching rc_fasse_labs
-            Any allocation on h-nfse-01p
-        """
-        if allocation.project.title.endswith('_l3'):
-            return True
-        if 'lfs' in resource.name.lower() and 'F/' in allocation.path:
-            return True
-        if 'isilon' in resource.name.lower() and 'rc_fasse_labs' in allocation.path:
-            return True
-        if 'h-nfse-01p' in resource.name.lower():
-            return True
-        return False
-
 
     def handle(self, *args, **options):
 
@@ -134,7 +116,7 @@ class Command(BaseCommand):
                         value=resource.requires_payment
                     )
                     # if the allocation is new, check whether to add L3 tag
-                    if self.check_l3_tag(allocation, resource):
+                    if check_l3_tag(allocation, resource):
                         AllocationAttribute.objects.create(
                             allocation=allocation,
                             allocation_attribute_type_id=allocationattrtype_l3tag.pk,
