@@ -12,15 +12,10 @@ from coldfront.core.allocation.models import (
     AllocationStatusChoice,
     AllocationUserStatusChoice
 )
-from coldfront.core.allocation.utils import get_or_create_allocation
-from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
 from coldfront.core.utils.common import import_from_settings
-from coldfront.plugins.slurmrest.utils import (
-        SlurmError,
-        SlurmApiConnection,
-        calculate_fairshare_factor,
-)
+from coldfront.plugins.slurmrest.utils import SlurmError, calculate_fairshare_factor
+from coldfront.plugins.slurmrest.associations import ClusterResourceManager
 
 SLURMREST_CLUSTER_ATTRIBUTE_NAME = import_from_settings('SLURMREST_CLUSTER_ATTRIBUTE_NAME', 'slurm_cluster')
 SLURM_IGNORE_USERS = import_from_settings('SLURMREST_IGNORE_USERS', [])
@@ -85,7 +80,8 @@ class Command(BaseCommand):
             cluster_name = cluster.get_attribute(SLURMREST_CLUSTER_ATTRIBUTE_NAME)
             logger.info("Processing cluster %s (%s)", cluster.name, cluster_name)
             try:
-                slurm_cluster = SlurmApiConnection(cluster_name)
+                cluster_manager = ClusterResourceManager(cluster_name)
+                slurm_cluster = cluster_manager.slurm_api
             except SlurmError as e:
                 logger.error("Failed to get Slurm data for cluster %s: %s", cluster.name, e)
                 continue
@@ -101,36 +97,10 @@ class Command(BaseCommand):
                 logger.warning("No valid fairshare values found for cluster %s, skipping update", cluster.name)
                 calculate_fairshare = True
             # accounts/associations
-            accounts = slurm_cluster.get_accounts()
-            # remove accounts in SLURMREST_IGNORE_ACCOUNTS
-            account_dicts = [
-                acct for acct in accounts['accounts'] if acct['name'] not in SLURM_IGNORE_ACCOUNTS
-            ]
+            account_dicts = cluster_manager.accounts
             # for each account:
-            cluster_resource = Resource.objects.get(name=cluster.name)
             for account in account_dicts:
-                try:
-                    project = Project.objects.get(title=account['name'])
-                except Project.DoesNotExist:
-                    logger.error(
-                        "Project %s not in ColdFront, cannot create record for cluster %s share",
-                        account['name'], cluster_name
-                    )
-                    continue
-                # get or create related ColdFront allocation
-                allocation, _ = get_or_create_allocation(project, cluster_resource)
-                allocation.allocationattribute_set.get_or_create(
-                    allocation_attribute_type=slurm_acct_name_attr_type,
-                    defaults={'value': account['name']}
-                )
-                allocation.allocationattribute_set.get_or_create(
-                    allocation_attribute_type=cloud_acct_name_attr_type,
-                    defaults={'value': account['name']}
-                )
-                allocation.allocationattribute_set.get_or_create(
-                    allocation_attribute_type=hours_attr_type,
-                    defaults={'value': 0}
-                )
+                allocation = cluster_manager.create_update_account_allocation(account)
 
                 # add/update slurm specs
                 group_share = next(
@@ -234,8 +204,6 @@ class Command(BaseCommand):
                         )
 
             # partitions
-            partitions = slurm_cluster.get_partitions()
-            print(partitions)
-            partition_names = [part['name'] for part in partitions['partitions']]
-            # update allocation attributes for partitions
-
+            cluster_manager.import_partition_data()
+            # nodes
+            cluster_manager.import_node_data()
