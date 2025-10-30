@@ -176,17 +176,18 @@ class ClusterResourceManager:
             self.create_update_node_resource(node)
         for resource_to_delete in Resource.objects.filter(
             parent_resource=self.cluster_resource,
-            resource_type=self.node_resource_type
+            resource_type=self.node_resource_type,
+            is_available=True,
         ).exclude(name__in=[n['name'] for n in self.nodes]):
-            logger.info("Node resource %s no longer exists in Slurm cluster %s.",
+            logger.info("Node resource %s no longer exists in Slurm cluster %s; marking unavailable.",
                 resource_to_delete.name, self.cluster_name
             )
             resource_to_delete.is_available = False
             resource_to_delete.save()
             ResourceAttribute.objects.update_or_create(
                 resource=resource_to_delete,
-                value=timezone.now(),
-                resource_attribute_type=self.service_end_attribute_type
+                resource_attribute_type=self.service_end_attribute_type,
+                defaults={'value':timezone.now()}
             )
 
     def create_update_node_resource(self, node_data):
@@ -248,7 +249,7 @@ class ClusterResourceManager:
         )
         # Add account-related attributes to the allocation
         allocation.allocationattribute_set.get_or_create(
-            allocationattributetype=self.account_attribute_type,
+            allocation_attribute_type=self.account_attribute_type,
             defaults={'value': account_name},
         )
         allocation.allocationattribute_set.get_or_create(
