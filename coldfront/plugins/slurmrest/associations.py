@@ -112,7 +112,7 @@ class ClusterResourceManager:
         to ensure uniqueness in the ColdFront database.
         """
         partition_resource, created = Resource.objects.get_or_create(
-            name=f'{self.cluster_name}:{partition_data['name']}',
+            name=f'{self.cluster_name}:{partition_data["name"]}',
             parent_resource=self.cluster_resource,
             resource_type=self.partition_resource_type,
             defaults={
