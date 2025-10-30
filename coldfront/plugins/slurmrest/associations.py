@@ -6,9 +6,7 @@ from django.utils import timezone
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.allocation.models import (
     Allocation,
-    AllocationAttribute,
     AllocationAttributeType,
-    AllocationStatusChoice,
 )
 from coldfront.core.allocation.utils import get_or_create_allocation
 
