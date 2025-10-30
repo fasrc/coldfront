@@ -107,13 +107,16 @@ class ClusterResourceManager:
             self.update_partition_resource_allocations(partition, partition_resource)
 
     def create_update_partition_resource(self, partition_data):
-        """Create or update a Coldfront Resource for a Slurm partition."""
+        """Create or update a Coldfront Resource for a Slurm partition.
+        Slurm partition Resource names are formatted as "<cluster_name>:<partition_name>"
+        to ensure uniqueness in the ColdFront database.
+        """
         partition_resource, created = Resource.objects.get_or_create(
-            name=partition_data['name'],
+            name=f'{self.cluster_name}:{partition_data['name']}',
             parent_resource=self.cluster_resource,
             resource_type=self.partition_resource_type,
             defaults={
-            'description': f"{partition_data['name']} partition on {self.cluster_resource.name}"
+                'description': f"{partition_data['name']} partition on {self.cluster_name}"
             }
         )
         partition_resource.resourceattribute_set.update_or_create(
