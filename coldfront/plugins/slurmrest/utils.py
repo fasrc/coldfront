@@ -17,7 +17,7 @@ class SlurmApiConnection():
 
     def __init__(self, cluster_name):
         self.active_cluster = SLURMREST_CLUSTERS.get(cluster_name, None)
-        assert self.active_cluster is not None, f"Unable to load cluster specs for {cluster_name} -- {SLURMREST_CLUSTERS}"
+        assert self.active_cluster is not None, f"Unable to load cluster specs for {cluster_name} -- {SLURMREST_CLUSTERS.keys()}"
         self.configuration = self._return_configuration()
         self.slurm_api = self._return_apiconn(SlurmApi)
         self.slurmdb_api = self._return_apiconn(SlurmdbApi)
