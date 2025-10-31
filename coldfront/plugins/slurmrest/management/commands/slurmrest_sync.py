@@ -105,7 +105,7 @@ class Command(BaseCommand):
                 except SlurmError as e:
                     print(e)
                     logger.error(
-                        "Failed to create/update allocation for account %s on cluster %s: %s",
+                        "Failed to create/update ColdFront allocation for account %s on cluster %s: %s",
                         account['name'], cluster.name, e
                     )
                     continue

@@ -244,7 +244,7 @@ class ClusterResourceManager:
             project = Project.objects.get(title=account_name)
         except Project.DoesNotExist:
             raise SlurmError(
-                f"Unable to find Project for Slurm account {account_name} on cluster {self.cluster_name}"
+                f"Unable to find Project for cluster {self.cluster_name} account {account_name}"
             )
         allocation, created = get_or_create_allocation(
             project_obj=project,
