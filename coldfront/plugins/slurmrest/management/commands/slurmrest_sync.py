@@ -100,7 +100,15 @@ class Command(BaseCommand):
             account_dicts = cluster_manager.accounts
             # for each account:
             for account in account_dicts:
-                allocation = cluster_manager.create_update_account_allocation(account)
+                try:
+                    allocation = cluster_manager.create_update_account_allocation(account)
+                except SlurmError as e:
+                    print(e)
+                    logger.error(
+                        "Failed to create/update allocation for account %s on cluster %s: %s",
+                        account['name'], cluster.name, e
+                    )
+                    continue
 
                 # add/update slurm specs
                 group_share = next(
