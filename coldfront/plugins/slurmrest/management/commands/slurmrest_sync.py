@@ -55,15 +55,9 @@ class Command(BaseCommand):
             return
         # Process each cluster
         allocationuser_active_status = AllocationUserStatusChoice.objects.get(name="Active")
-        allocationuser_inactive_status = AllocationUserStatusChoice.objects.get(name="Inactive")
+        allocationuser_inactive_status = AllocationUserStatusChoice.objects.get(name="Removed")
         allocation_inactive_status = AllocationStatusChoice.objects.get(name='Inactive')
 
-        slurm_acct_name_attr_type = AllocationAttributeType.objects.get(
-            name='slurm_account_name')
-        cloud_acct_name_attr_type = AllocationAttributeType.objects.get(
-            name='Cloud Account Name')
-        hours_attr_type = AllocationAttributeType.objects.get(
-            name='Core Usage (Hours)')
         fairshare_aattr_type = AllocationAttributeType.objects.get(name='FairShare')
         rawshares_aattr_type = AllocationAttributeType.objects.get(name='RawShares')
         normshares_aattr_type = AllocationAttributeType.objects.get(name='NormShares')
@@ -197,7 +191,9 @@ class Command(BaseCommand):
                     rawshares = user_share['shares']['number']
                     if rawshares > 200000:
                         rawshares = 'parent'
-                    user_fairshare_factor = fairshare_factor
+                    user_fairshare_factor = calculate_fairshare_factor(
+                        normshares, effective_usage
+                    )
                     spec_mapping = [
                         {'attrtype': rawshares_auattr_type, 'value': rawshares},
                         {'attrtype': normshares_auattr_type, 'value': round(normshares, 6)},
