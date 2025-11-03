@@ -10,7 +10,7 @@ from coldfront.core.allocation.signals import (
     allocation_raw_share_edit
 )
 from coldfront.core.resource.models import Resource
-from coldfront.plugins.slurmrest.utils import SlurmApiConnection, SlurmError
+from coldfront.plugins.slurmrest.utils import SlurmApiConnection, SlurmError, calculate_fairshare_factor
 
 
 @receiver(allocation_user_attribute_edit)
@@ -60,9 +60,8 @@ def slurmrest_allocation_raw_share_edit_handler(sender, **kwargs):
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
-    raise NotImplementedError("Editing Allocation attributes is not yet implemented for Slurm REST API integration.")
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
-    slurmrest_update_account_raw_share(kwargs['account'], str(kwargs['raw_share']))
+    api.post_assoc("", kwargs['account'], None, {'shares_raw': str(kwargs['raw_share'])})
 
 
 @receiver(allocation_activate_user)
@@ -83,11 +82,15 @@ def slurmrest_allocation_activate_user_handler(sender, **kwargs):
     )
     if not user_data:
         raise SlurmError(f"Unable to find Slurm user {username} for account {project_title} on cluster {slurm_cluster.name}")
+    normshares = user_data['shares_normalized']['number']
+    effective_usage = user_data['effective_usage']['number']
+    fairshare = calculate_fairshare_factor(normshares, effective_usage)
     spec_values = {
         'RawShares': user_data['shares']['number'],
-        'NormShares': user_data['shares_normalized']['number'],
+        'NormShares': normshares,
         'RawUsage': user_data['usage'],
-        'FairShare': user_data['effective_usage']['number'],
+        'EffectvUsage': effective_usage,
+        'FairShare': fairshare,
     }
     for spec, value in spec_values.items():
         allocationuser.allocationuserattribute_set.update_or_create(
