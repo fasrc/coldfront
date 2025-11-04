@@ -3,11 +3,8 @@ import logging
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.db.models import (
-    Q, F, Value, Count, Subquery, OuterRef, IntegerField, FloatField
-)
-from django.db.models.functions import Substr, StrIndex, Coalesce, Cast, Length
-from django.db.models.functions import Lower
+from django.db.models import Q, F, Value, Count, Subquery, OuterRef, IntegerField, FloatField
+from django.db.models.functions import Substr, StrIndex, Coalesce, Cast, Length, Lower
 from django.forms import formset_factory
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -16,7 +13,8 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import CreateView
 from django.core.exceptions import ObjectDoesNotExist
 
-from coldfront.core.utils.views import ColdfrontListView
+from coldfront.core.allocation.signals import allocation_raw_share_edit
+from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource, ResourceAttribute
 from coldfront.core.resource.forms import (
     ResourceAttributeCreateForm,
@@ -25,12 +23,13 @@ from coldfront.core.resource.forms import (
     ResourceAttributeUpdateForm,
     ResourceAllocationUpdateForm,
 )
-from coldfront.core.allocation.models import AllocationAttributeType, AllocationAttribute
-from coldfront.core.allocation.signals import allocation_raw_share_edit
-
+from coldfront.core.resource.signals import (
+    resource_apicluster_table_data_request,
+    resource_clicluster_table_data_request
+)
+from coldfront.core.utils.views import ColdfrontListView
 from coldfront.plugins.slurm.utils import SlurmError
 
-from coldfront.core.project.models import Project
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +60,7 @@ class ResourceDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
 
         return child_resources
 
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         pk = self.kwargs.get('pk')
@@ -85,85 +85,17 @@ class ResourceDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         if 'Cluster' in resource_obj.resource_type.name:
             total_hours = sum([a.usage for a in allocations if a.usage])
             context['total_hours'] = total_hours
-
-            # Get attribute type IDs
-            slurm_specs_type = AllocationAttributeType.objects.get(name='slurm_specs')
-            usage_type = AllocationAttributeType.objects.get(name='Core Usage (Hours)')
-            effectv_type = AllocationAttributeType.objects.get(name='EffectvUsage')
-
-            allocations = (
-                allocations.annotate(
-                    # For slurm_specs parsing
-                    specs_value=Subquery(
-                        AllocationAttribute.objects
-                        .filter(
-                            allocation_id=OuterRef('id'),
-                            allocation_attribute_type=slurm_specs_type
-                        )
-                        .values('value')[:1]
-                    ),
-                    rawshares=Substr(
-                        'specs_value',
-                        StrIndex('specs_value', Value('RawShares=')) + 10,
-                        Cast(StrIndex(
-                            Substr(
-                                'specs_value',
-                                StrIndex('specs_value', Value('RawShares=')) + 10
-                            ),
-                            Value(',')
-                        ) - 1, IntegerField())
-                    ),
-                    normshares=Substr(
-                        'specs_value',
-                        StrIndex('specs_value', Value('NormShares=')) + 11,
-                        Cast(StrIndex(
-                            Substr(
-                                'specs_value',
-                                StrIndex('specs_value', Value('NormShares=')) + 11
-                            ),
-                            Value(',')
-                        ) - 1, IntegerField())
-                    ),
-                    fairshare=Substr(
-                        'specs_value',
-                        StrIndex('specs_value', Value('FairShare=')) + 10,
-                        Length('specs_value')
-                    ),
-                    usage=Cast(Coalesce(
-                        Subquery(
-                            AllocationAttribute.objects
-                            .filter(
-                                allocation_id=OuterRef('id'),
-                                allocation_attribute_type=usage_type
-                            )
-                            .values('value')[:1]
-                        ),
-                        Value('0')
-                    ), FloatField()),
-                    effectvusage=Cast(Coalesce(
-                        Subquery(
-                            AllocationAttribute.objects
-                            .filter(
-                                allocation_id=OuterRef('id'),
-                                allocation_attribute_type=effectv_type
-                            )
-                            .values('value')[:1]
-                        ),
-                        Value('0')
-                    ), FloatField())
+            if resource_obj.get_attribute('slurm_integration') == 'API':
+                allocations = resource_apicluster_table_data_request.send(
+                    sender=self.__class__,
+                    allocations=allocations
                 )
-                .order_by('id')
-                .values(
-                    'id',
-                    'project_title',
-                    'user_count',
-                    'rawshares',
-                    'normshares',
-                    'fairshare',
-                    'usage',
-                    'effectvusage'
+            elif resource_obj.get_attribute('slurm_integration') == 'CLI':
+                allocations = resource_clicluster_table_data_request.send(
+                    sender=self.__class__,
+                    allocations=allocations
                 )
-            )
+
         elif resource_obj.resource_type.name == 'Storage':
             allocation_total = {'size': 0, 'usage':0}
             for allocation in allocations:
@@ -606,7 +538,7 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                     edit_allocations_formset_initial_data.append(
                         {
                             'allocation_pk': allocation.pk,
-                            'rawshare': allocation.get_slurm_spec_value('RawShares'),
+                            'rawshare': allocation.rawshares,
                             'project': allocation.project.title,
                             'usage': allocation.usage,
                             'user_count': allocation.allocationuser_set.count(),

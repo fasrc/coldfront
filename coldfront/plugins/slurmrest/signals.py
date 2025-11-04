@@ -1,7 +1,14 @@
 from django.dispatch import receiver
-from django.db.models import Q
+from django.db.models import Q, Value, Subquery, OuterRef, IntegerField, FloatField
+from django.db.models.functions import Coalesce, Cast
+from coldfront.core.resource.signals import resource_apicluster_table_data_request
 
-from coldfront.core.allocation.models import AllocationUser, AllocationUserAttributeType
+from coldfront.core.allocation.models import (
+    AllocationUser,
+    AllocationUserAttributeType,
+    AllocationAttribute,
+    AllocationAttributeType
+)
 from coldfront.core.allocation.signals import (
     allocation_user_attribute_edit,
     allocation_user_remove_on_slurm,
@@ -97,3 +104,82 @@ def slurmrest_allocation_activate_user_handler(sender, **kwargs):
             allocationuser_attribute_type=AllocationUserAttributeType.objects.get(name=spec),
             defaults={'value': value}
         )
+
+@receiver(resource_apicluster_table_data_request)
+def generate_cluster_resource_allocation_table_data(sender, **kwargs):
+    """Generate allocation table data for a cluster resource.
+    """
+    allocations = kwargs['allocations']
+    # Get attribute type IDs
+    rawshare_attribute_type = AllocationAttributeType.objects.get(name='RawShares')
+    normshare_attribute_type = AllocationAttributeType.objects.get(name='NormShares')
+    fairshare_attribute_type = AllocationAttributeType.objects.get(name='FairShare')
+    usage_type = AllocationAttributeType.objects.get(name='Core Usage (Hours)')
+    effectv_type = AllocationAttributeType.objects.get(name='EffectvUsage')
+
+    allocations = (
+        allocations.annotate(
+            rawshares=Cast(Coalesce(
+                Subquery(
+                    AllocationAttribute.objects.filter(
+                        allocation_id=OuterRef('id'),
+                        allocation_attribute_type=rawshare_attribute_type
+                    )
+                    .values('value')[:1]
+                ),
+                Value('0')
+            ), IntegerField()),
+            normshares=Cast(Coalesce(
+                Subquery(
+                    AllocationAttribute.objects.filter(
+                        allocation_id=OuterRef('id'),
+                        allocation_attribute_type=normshare_attribute_type
+                    )
+                    .values('value')[:1]
+                ),
+                Value('0')
+            ), FloatField()),
+            fairshare=Cast(Coalesce(
+                Subquery(
+                    AllocationAttribute.objects.filter(
+                        allocation_id=OuterRef('id'),
+                        allocation_attribute_type=fairshare_attribute_type
+                    )
+                    .values('value')[:1]
+                ),
+                Value('0')
+            ), FloatField()),
+            usage=Cast(Coalesce(
+                Subquery(
+                    AllocationAttribute.objects.filter(
+                        allocation_id=OuterRef('id'),
+                        allocation_attribute_type=usage_type
+                    )
+                    .values('value')[:1]
+                ),
+                Value('0')
+            ), FloatField()),
+            effectvusage=Cast(Coalesce(
+                Subquery(
+                    AllocationAttribute.objects.filter(
+                        allocation_id=OuterRef('id'),
+                        allocation_attribute_type=effectv_type
+                    )
+                    .values('value')[:1]
+                ),
+                Value('0')
+            ), FloatField())
+        )
+        .order_by('id')
+        .values(
+            'id',
+            'project_title',
+            'user_count',
+            'rawshares',
+            'normshares',
+            'fairshare',
+            'usage',
+            'effectvusage'
+        )
+    )
+    return allocations
