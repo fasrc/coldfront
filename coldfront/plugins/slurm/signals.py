@@ -10,7 +10,7 @@ from coldfront.core.allocation.signals import (
 )
 from coldfront.core.resource.signals import resource_clicluster_table_data_request
 from django.db.models import Q, Value, Subquery, OuterRef, IntegerField, FloatField
-from django.db.models.functions import Substr, StrIndex, Coalesce, Cast, Length
+from django.db.models.functions import Substr, StrIndex, Coalesce, Cast, Length, Round
 from coldfront.core.resource.models import Resource
 from coldfront.core.allocation.models import AllocationAttribute, AllocationAttributeType
 from coldfront.plugins.slurm.utils import (
@@ -103,6 +103,7 @@ def generate_cluster_resource_allocation_table_data(sender, **kwargs):
     It adds Slurm-specific data to the allocation table.
     """
     allocations = kwargs['allocations']
+    total_hours = kwargs['total_hours']
     slurm_specs_type = AllocationAttributeType.objects.get(name='slurm_specs')
     usage_type = AllocationAttributeType.objects.get(name='Core Usage (Hours)')
     effectv_type = AllocationAttributeType.objects.get(name='EffectvUsage')
@@ -144,16 +145,30 @@ def generate_cluster_resource_allocation_table_data(sender, **kwargs):
                 StrIndex('specs_value', Value('FairShare=')) + 10,
                 Length('specs_value')
             ),
-            usage=Cast(Coalesce(
-                Subquery(
-                    AllocationAttribute.objects.filter(
-                        allocation_id=OuterRef('id'),
-                        allocation_attribute_type=usage_type
-                    )
-                    .values('value')[:1]
-                ),
-                Value('0')
-            ), FloatField()),
+            usage=Round(Cast(
+                Coalesce(
+                    Subquery(
+                        AllocationAttribute.objects.filter(
+                            allocation_id=OuterRef('id'),
+                            allocation_attribute_type=usage_type
+                        ).values('value')[:1]
+                    ), Value('0')
+                ), FloatField())
+            , 1),
+            usage_pct=Round(
+                100.0 * Cast(
+                    Coalesce(
+                        Subquery(
+                            AllocationAttribute.objects.filter(
+                                allocation_id=OuterRef('id'),
+                                allocation_attribute_type=usage_type
+                            )
+                            .values('value')[:1]
+                        ),
+                        Value('0')
+                    ), FloatField()
+                ) / Cast(Value(total_hours), FloatField()
+            ), 2),
             effectvusage=Cast(Coalesce(
                 Subquery(
                     AllocationAttribute.objects.filter(
@@ -174,6 +189,7 @@ def generate_cluster_resource_allocation_table_data(sender, **kwargs):
             'normshares',
             'fairshare',
             'usage',
+            'usage_pct',
             'effectvusage'
         )
     )

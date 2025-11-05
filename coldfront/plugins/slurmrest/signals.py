@@ -182,8 +182,7 @@ def generate_cluster_resource_allocation_table_data(sender, **kwargs):
                         allocation_attribute_type=effectv_type
                     )
                     .values('value')[:1]
-                ),
-                Value('0')
+                ), Value('0')
             ), FloatField())
         )
         .order_by('id')
