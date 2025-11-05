@@ -86,15 +86,19 @@ class ResourceDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             total_hours = sum([a.usage for a in allocations if a.usage])
             context['total_hours'] = total_hours
             if resource_obj.get_attribute('slurm_integration') == 'API':
-                allocations = resource_apicluster_table_data_request.send(
+                response = resource_apicluster_table_data_request.send(
                     sender=self.__class__,
-                    allocations=allocations
+                    allocations=allocations,
+                    total_hours=total_hours
                 )
+                allocations = response[0][1]
             elif resource_obj.get_attribute('slurm_integration') == 'CLI':
-                allocations = resource_clicluster_table_data_request.send(
+                response = resource_clicluster_table_data_request.send(
                     sender=self.__class__,
-                    allocations=allocations
+                    allocations=allocations,
+                    total_hours=total_hours
                 )
+                allocations = response[0][1]
 
         elif resource_obj.resource_type.name == 'Storage':
             allocation_total = {'size': 0, 'usage':0}
