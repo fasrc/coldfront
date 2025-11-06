@@ -561,7 +561,8 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                 max_num=len(resource_allocations),
                 extra=0
             )
-            edit_allocations_formset_initial_data = self.get_formset_initial_data(resource_allocations)
+            edit_allocations_formset_initial_data = self.get_formset_initial_data(
+                    resource_allocations)
             formset = ResourceAllocationUpdateFormSet(
                 initial=edit_allocations_formset_initial_data,
                 prefix='allocationsform'
@@ -606,7 +607,7 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
             for allocation in resource_allocations:
                 current_rawshare = allocation.rawshares
                 new_rawshare = allocation_rawshares.get(str(allocation.pk), None)
-                if new_rawshare and current_rawshare != new_rawshare: # Ignore unchanged values
+                if new_rawshare and int(current_rawshare) != int(new_rawshare): # Ignore unchanged values
                     logger.info(
                         'recognized changes in RawShares value for %s slurm account: %s changed to %s',
                         allocation.project.title, current_rawshare, new_rawshare
@@ -622,13 +623,15 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                         logger.info(msg)
                         messages.success(request, msg)
                     except SlurmError as e:
-                        err = f'Problem encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
+                        err = f'SlurmError encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
                         logger.exception(err)
                         messages.error(request, err)
+                        continue
                     except Exception as e:
                         err = f'Problem encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
                         logger.exception(err)
                         messages.error(request, err)
+                        continue
                     spec_update = self.update_rawshare(allocation, new_rawshare)
                     if spec_update != True:
                         err = f'Slurm account for {allocation.project.title} successfully updated, but a problem was encountered while reflecting the updates in ColdFront: {spec_update}'

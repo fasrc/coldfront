@@ -122,7 +122,11 @@ class SlurmApiConnection():
         else:
             if user_name is None or account_name is None:
                 raise ValueError("Must supply assoc_id OR user_name/account_name.")
-            args = {'user': user_name, 'account': account_name}
+            args = {'account': account_name}
+            if user_name == '':
+                args['parent_account'] = 'root'
+            else:
+                args['user'] = user_name
         associations = self.slurmdb_api.slurmdb_v0041_get_association(**args)
         return associations.to_dict()
 
