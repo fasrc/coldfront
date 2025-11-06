@@ -576,12 +576,12 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
         return render(request, self.template_name, context)
 
     def update_rawshare(self, allocation, new_rawshare):
-        if allocation.resources.get_attribute('slurm_integration') == 'API':
+        if allocation.get_parent_resource.get_attribute('slurm_integration') == 'API':
             rawshare = allocation.get_full_attribute('RawShares')
             rawshare.value = new_rawshare
             rawshare.save()
             return True
-        elif allocation.resources.get_attribute('slurm_integration') == 'CLI':
+        elif allocation.get_parent_resource.get_attribute('slurm_integration') == 'CLI':
             spec_update = allocation.update_slurm_spec_value('RawShares', new_rawshare)
             return spec_update
 
