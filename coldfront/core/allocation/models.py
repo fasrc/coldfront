@@ -18,7 +18,7 @@ from coldfront.config.env import ENV
 from coldfront.core import attribute_expansion
 from coldfront.core.resource.models import Resource
 from coldfront.core.utils.common import import_from_settings
-from coldfront.core.project.models import Project, ProjectPermission, ProjectUser
+from coldfront.core.project.models import Project, ProjectPermission
 
 
 if ENV.bool('PLUGIN_IFX', default=False):
@@ -478,6 +478,7 @@ class Allocation(TimeStampedModel):
         return None
 
     def get_full_attribute(self, name):
+        """return the full AllocationAttribute object for the given name, or None if not found"""
         attr = self.allocationattribute_set.filter(
             allocation_attribute_type__name=name).first()
         if attr:

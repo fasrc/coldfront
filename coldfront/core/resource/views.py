@@ -3,8 +3,8 @@ import logging
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.db.models import Q, F, Value, Count, Subquery, OuterRef, IntegerField, FloatField
-from django.db.models.functions import Substr, StrIndex, Coalesce, Cast, Length, Lower
+from django.db.models import Q, F, Count, IntegerField
+from django.db.models.functions import Cast, Lower
 from django.forms import formset_factory
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -538,7 +538,7 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
         if resource_allocations:
             for allocation in resource_allocations:
                 slurm_specs_attribute = allocation.get_full_attribute('slurm_specs')
-                if slurm_specs_attribute is not None:
+                if slurm_specs_attribute is not None or allocation.rawshares:
                     edit_allocations_formset_initial_data.append(
                         {
                             'allocation_pk': allocation.pk,
@@ -575,6 +575,16 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
         context = self.get_context_data(resource_obj)
         return render(request, self.template_name, context)
 
+    def update_rawshare(self, allocation, new_rawshare):
+        if allocation.resources.get_attribute('slurm_integration') == 'API':
+            rawshare = allocation.get_full_attribute('RawShares')
+            rawshare.value = new_rawshare
+            rawshare.save()
+            return True
+        elif allocation.resources.get_attribute('slurm_integration') == 'CLI':
+            spec_update = allocation.update_slurm_spec_value('RawShares', new_rawshare)
+            return spec_update
+
     def post(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
         resource_obj = get_object_or_404(Resource, pk=pk)
@@ -594,7 +604,7 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                 for form in formset.forms
             }
             for allocation in resource_allocations:
-                current_rawshare = allocation.get_slurm_spec_value('RawShares')
+                current_rawshare = allocation.rawshares
                 new_rawshare = allocation_rawshares.get(str(allocation.pk), None)
                 if new_rawshare and current_rawshare != new_rawshare: # Ignore unchanged values
                     logger.info(
@@ -619,7 +629,7 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                         err = f'Problem encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
                         logger.exception(err)
                         messages.error(request, err)
-                    spec_update = allocation.update_slurm_spec_value('RawShares', new_rawshare)
+                    spec_update = self.update_rawshare(allocation, new_rawshare)
                     if spec_update != True:
                         err = f'Slurm account for {allocation.project.title} successfully updated, but a problem was encountered while reflecting the updates in ColdFront: {spec_update}'
                         logger.error(err)
@@ -627,8 +637,7 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
 
             messages.success(request, 'Allocation update complete.')
             return HttpResponseRedirect(reverse('resource-detail', kwargs={'pk': pk}))
-        else:
-            messages.error(request, 'Errors encountered, changes not saved. Check the form for details')
-            context = self.get_context_data(resource_obj)
-            context['formset'] = formset
-            return render(request, self.template_name, context)
+        messages.error(request, 'Errors encountered, changes not saved. Check the form for details')
+        context = self.get_context_data(resource_obj)
+        context['formset'] = formset
+        return render(request, self.template_name, context)
