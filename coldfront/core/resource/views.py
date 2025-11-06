@@ -615,7 +615,7 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                         allocation_raw_share_edit.send(
                             sender=self.__class__,
                             account=allocation.project.title,
-                            cluster=resource_obj.get_attribute('cluster_name'),
+                            cluster=resource_obj.get_attribute('slurm_cluster'),
                             raw_share=new_rawshare
                         )
                         msg = f'RawShares value for {allocation.project.title} slurm account successfully updated from {current_rawshare} to {new_rawshare}'
