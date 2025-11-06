@@ -32,7 +32,7 @@ def slurmrest_allocation_user_attribute_edit_handler(sender, **kwargs):
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
-    api.post_assoc(kwargs['user'], kwargs['account'], {'shares_raw': str(kwargs['raw_share'])})
+    api.post_assoc(kwargs['account'], kwargs['user'], {'shares_raw': str(kwargs['raw_share'])})
 
 
 @receiver(allocation_user_add_on_slurm)
