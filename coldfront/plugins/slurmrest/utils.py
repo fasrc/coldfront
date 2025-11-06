@@ -141,7 +141,7 @@ class SlurmApiConnection():
         response = self._call_api(
             self.slurmdb_api.slurmdb_v0041_post_associations,
             noop=noop,
-            **assoc_dict
+            **{'v0041_openapi_assocs_resp':{'associations': associations}}
         )
         logger.info('updated association: %s', response)
         return response
