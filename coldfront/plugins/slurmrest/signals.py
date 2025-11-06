@@ -17,7 +17,9 @@ from coldfront.core.allocation.signals import (
     allocation_raw_share_edit
 )
 from coldfront.core.resource.models import Resource
-from coldfront.plugins.slurmrest.utils import SlurmApiConnection, SlurmError, calculate_fairshare_factor
+from coldfront.plugins.slurmrest.utils import (
+    SlurmApiConnection, SlurmError, calculate_fairshare_factor
+)
 
 
 @receiver(allocation_user_attribute_edit)
@@ -68,7 +70,7 @@ def slurmrest_allocation_raw_share_edit_handler(sender, **kwargs):
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
-    api.post_assoc("", kwargs['account'], None, {'shares_raw': str(kwargs['raw_share'])})
+    api.post_assoc(kwargs['account'], "", None, {'shares_raw': str(kwargs['raw_share'])})
 
 
 @receiver(allocation_activate_user)
