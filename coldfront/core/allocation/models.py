@@ -540,9 +540,9 @@ class Allocation(TimeStampedModel):
                     slurm_spec_attribute.value = self.get_attribute('slurm_specs').replace(f'{key}={old_slurm_spec_value}', f'{key}={value}')
                     slurm_spec_attribute.save()
                     return True
-            return f'Error updating Allocation Slurm Spec value {key}={value} for {self.user.username} at {self.allocation}: Cant find key={key}'
+            return f'Error updating Allocation Slurm Spec value {key}={value} at allocation {self}: Cant find key={key}'
         except Exception as e:
-            error_message = f'Error updating Allocation Slurm Spec value {key}={value} for {self.user.username} at {self.allocation} : {str(e)}'
+            error_message = f'Error updating Allocation Slurm Spec value {key}={value} at {self} : {str(e)}'
             logger.exception(error_message)
             return error_message
 
