@@ -1,7 +1,14 @@
 from django.dispatch import receiver
-from django.db.models import Q
+from django.db.models import Q, Value, Subquery, OuterRef, IntegerField, FloatField
+from django.db.models.functions import Coalesce, Cast, Round
+from coldfront.core.resource.signals import resource_apicluster_table_data_request
 
-from coldfront.core.allocation.models import AllocationUser, AllocationUserAttributeType
+from coldfront.core.allocation.models import (
+    AllocationUser,
+    AllocationUserAttributeType,
+    AllocationAttribute,
+    AllocationAttributeType
+)
 from coldfront.core.allocation.signals import (
     allocation_user_attribute_edit,
     allocation_user_remove_on_slurm,
@@ -10,7 +17,9 @@ from coldfront.core.allocation.signals import (
     allocation_raw_share_edit
 )
 from coldfront.core.resource.models import Resource
-from coldfront.plugins.slurmrest.utils import SlurmApiConnection, SlurmError
+from coldfront.plugins.slurmrest.utils import (
+    SlurmApiConnection, SlurmError, calculate_fairshare_factor
+)
 
 
 @receiver(allocation_user_attribute_edit)
@@ -22,9 +31,8 @@ def slurmrest_allocation_user_attribute_edit_handler(sender, **kwargs):
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
-    raise NotImplementedError("Editing AllocationUser attributes is not yet implemented for Slurm REST API integration.")
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
-    api.update_user(kwargs['user'], kwargs['account'], {'RawShares': str(kwargs['raw_share'])})
+    api.post_assoc(kwargs['account'], kwargs['user'], {'shares_raw': int(kwargs['raw_share'])})
 
 
 @receiver(allocation_user_add_on_slurm)
@@ -61,9 +69,8 @@ def slurmrest_allocation_raw_share_edit_handler(sender, **kwargs):
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
         return
-    raise NotImplementedError("Editing Allocation attributes is not yet implemented for Slurm REST API integration.")
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
-    slurmrest_update_account_raw_share(kwargs['account'], str(kwargs['raw_share']))
+    api.post_assoc(kwargs['account'], "", {'shares_raw': int(kwargs['raw_share'])})
 
 
 @receiver(allocation_activate_user)
@@ -84,14 +91,113 @@ def slurmrest_allocation_activate_user_handler(sender, **kwargs):
     )
     if not user_data:
         raise SlurmError(f"Unable to find Slurm user {username} for account {project_title} on cluster {slurm_cluster.name}")
+    normshares = user_data['shares_normalized']['number']
+    effective_usage = user_data['effective_usage']['number']
+    fairshare = calculate_fairshare_factor(normshares, effective_usage)
     spec_values = {
         'RawShares': user_data['shares']['number'],
-        'NormShares': user_data['shares_normalized']['number'],
+        'NormShares': normshares,
         'RawUsage': user_data['usage'],
-        'FairShare': user_data['effective_usage']['number'],
+        'EffectvUsage': effective_usage,
+        'FairShare': fairshare,
     }
     for spec, value in spec_values.items():
         allocationuser.allocationuserattribute_set.update_or_create(
             allocationuser_attribute_type=AllocationUserAttributeType.objects.get(name=spec),
             defaults={'value': value}
         )
+
+@receiver(resource_apicluster_table_data_request)
+def generate_cluster_resource_allocation_table_data(sender, **kwargs):
+    """Generate allocation table data for a cluster resource.
+    """
+    allocations = kwargs['allocations']
+    total_hours = kwargs['total_hours']
+    # Get attribute type IDs
+    rawshare_attribute_type = AllocationAttributeType.objects.get(name='RawShares')
+    normshare_attribute_type = AllocationAttributeType.objects.get(name='NormShares')
+    fairshare_attribute_type = AllocationAttributeType.objects.get(name='FairShare')
+    usage_type = AllocationAttributeType.objects.get(name='Core Usage (Hours)')
+    effectv_type = AllocationAttributeType.objects.get(name='EffectvUsage')
+
+    allocations = (
+        allocations.annotate(
+            rawshares=Cast(Coalesce(
+                Subquery(
+                    AllocationAttribute.objects.filter(
+                        allocation_id=OuterRef('id'),
+                        allocation_attribute_type=rawshare_attribute_type
+                    )
+                    .values('value')[:1]
+                ),
+                Value('0')
+            ), IntegerField()),
+            normshares=Cast(Coalesce(
+                Subquery(
+                    AllocationAttribute.objects.filter(
+                        allocation_id=OuterRef('id'),
+                        allocation_attribute_type=normshare_attribute_type
+                    )
+                    .values('value')[:1]
+                ),
+                Value('0')
+            ), FloatField()),
+            fairshare=Cast(Coalesce(
+                Subquery(
+                    AllocationAttribute.objects.filter(
+                        allocation_id=OuterRef('id'),
+                        allocation_attribute_type=fairshare_attribute_type
+                    )
+                    .values('value')[:1]
+                ),
+                Value('0')
+            ), FloatField()),
+            usage=Round(Cast(
+                Coalesce(
+                    Subquery(
+                        AllocationAttribute.objects.filter(
+                            allocation_id=OuterRef('id'),
+                            allocation_attribute_type=usage_type
+                        )
+                        .values('value')[:1]
+                    ), Value('0')
+                ), FloatField()
+            ), 1),
+            usage_pct=Round(
+                100.0 * Cast(
+                    Coalesce(
+                        Subquery(
+                            AllocationAttribute.objects.filter(
+                                allocation_id=OuterRef('id'),
+                                allocation_attribute_type=usage_type
+                            )
+                            .values('value')[:1]
+                        ),
+                        Value('0')
+                    ), FloatField()
+                ) / Cast(Value(total_hours), FloatField()
+            ), 2),
+            effectvusage=Cast(Coalesce(
+                Subquery(
+                    AllocationAttribute.objects.filter(
+                        allocation_id=OuterRef('id'),
+                        allocation_attribute_type=effectv_type
+                    )
+                    .values('value')[:1]
+                ), Value('0')
+            ), FloatField())
+        )
+        .order_by('id')
+        .values(
+            'id',
+            'project_title',
+            'user_count',
+            'rawshares',
+            'normshares',
+            'fairshare',
+            'usage',
+            'usage_pct',
+            'effectvusage'
+        )
+    )
+    return allocations

@@ -236,7 +236,7 @@ class SlurmCluster(SlurmBase):
         slurm_specs_resourceattribute_type = ResourceAttributeType.objects.get(name=SLURM_SPECS_ATTRIBUTE_NAME)
         for partition in partitions:
             partition_resource, created = Resource.objects.get_or_create(
-                name=partition['PartitionName'],
+                name=f"{self.name}:{partition['PartitionName']}",
                 parent_resource=current_cluster_resource,
                 resource_type=partition_resourcetype,
                 defaults={

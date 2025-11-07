@@ -17,7 +17,7 @@ class SlurmApiConnection():
 
     def __init__(self, cluster_name):
         self.active_cluster = SLURMREST_CLUSTERS.get(cluster_name, None)
-        assert self.active_cluster is not None, f"Unable to load cluster specs for {cluster_name} -- {SLURMREST_CLUSTERS}"
+        assert self.active_cluster is not None, f"Unable to load cluster specs for {cluster_name} -- {SLURMREST_CLUSTERS.keys()}"
         self.configuration = self._return_configuration()
         self.slurm_api = self._return_apiconn(SlurmApi)
         self.slurmdb_api = self._return_apiconn(SlurmdbApi)
@@ -56,11 +56,11 @@ class SlurmApiConnection():
 
 
     # account methods
-    def get_account(self, account_name, with_associations=True, with_coordinators=True):
+    def get_account(self, account_name, with_assocs='true', with_coords='true'):
         account = self.slurmdb_api.slurmdb_v0041_get_account(
             account_name=account_name,
-            with_assocs=with_associations,
-            with_coords=with_coordinators,
+            with_assocs=with_assocs,
+            with_coords=with_coords,
         )
         if account.errors:
             raise Exception('error/s found in get_account output: %s', account.errors)
@@ -109,6 +109,9 @@ class SlurmApiConnection():
         logger.info('removed account: %s', response)
         return response
 
+    def get_assocs(self):
+        associations = self.slurmdb_api.slurmdb_v0041_get_associations()
+        return associations.to_dict()
 
     # association methods
     def get_assoc(self, *, user_name=None, account_name=None, assoc_id=None):
@@ -117,12 +120,31 @@ class SlurmApiConnection():
                 raise ValueError("Either assoc_id OR user/account pair, not both.")
             args = {'id': assoc_id}
         else:
-            if not (user_name and account_name):
+            if user_name is None or account_name is None:
                 raise ValueError("Must supply assoc_id OR user_name/account_name.")
-            args = {'user': user_name, 'account': account_name}
+            args = {'account': account_name}
+            if user_name == '':
+                args['parent_account'] = 'root'
+            else:
+                args['user'] = user_name
         associations = self.slurmdb_api.slurmdb_v0041_get_association(**args)
         return associations.to_dict()
 
+    def post_assoc(self, account_name, user_name, change_dict, noop=SLURMREST_NOOP):
+        # get existing association
+        assoc_dict = self.get_assoc(user_name=user_name, account_name=account_name)
+        associations = assoc_dict['associations']
+        if len(associations) != 1:
+            raise SlurmError(f"Expected exactly one association for user '{user_name}' and account '{account_name}', found {len(associations)}")
+        for key, value in change_dict.items():
+            associations[0][key] = value
+        response = self._call_api(
+            self.slurmdb_api.slurmdb_v0041_post_associations,
+            noop=noop,
+            **{'v0041_openapi_assocs_resp':{'associations': associations}}
+        )
+        logger.info('updated association: %s', response)
+        return response
 
     def add_assoc(self, account_name, user_name, noop=SLURMREST_NOOP):
         association_dict = {

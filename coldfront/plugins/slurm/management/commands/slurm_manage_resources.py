@@ -93,7 +93,7 @@ class Command(BaseCommand):
                 }
             )
             Resource.objects.get_or_create(
-                name=row['partition'],
+                name=f"{current_cluster}:{row['partition']}",
                 resource_type=partition_resource_type,
                 defaults={
                     'parent_resource': current_cluster,

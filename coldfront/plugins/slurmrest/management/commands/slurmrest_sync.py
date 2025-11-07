@@ -12,15 +12,10 @@ from coldfront.core.allocation.models import (
     AllocationStatusChoice,
     AllocationUserStatusChoice
 )
-from coldfront.core.allocation.utils import get_or_create_allocation
-from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
 from coldfront.core.utils.common import import_from_settings
-from coldfront.plugins.slurmrest.utils import (
-        SlurmError,
-        SlurmApiConnection,
-        calculate_fairshare_factor,
-)
+from coldfront.plugins.slurmrest.utils import SlurmError, calculate_fairshare_factor
+from coldfront.plugins.slurmrest.associations import ClusterResourceManager
 
 SLURMREST_CLUSTER_ATTRIBUTE_NAME = import_from_settings('SLURMREST_CLUSTER_ATTRIBUTE_NAME', 'slurm_cluster')
 SLURM_IGNORE_USERS = import_from_settings('SLURMREST_IGNORE_USERS', [])
@@ -60,15 +55,9 @@ class Command(BaseCommand):
             return
         # Process each cluster
         allocationuser_active_status = AllocationUserStatusChoice.objects.get(name="Active")
-        allocationuser_inactive_status = AllocationUserStatusChoice.objects.get(name="Inactive")
+        allocationuser_inactive_status = AllocationUserStatusChoice.objects.get(name="Removed")
         allocation_inactive_status = AllocationStatusChoice.objects.get(name='Inactive')
 
-        slurm_acct_name_attr_type = AllocationAttributeType.objects.get(
-            name='slurm_account_name')
-        cloud_acct_name_attr_type = AllocationAttributeType.objects.get(
-            name='Cloud Account Name')
-        hours_attr_type = AllocationAttributeType.objects.get(
-            name='Core Usage (Hours)')
         fairshare_aattr_type = AllocationAttributeType.objects.get(name='FairShare')
         rawshares_aattr_type = AllocationAttributeType.objects.get(name='RawShares')
         normshares_aattr_type = AllocationAttributeType.objects.get(name='NormShares')
@@ -85,7 +74,8 @@ class Command(BaseCommand):
             cluster_name = cluster.get_attribute(SLURMREST_CLUSTER_ATTRIBUTE_NAME)
             logger.info("Processing cluster %s (%s)", cluster.name, cluster_name)
             try:
-                slurm_cluster = SlurmApiConnection(cluster_name)
+                cluster_manager = ClusterResourceManager(cluster_name)
+                slurm_cluster = cluster_manager.slurm_api
             except SlurmError as e:
                 logger.error("Failed to get Slurm data for cluster %s: %s", cluster.name, e)
                 continue
@@ -101,36 +91,18 @@ class Command(BaseCommand):
                 logger.warning("No valid fairshare values found for cluster %s, skipping update", cluster.name)
                 calculate_fairshare = True
             # accounts/associations
-            accounts = slurm_cluster.get_accounts()
-            # remove accounts in SLURMREST_IGNORE_ACCOUNTS
-            account_dicts = [
-                acct for acct in accounts['accounts'] if acct['name'] not in SLURM_IGNORE_ACCOUNTS
-            ]
+            account_dicts = cluster_manager.accounts
             # for each account:
-            cluster_resource = Resource.objects.get(name=cluster.name)
             for account in account_dicts:
                 try:
-                    project = Project.objects.get(title=account['name'])
-                except Project.DoesNotExist:
+                    allocation = cluster_manager.create_update_account_allocation(account)
+                except SlurmError as e:
+                    print(e)
                     logger.error(
-                        "Project %s not in ColdFront, cannot create record for cluster %s share",
-                        account['name'], cluster_name
+                        "Failed to create/update ColdFront allocation for account %s on cluster %s: %s",
+                        account['name'], cluster.name, e
                     )
                     continue
-                # get or create related ColdFront allocation
-                allocation, _ = get_or_create_allocation(project, cluster_resource)
-                allocation.allocationattribute_set.get_or_create(
-                    allocation_attribute_type=slurm_acct_name_attr_type,
-                    defaults={'value': account['name']}
-                )
-                allocation.allocationattribute_set.get_or_create(
-                    allocation_attribute_type=cloud_acct_name_attr_type,
-                    defaults={'value': account['name']}
-                )
-                allocation.allocationattribute_set.get_or_create(
-                    allocation_attribute_type=hours_attr_type,
-                    defaults={'value': 0}
-                )
 
                 # add/update slurm specs
                 group_share = next(
@@ -219,7 +191,9 @@ class Command(BaseCommand):
                     rawshares = user_share['shares']['number']
                     if rawshares > 200000:
                         rawshares = 'parent'
-                    user_fairshare_factor = fairshare_factor
+                    user_fairshare_factor = calculate_fairshare_factor(
+                        normshares, effective_usage
+                    )
                     spec_mapping = [
                         {'attrtype': rawshares_auattr_type, 'value': rawshares},
                         {'attrtype': normshares_auattr_type, 'value': round(normshares, 6)},
@@ -234,8 +208,6 @@ class Command(BaseCommand):
                         )
 
             # partitions
-            partitions = slurm_cluster.get_partitions()
-            print(partitions)
-            partition_names = [part['name'] for part in partitions['partitions']]
-            # update allocation attributes for partitions
-
+            cluster_manager.import_partition_data()
+            # nodes
+            cluster_manager.import_node_data()

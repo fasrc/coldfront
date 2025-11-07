@@ -3,11 +3,8 @@ import logging
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.db.models import (
-    Q, F, Value, Count, Subquery, OuterRef, IntegerField, FloatField
-)
-from django.db.models.functions import Substr, StrIndex, Coalesce, Cast, Length
-from django.db.models.functions import Lower
+from django.db.models import Q, F, Count, IntegerField
+from django.db.models.functions import Cast, Lower
 from django.forms import formset_factory
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -16,7 +13,8 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import CreateView
 from django.core.exceptions import ObjectDoesNotExist
 
-from coldfront.core.utils.views import ColdfrontListView
+from coldfront.core.allocation.signals import allocation_raw_share_edit
+from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource, ResourceAttribute
 from coldfront.core.resource.forms import (
     ResourceAttributeCreateForm,
@@ -25,12 +23,13 @@ from coldfront.core.resource.forms import (
     ResourceAttributeUpdateForm,
     ResourceAllocationUpdateForm,
 )
-from coldfront.core.allocation.models import AllocationAttributeType, AllocationAttribute
-from coldfront.core.allocation.signals import allocation_raw_share_edit
-
+from coldfront.core.resource.signals import (
+    resource_apicluster_table_data_request,
+    resource_clicluster_table_data_request
+)
+from coldfront.core.utils.views import ColdfrontListView
 from coldfront.plugins.slurm.utils import SlurmError
 
-from coldfront.core.project.models import Project
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +60,7 @@ class ResourceDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
 
         return child_resources
 
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         pk = self.kwargs.get('pk')
@@ -85,85 +85,25 @@ class ResourceDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         if 'Cluster' in resource_obj.resource_type.name:
             total_hours = sum([a.usage for a in allocations if a.usage])
             context['total_hours'] = total_hours
-
-            # Get attribute type IDs
-            slurm_specs_type = AllocationAttributeType.objects.get(name='slurm_specs')
-            usage_type = AllocationAttributeType.objects.get(name='Core Usage (Hours)')
-            effectv_type = AllocationAttributeType.objects.get(name='EffectvUsage')
-
-            allocations = (
-                allocations.annotate(
-                    # For slurm_specs parsing
-                    specs_value=Subquery(
-                        AllocationAttribute.objects
-                        .filter(
-                            allocation_id=OuterRef('id'),
-                            allocation_attribute_type=slurm_specs_type
-                        )
-                        .values('value')[:1]
-                    ),
-                    rawshares=Substr(
-                        'specs_value',
-                        StrIndex('specs_value', Value('RawShares=')) + 10,
-                        Cast(StrIndex(
-                            Substr(
-                                'specs_value',
-                                StrIndex('specs_value', Value('RawShares=')) + 10
-                            ),
-                            Value(',')
-                        ) - 1, IntegerField())
-                    ),
-                    normshares=Substr(
-                        'specs_value',
-                        StrIndex('specs_value', Value('NormShares=')) + 11,
-                        Cast(StrIndex(
-                            Substr(
-                                'specs_value',
-                                StrIndex('specs_value', Value('NormShares=')) + 11
-                            ),
-                            Value(',')
-                        ) - 1, IntegerField())
-                    ),
-                    fairshare=Substr(
-                        'specs_value',
-                        StrIndex('specs_value', Value('FairShare=')) + 10,
-                        Length('specs_value')
-                    ),
-                    usage=Cast(Coalesce(
-                        Subquery(
-                            AllocationAttribute.objects
-                            .filter(
-                                allocation_id=OuterRef('id'),
-                                allocation_attribute_type=usage_type
-                            )
-                            .values('value')[:1]
-                        ),
-                        Value('0')
-                    ), FloatField()),
-                    effectvusage=Cast(Coalesce(
-                        Subquery(
-                            AllocationAttribute.objects
-                            .filter(
-                                allocation_id=OuterRef('id'),
-                                allocation_attribute_type=effectv_type
-                            )
-                            .values('value')[:1]
-                        ),
-                        Value('0')
-                    ), FloatField())
+            if 'Partition' in resource_obj.resource_type.name:
+                integration = resource_obj.parent_resource.get_attribute('slurm_integration')
+            else:
+                integration = resource_obj.get_attribute('slurm_integration')
+            if integration == 'API':
+                response = resource_apicluster_table_data_request.send(
+                    sender=self.__class__,
+                    allocations=allocations,
+                    total_hours=total_hours
                 )
-                .order_by('id')
-                .values(
-                    'id',
-                    'project_title',
-                    'user_count',
-                    'rawshares',
-                    'normshares',
-                    'fairshare',
-                    'usage',
-                    'effectvusage'
+                allocations = response[0][1]
+            elif integration == 'CLI':
+                response = resource_clicluster_table_data_request.send(
+                    sender=self.__class__,
+                    allocations=allocations,
+                    total_hours=total_hours
                 )
-            )
+                allocations = response[0][1]
+
         elif resource_obj.resource_type.name == 'Storage':
             allocation_total = {'size': 0, 'usage':0}
             for allocation in allocations:
@@ -602,11 +542,11 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
         if resource_allocations:
             for allocation in resource_allocations:
                 slurm_specs_attribute = allocation.get_full_attribute('slurm_specs')
-                if slurm_specs_attribute is not None:
+                if slurm_specs_attribute is not None or allocation.rawshares:
                     edit_allocations_formset_initial_data.append(
                         {
                             'allocation_pk': allocation.pk,
-                            'rawshare': allocation.get_slurm_spec_value('RawShares'),
+                            'rawshare': allocation.rawshares,
                             'project': allocation.project.title,
                             'usage': allocation.usage,
                             'user_count': allocation.allocationuser_set.count(),
@@ -625,7 +565,8 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                 max_num=len(resource_allocations),
                 extra=0
             )
-            edit_allocations_formset_initial_data = self.get_formset_initial_data(resource_allocations)
+            edit_allocations_formset_initial_data = self.get_formset_initial_data(
+                    resource_allocations)
             formset = ResourceAllocationUpdateFormSet(
                 initial=edit_allocations_formset_initial_data,
                 prefix='allocationsform'
@@ -638,6 +579,16 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
         resource_obj = get_object_or_404(Resource, pk=self.kwargs.get('pk'))
         context = self.get_context_data(resource_obj)
         return render(request, self.template_name, context)
+
+    def update_rawshare(self, allocation, new_rawshare):
+        if allocation.get_parent_resource.get_attribute('slurm_integration') == 'API':
+            rawshare = allocation.get_full_attribute('RawShares')
+            rawshare.value = new_rawshare
+            rawshare.save()
+            return True
+        elif allocation.get_parent_resource.get_attribute('slurm_integration') == 'CLI':
+            spec_update = allocation.update_slurm_spec_value('RawShares', new_rawshare)
+            return spec_update
 
     def post(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
@@ -658,9 +609,9 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                 for form in formset.forms
             }
             for allocation in resource_allocations:
-                current_rawshare = allocation.get_slurm_spec_value('RawShares')
+                current_rawshare = allocation.rawshares
                 new_rawshare = allocation_rawshares.get(str(allocation.pk), None)
-                if new_rawshare and current_rawshare != new_rawshare: # Ignore unchanged values
+                if new_rawshare and str(current_rawshare) != str(new_rawshare): # Ignore unchanged values
                     logger.info(
                         'recognized changes in RawShares value for %s slurm account: %s changed to %s',
                         allocation.project.title, current_rawshare, new_rawshare
@@ -669,21 +620,23 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                         allocation_raw_share_edit.send(
                             sender=self.__class__,
                             account=allocation.project.title,
-                            cluster=resource_obj.get_attribute('cluster_name'),
+                            cluster=resource_obj.get_attribute('slurm_cluster'),
                             raw_share=new_rawshare
                         )
                         msg = f'RawShares value for {allocation.project.title} slurm account successfully updated from {current_rawshare} to {new_rawshare}'
                         logger.info(msg)
                         messages.success(request, msg)
                     except SlurmError as e:
-                        err = f'Problem encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
+                        err = f'SlurmError encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
                         logger.exception(err)
                         messages.error(request, err)
+                        continue
                     except Exception as e:
                         err = f'Problem encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
                         logger.exception(err)
                         messages.error(request, err)
-                    spec_update = allocation.update_slurm_spec_value('RawShares', new_rawshare)
+                        continue
+                    spec_update = self.update_rawshare(allocation, new_rawshare)
                     if spec_update != True:
                         err = f'Slurm account for {allocation.project.title} successfully updated, but a problem was encountered while reflecting the updates in ColdFront: {spec_update}'
                         logger.error(err)
@@ -691,8 +644,7 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
 
             messages.success(request, 'Allocation update complete.')
             return HttpResponseRedirect(reverse('resource-detail', kwargs={'pk': pk}))
-        else:
-            messages.error(request, 'Errors encountered, changes not saved. Check the form for details')
-            context = self.get_context_data(resource_obj)
-            context['formset'] = formset
-            return render(request, self.template_name, context)
+        messages.error(request, 'Errors encountered, changes not saved. Check the form for details')
+        context = self.get_context_data(resource_obj)
+        context['formset'] = formset
+        return render(request, self.template_name, context)

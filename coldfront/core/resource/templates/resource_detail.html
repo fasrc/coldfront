@@ -258,18 +258,10 @@ Resource Detail
                   <td>{{ allocation.user_count }}</td>
                   {% if 'Cluster' in resource.resource_type.name %}
                     <td data-sort="{{allocation.usage}}" name="usage">
-                      {% if allocation.usage is None %}
-                        0
-                      {% else %}
-                        {{ allocation.usage|floatformat:1 }}
-                      {% endif %}
+                      {{ allocation.usage}}
                     </td>
                     <td data-sort="{{allocation.usage}}" name="usage_pct">
-                      {% if allocation.usage is None or allocation.usage == 0 %}
-                        0%
-                      {% else %}
-                        {{allocation.usage|div:total_hours|mul:100|floatformat:2 }}%
-                      {% endif %}
+                      {{allocation.usage_pct }}%
                     </td>
                     <td>{{ allocation.rawshares}}</td>
                     <td>{{ allocation.effectvusage }}</td>

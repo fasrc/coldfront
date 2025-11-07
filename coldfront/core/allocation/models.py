@@ -18,7 +18,7 @@ from coldfront.config.env import ENV
 from coldfront.core import attribute_expansion
 from coldfront.core.resource.models import Resource
 from coldfront.core.utils.common import import_from_settings
-from coldfront.core.project.models import Project, ProjectPermission, ProjectUser
+from coldfront.core.project.models import Project, ProjectPermission
 
 
 if ENV.bool('PLUGIN_IFX', default=False):
@@ -436,7 +436,7 @@ class Allocation(TimeStampedModel):
         try:
             return self.resources.get(resource_type__name='Cluster')
         except Resource.DoesNotExist:
-            logger.error(f'No cluster resource found for partition {self.project}')
+            logger.error(f'No cluster resource found for allocation {self.pk} {self.project}')
             return None
 
     @property
@@ -478,6 +478,7 @@ class Allocation(TimeStampedModel):
         return None
 
     def get_full_attribute(self, name):
+        """return the full AllocationAttribute object for the given name, or None if not found"""
         attr = self.allocationattribute_set.filter(
             allocation_attribute_type__name=name).first()
         if attr:
@@ -539,9 +540,9 @@ class Allocation(TimeStampedModel):
                     slurm_spec_attribute.value = self.get_attribute('slurm_specs').replace(f'{key}={old_slurm_spec_value}', f'{key}={value}')
                     slurm_spec_attribute.save()
                     return True
-            return f'Error updating Allocation Slurm Spec value {key}={value} for {self.user.username} at {self.allocation}: Cant find key={key}'
+            return f'Error updating Allocation Slurm Spec value {key}={value} at allocation {self}: Cant find key={key}'
         except Exception as e:
-            error_message = f'Error updating Allocation Slurm Spec value {key}={value} for {self.user.username} at {self.allocation} : {str(e)}'
+            error_message = f'Error updating Allocation Slurm Spec value {key}={value} at {self} : {str(e)}'
             logger.exception(error_message)
             return error_message
 
