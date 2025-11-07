@@ -1530,7 +1530,7 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
                             logger.exception(err)
                             error_messages.append(err)
                             continue
-                        rawshare_updated = self.update_rawshare(allocation_user, form_data['value'])
+                        rawshare_updated = self.update_rawshare(allocation_user, allocationuser_new_rawshare_value)
                         if rawshare_updated != True:
                             error_messages.append('value updated on slurm for user {user} with value {allocationuser_new_rawshare_value} but error encountered while changing value on coldfront.')
                             continue
