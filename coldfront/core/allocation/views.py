@@ -1065,12 +1065,13 @@ class AllocationEditUserView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         return render(request, self.template_name, context)
 
     def update_rawshare(self, allocationuser, new_rawshare):
-        if allocationuser.get_parent_resource.get_attribute('slurm_integration') == 'API':
+        allocation = allocationuser.allocation
+        if allocation.get_parent_resource.get_attribute('slurm_integration') == 'API':
             rawshare = allocationuser.get_full_attribute('RawShares')
             rawshare.value = new_rawshare
             rawshare.save()
             return True
-        elif allocationuser.get_parent_resource.get_attribute('slurm_integration') == 'CLI':
+        elif allocation.get_parent_resource.get_attribute('slurm_integration') == 'CLI':
             spec_update = allocationuser.update_slurm_spec_value('RawShares', new_rawshare)
             return spec_update
 
@@ -1484,12 +1485,13 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
         return self.render_to_response(context)
 
     def update_rawshare(self, allocationuser, new_rawshare):
-        if allocationuser.get_parent_resource.get_attribute('slurm_integration') == 'API':
+        allocation = allocationuser.allocation
+        if allocation.get_parent_resource.get_attribute('slurm_integration') == 'API':
             rawshare = allocationuser.get_full_attribute('RawShares')
             rawshare.value = new_rawshare
             rawshare.save()
             return True
-        elif allocationuser.get_parent_resource.get_attribute('slurm_integration') == 'CLI':
+        if allocation.get_parent_resource.get_attribute('slurm_integration') == 'CLI':
             spec_update = allocationuser.update_slurm_spec_value('RawShares', new_rawshare)
             return spec_update
 
