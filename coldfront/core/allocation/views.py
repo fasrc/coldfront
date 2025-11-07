@@ -1476,7 +1476,7 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
         edit_raw_share_form_set_initial_data = [
             {
                 'allocationuser_pk': allocation_user.pk,
-                'value': allocation_user.get_slurm_spec_value('RawShares')
+                'value': allocation_user.rawshares
             }
             for allocation_user in allocation_users
         ]
@@ -1515,7 +1515,7 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
                 account = allocation.project.title
                 allocationuser_new_rawshare_value = user_raw_shares.get(str(allocation_user.pk), None)
                 if allocationuser_new_rawshare_value is not None:
-                    allocationuser_current_rawshare_value = allocation_user.get_slurm_spec_value('RawShares')
+                    allocationuser_current_rawshare_value = allocation_user.rawshares
                     if str(allocationuser_current_rawshare_value) != str(allocationuser_new_rawshare_value): #Ignore unchanged values
                         try:
                             allocation_user_attribute_edit.send(
