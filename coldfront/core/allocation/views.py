@@ -1067,7 +1067,8 @@ class AllocationEditUserView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
     def update_rawshare(self, allocationuser, new_rawshare):
         allocation = allocationuser.allocation
         if allocation.get_parent_resource.get_attribute('slurm_integration') == 'API':
-            rawshare = allocationuser.get_full_attribute('RawShares')
+            rawshare = allocationuser.allocationuserattribute_set.get(
+                allocationuser_attribute_type__name='RawShares')
             rawshare.value = new_rawshare
             rawshare.save()
             return True
@@ -1487,7 +1488,8 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
     def update_rawshare(self, allocationuser, new_rawshare):
         allocation = allocationuser.allocation
         if allocation.get_parent_resource.get_attribute('slurm_integration') == 'API':
-            rawshare = allocationuser.get_full_attribute('RawShares')
+            rawshare = allocationuser.allocationuserattribute_set.get(
+                allocationuser_attribute_type__name='RawShares')
             rawshare.value = new_rawshare
             rawshare.save()
             return True
