@@ -607,7 +607,7 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
             for allocation in resource_allocations:
                 current_rawshare = allocation.rawshares
                 new_rawshare = allocation_rawshares.get(str(allocation.pk), None)
-                if new_rawshare and int(current_rawshare) != int(new_rawshare): # Ignore unchanged values
+                if new_rawshare and str(current_rawshare) != str(new_rawshare): # Ignore unchanged values
                     logger.info(
                         'recognized changes in RawShares value for %s slurm account: %s changed to %s',
                         allocation.project.title, current_rawshare, new_rawshare
