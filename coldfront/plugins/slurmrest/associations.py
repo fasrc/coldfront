@@ -160,7 +160,7 @@ class ClusterResourceManager:
             partition_account_names = [
                         a for a in all_slurm_account_names if a not in denied_accounts]
         else:
-            allowed_accounts = partition_data.get('AllowAccounts', 'NA')
+            allowed_accounts = partition_data['accounts'].get('allowed', 'NA')
             if allowed_accounts == ['ALL']:
                 partition_account_names = allowed_groups
             elif allowed_accounts == ['NA']:
