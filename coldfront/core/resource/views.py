@@ -85,14 +85,18 @@ class ResourceDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         if 'Cluster' in resource_obj.resource_type.name:
             total_hours = sum([a.usage for a in allocations if a.usage])
             context['total_hours'] = total_hours
-            if resource_obj.get_attribute('slurm_integration') == 'API':
+            if 'Partition' in resource_obj.resource_type.name:
+                integration = resource_obj.parent_resource.get_attribute('slurm_integration')
+            else:
+                integration = resource_obj.get_attribute('slurm_integration')
+            if integration == 'API':
                 response = resource_apicluster_table_data_request.send(
                     sender=self.__class__,
                     allocations=allocations,
                     total_hours=total_hours
                 )
                 allocations = response[0][1]
-            elif resource_obj.get_attribute('slurm_integration') == 'CLI':
+            elif integration == 'CLI':
                 response = resource_clicluster_table_data_request.send(
                     sender=self.__class__,
                     allocations=allocations,
