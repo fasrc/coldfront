@@ -436,7 +436,7 @@ class Allocation(TimeStampedModel):
         try:
             return self.resources.get(resource_type__name='Cluster')
         except Resource.DoesNotExist:
-            logger.error(f'No cluster resource found for partition {self.project}')
+            logger.error(f'No cluster resource found for allocation {self.pk} {self.project}')
             return None
 
     @property

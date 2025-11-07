@@ -153,14 +153,14 @@ class ClusterResourceManager:
         """
         # identify allowed_groups
         all_slurm_account_names = [a['name'] for a in self.accounts]
-        allowed_groups = partition_data['groups'].get('allowed', '')
-        denied_accounts = partition_data['accounts'].get('denied', '')
+        allowed_groups = partition_data['groups'].get('allowed', '').split(',')
+        denied_accounts = partition_data['accounts'].get('deny', '').split(',')
         # if 'cluster_users' is in allowed_groups, then all users/accounts are allowed
         if 'cluster_users' in allowed_groups:
             partition_account_names = [
                         a for a in all_slurm_account_names if a not in denied_accounts]
         else:
-            allowed_accounts = partition_data['accounts'].get('allowed', 'NA')
+            allowed_accounts = partition_data['accounts'].get('allowed', 'NA').split(',')
             if allowed_accounts == ['ALL']:
                 partition_account_names = allowed_groups
             elif allowed_accounts == ['NA']:
