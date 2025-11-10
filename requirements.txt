@@ -63,6 +63,7 @@ logging_tree==1.9
 mysqlclient==2.2.0
 natural-keys
 python-dateutil
+python-json-logger
 pandas==2.2.1
 reportlab==4.0.5
 xhtml2pdf==0.2.15
