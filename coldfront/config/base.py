@@ -107,6 +107,7 @@ MIDDLEWARE = [
 ]
 MIDDLEWARE += [
     'author.middlewares.AuthorDefaultBackendMiddleware',
+    'coldfront.config.log_filters.RequestMiddleware',
 ]
 
 

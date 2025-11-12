@@ -22,6 +22,9 @@ LOGGING = {
         'require_debug_true': {
             '()': 'django.utils.log.RequireDebugTrue'
         },
+        'request': {
+            '()': 'coldfront.config.log_filters.RequestFilter',
+        },
     },
     'formatters': {
         'key-events': {
@@ -36,7 +39,7 @@ LOGGING = {
         },
         'json': {
             '()': "pythonjsonlogger.jsonlogger.JsonFormatter",
-            'fmt': '%(asctime)s %(name)s %(levelname)s %(message)s',
+            'fmt': '%(asctime)s %(name)s %(levelname)s %(message)s %(ip_addr) %(user)',
         },
     },
     'handlers': {
@@ -77,6 +80,7 @@ LOGGING = {
             'backupCount': 10,
             'formatter': 'json',
             'level': 'INFO',
+            'filters': ['request'],
         },
         # 'file': {
         #     'class': 'logging.FileHandler',
@@ -108,5 +112,9 @@ LOGGING = {
             'handlers': ['key-events', 'json'],
             'level': 'INFO',
         },
+        'request': {
+            'handlers': ['json'],
+            'level': 'INFO',
+        }
     },
 }
