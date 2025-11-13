@@ -194,12 +194,14 @@ class LDAPConn:
     def add_user_to_group(self, user_name, group_name):
         user = self.return_user_by_name(user_name)
         group = self.return_group_by_name(group_name)
-        self.add_member_to_group(user, group)
+        result = self.add_member_to_group(user, group)
+        return result
 
     def add_group_to_group(self, group_name, parent_group_name):
         group = self.return_group_by_name(group_name)
         parent_group = self.return_group_by_name(parent_group_name)
-        self.add_member_to_group(group, parent_group)
+        result = self.add_member_to_group(group, parent_group)
+        return result
 
     def add_member_to_group(self, member, group):
         member_dn = member['distinguishedName']
@@ -244,7 +246,12 @@ class LDAPConn:
         """
         group = self.return_group_by_name(groupname)
         attrs = ['sAMAccountName', 'gidNumber']
-        users = [self.return_user_by_name(user, attributes=attrs) for user in usernames]
+        users = []
+        for user in usernames:
+            try:
+                users.append(self.return_user_by_name(user, attributes=attrs))
+            except ValueError:
+                logger.warning('user %s not found in LDAP when checking primary group membership', user)
         return [
             u['sAMAccountName'][0] for u in users if u['gidNumber'] == group['gidNumber']
         ]
@@ -524,8 +531,11 @@ def collect_update_project_status_membership():
                 pk__in=[pu.user.pk for pu in present_projectusers]
             )
             logger.debug(
-                "missing_projectusers - ifxusers in present_project_ifxusers who are not projectusers in project %s: %s",
-                group.project.title, [u.username for u in missing_projectusers]
+                "missing_projectusers - ifxusers in present_project_ifxusers who are not projectusers in project",
+                extra = {
+                    'project': group.project.title,
+                    'missing_usernames': [u.username for u in missing_projectusers]
+                    }
             )
             ProjectUser.objects.bulk_create([
                 ProjectUser(
@@ -547,8 +557,10 @@ def collect_update_project_status_membership():
     projectuserstatus_removed = ProjectUserStatusChoice.objects.get(name='Removed')
     projectusers_to_remove_queryset = ProjectUser.objects.filter(pk__in=[pu.pk for pu in projectusers_to_remove])
     projectusers_to_remove_queryset.update(status=projectuserstatus_removed)
-    logger.info('changing status of these ProjectUsers to "Removed":%s',
-                [{"uname":pu.user.username, "lab": pu.project.title} for pu in projectusers_to_remove])
+    projuser_remove_log = [
+        {"uname":pu.user.username, "lab": pu.project.title} for pu in projectusers_to_remove
+    ]
+    logger.info('changing status of ProjectUsers to "Removed": %s', projuser_remove_log)
 
 def import_projects_projectusers(projects_list):
     """Use AD user and group information to automatically create new
