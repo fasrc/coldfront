@@ -970,7 +970,9 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 account = allocation_obj.project.title
                 cluster = allocation_obj.get_cluster.get_attribute('slurm_cluster')
                 username = form_data.get('username')
-                logger.warning(f"Username {username} account {account} cluster {cluster}")
+                logger.warning("Triggering addition of SlurmUser %s to account %s on cluster %s",
+                        username, account, cluster
+                )
                 try:
                     allocation_user_add_on_slurm.send(
                         sender=self.__class__,
@@ -981,10 +983,9 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 except Exception as e:
                     logger.exception(
                         "signal processes for addition of user %s to account %s (%s %s) failed: %s",
-                        username, allocation_obj.pk, allocation_obj.project.title,
-                        allocation_obj.get_parent_resource.name, e
+                        username, allocation_obj.pk, allocation_obj.project.title, cluster, e
                     )
-                    err = f"addition of user {username} to allocation {allocation_obj.pk} ({allocation_obj.project.title} {allocation_obj.get_parent_resource.name}) failed: {e}"
+                    err = f"addition of user {username} to allocation {allocation_obj.pk} ({allocation_obj.project.title} {cluster}) failed: {e}"
                     messages.error(request, err)
                     continue
                 allocation_user_obj, _ = (
@@ -1096,10 +1097,17 @@ class AllocationEditUserView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 
             try:
                 account = allocation_obj.project.title
+                cluster = allocation_obj.get_parent_resource.get_attribute('slurm_cluster')
+                username = allocationuser_obj.user.username
+                logger.info(
+                    "Triggered update of Slurm user %s rawshare from %s to %s via account %s on cluster %s",
+                    username, initial_data.get('value'), form_data['value'], account, cluster
+                )
                 allocation_user_attribute_edit.send(
                     sender=self.__class__,
-                    user=allocationuser_obj, account=account,
-                    cluster=allocationuser_obj.allocation.get_parent_resource.get_attribute('slurm_cluster'),
+                    user=username,
+                    account=account,
+                    cluster=cluster,
                     raw_share=form_data['value']
                 )
             except Exception as e:
@@ -1203,12 +1211,15 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
                 allocation_user_obj = allocation_obj.allocationuser_set.get(
                     user=user_obj
                 )
+                cluster = allocation_obj.get_parent_resource.get_attribute('slurm_cluster')
 
                 try:
                     account = allocation_user_obj.allocation.project.title
+                    logger.warning("Triggering removal of SlurmUser %s from account %s cluster %s",
+                            user_obj.username, account, cluster
+                    )
                     allocation_user_remove_on_slurm.send(
-                        self.__class__, account=account, username=user_obj.username,
-                        cluster=allocation_user_obj.allocation.get_parent_resource.get_attribute('slurm_cluster')
+                        self.__class__, account=account, username=user_obj.username, cluster=cluster
                     )
                     allocation_user_obj.status = removed_allocuser_status
                     allocation_user_obj.save()
@@ -1515,30 +1526,37 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
                 for form in formset.forms
             }
             for allocation_user in allocation_users:
-                user = allocation_user.user.username
+                username = allocation_user.user.username
                 account = allocation.project.title
-                allocationuser_new_rawshare_value = user_raw_shares.get(str(allocation_user.pk), None)
-                if allocationuser_new_rawshare_value is not None:
-                    allocationuser_current_rawshare_value = allocation_user.rawshares
-                    if str(allocationuser_current_rawshare_value) != str(allocationuser_new_rawshare_value): #Ignore unchanged values
+                allocuser_new_rawshare_val = user_raw_shares.get(str(allocation_user.pk), None)
+                if allocuser_new_rawshare_val is not None:
+                    allocuser_current_rawshare_val = allocation_user.rawshares
+                    if str(allocuser_current_rawshare_val) != str(allocuser_new_rawshare_val): #Ignore unchanged values
+                        cluster = allocation.get_parent_resource.get_attribute('slurm_cluster')
                         try:
+                            logger.info(
+                                "Triggered update of Slurm user %s rawshare from %s to %s via account %s on cluster %s",
+                                username, allocuser_current_rawshare_val, allocuser_new_rawshare_val, account, cluster
+                            )
                             allocation_user_attribute_edit.send(
                                 sender=self.__class__,
-                                user=user,
+                                user=username,
                                 account=account,
-                                cluster=allocation.get_parent_resource.get_attribute('slurm_cluster'),
-                                raw_share=allocationuser_new_rawshare_value
+                                cluster=cluster,
+                                raw_share=allocuser_new_rawshare_val
                             )
                         except Exception as e:
-                            err = f"Failed to update Rawshare on slurm for user {user} account {account} with value {allocationuser_new_rawshare_value}: {str(e)}"
+                            err = f"Failed to update Rawshare on slurm for user {username} account {account} with value {allocuser_new_rawshare_val}: {str(e)}"
                             logger.exception(err)
                             error_messages.append(err)
                             continue
-                        rawshare_updated = self.update_rawshare(allocation_user, allocationuser_new_rawshare_value)
+                        rawshare_updated = self.update_rawshare(allocation_user, allocuser_new_rawshare_val)
                         if rawshare_updated != True:
-                            error_messages.append('value updated on slurm for user {user} with value {allocationuser_new_rawshare_value} but error encountered while changing value on coldfront.')
+                            error_messages.append(
+                                f'value updated on slurm for user {username} with value {allocuser_new_rawshare_val} but error encountered while changing value on coldfront.'
+                            )
                             continue
-                        msg = f'User Attributes for {allocation_user.user} in allocation {allocation.pk} ({allocation}) successfully updated from {allocationuser_current_rawshare_value} to {allocationuser_new_rawshare_value}'
+                        msg = f'User Attributes for {allocation_user.user} in allocation {allocation.pk} ({allocation}) successfully updated from {allocuser_current_rawshare_val} to {allocuser_new_rawshare_val}'
                         logger.info(msg)
                         messages.success(request, msg)
         else:

@@ -1,3 +1,5 @@
+import logging
+
 from django.dispatch import receiver
 from django.db.models import Q, Value, Subquery, OuterRef, IntegerField, FloatField
 from django.db.models.functions import Coalesce, Cast, Round
@@ -21,6 +23,7 @@ from coldfront.plugins.slurmrest.utils import (
     SlurmApiConnection, SlurmError, calculate_fairshare_factor
 )
 
+logger = logging.getLogger(__name__)
 
 @receiver(allocation_user_attribute_edit)
 def slurmrest_allocation_user_attribute_edit_handler(sender, **kwargs):
@@ -33,6 +36,9 @@ def slurmrest_allocation_user_attribute_edit_handler(sender, **kwargs):
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
     api.post_assoc(kwargs['account'], kwargs['user'], {'shares_raw': int(kwargs['raw_share'])})
+    logger.info("Successfully updated Slurm user %s rawshare to %s for account %s on cluster %s",
+        kwargs['user'], kwargs['raw_share'], kwargs['account'], kwargs.get('cluster')
+    )
 
 
 @receiver(allocation_user_add_on_slurm)
@@ -45,6 +51,9 @@ def slurmrest_allocation_add_user_handler(sender, **kwargs):
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
     api.add_assoc(kwargs['account'], kwargs['username'])
+    logger.info("Successfully added Slurm user %s to account %s on cluster %s",
+        kwargs['username'], kwargs['account'], kwargs.get('cluster')
+    )
 
 
 @receiver(allocation_user_remove_on_slurm)
@@ -58,6 +67,9 @@ def slurmrest_allocation_user_deactivate_handler(sender, **kwargs):
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
     api.remove_assoc(user_name=kwargs['username'], account_name=kwargs['account'])
+    logger.info("Successfully removed Slurm user %s from account %s on cluster %s",
+        kwargs['username'], kwargs['account'], kwargs.get('cluster')
+    )
 
 
 @receiver(allocation_raw_share_edit)
@@ -71,6 +83,9 @@ def slurmrest_allocation_raw_share_edit_handler(sender, **kwargs):
         return
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
     api.post_assoc(kwargs['account'], "", {'shares_raw': int(kwargs['raw_share'])})
+    logger.info("Successfully updated Slurm account %s rawshare to %s on cluster %s",
+        kwargs['account'], kwargs['raw_share'], kwargs.get('cluster')
+    )
 
 
 @receiver(allocation_activate_user)

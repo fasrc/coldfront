@@ -206,15 +206,22 @@ class LDAPConn:
     def add_member_to_group(self, member, group):
         member_dn = member['distinguishedName']
         group_dn = group['distinguishedName']
+        member_name = member['sAMAccountName']
+        group_name = group['sAMAccountName']
+        member_sid = member['objectSid']
+        group_sid = group['objectSid']
         try:
             result = ad_add_members_to_groups(
-                self.conn, [member_dn], group_dn, fix=True, raise_error=True)
+                self.conn, [member_sid], group_sid, fix=True, raise_error=True)
         except Exception as e:
             logger.exception("Error encountered while adding user to group: %s", e)
             raise LDAPUserAdditionError("Error adding user to group.")
         if not self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserAdditionError("Member not successfully added to group.")
-        logger.info('user %s added to AD group %s', member_dn, group_dn)
+        logger.info(
+            'Member %s (sid %s) added to AD group %s (sid %s)',
+            member_name, member_sid, group_name, group_sid
+        )
         return result
 
     def remove_member_from_group(self, user_name, group_name):
@@ -225,18 +232,25 @@ class LDAPConn:
         if user['gidNumber'] == group['gidNumber']:
             raise ValueError(
                 "Group is member's primary group. Please contact FASRC support to remove this member from your group.")
+        member_dn = user['distinguishedName']
         group_dn = group['distinguishedName']
-        user_dn = user['distinguishedName']
+        member_name = member['sAMAccountName']
+        group_name = group['sAMAccountName']
+        member_sid = member['objectSid']
+        group_sid = group['objectSid']
         try:
             result = ad_remove_members_from_groups(
-                self.conn, [user_dn], group_dn, fix=True, raise_error=True
+                self.conn, [member_dn], group_dn, fix=True, raise_error=True
             )
         except Exception as e:
             logger.exception("Error encountered while removing user from group: %s", e)
             raise LDAPUserRemovalError("Error removing user from group.")
-        if self.member_in_group(user_dn, group_dn) or not result:
+        if self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserRemovalError("Member not successfully removed from group.")
-        logger.info('user %s removed from AD group %s', user_dn, group_dn)
+        logger.info(
+            'Member %s (sid %s) removed from AD group %s (sid %s)',
+            member_name, member_sid, group_name, group_sid
+        )
         return result
 
     def users_in_primary_group(self, usernames, groupname):
@@ -520,7 +534,7 @@ def collect_update_project_status_membership():
                 'present_users - ADUsers who have ifxuser accounts:\n%s', ad_users_not_added
             )
             if present_projectusers:
-                logger.warning('found reactivated ADUsers for project %s: %s',
+                logger.warning('reactivating projectusers for project %s: %s',
                     group.project.title, [u.user.username for u in present_projectusers])
 
                 present_projectusers.update(
