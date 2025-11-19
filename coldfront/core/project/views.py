@@ -712,7 +712,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         user_obj = get_user_model().objects.get(username=user_username)
                     except Exception as e:
                         error = f"Could not locate user for {user_username}: {e}"
-                        logger.error('P665: %s', error)
+                        logger.exception(error)
                         errors.append(error)
                         continue
 
@@ -724,9 +724,11 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             user_name=user_obj.username, group_name=project_obj.title
                         )
                     except Exception as e:
-                        error = f"Could not add user {user_obj} to AD Group for {project_obj.title}: {e}\nPlease contact Coldfront administration for further assistance."
-                        logger.exception('P646: %s', e)
-                        errors.append(error)
+                        error = f"Could not add user {user_obj} to AD Group for {project_obj.title}"
+                        logger.exception('%s : %s', error, e)
+                        errors.append(
+                            error + "\nPlease contact a Coldfront admin for further assistance."
+                        )
                         continue
                     success_msg = f"User {user_obj} added by {request.user} to AD Group for {project_obj.title}"
                     logger.info(success_msg)
@@ -863,74 +865,66 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         remove_users_count = 0
         failed_user_removals = []
 
-        if formset.is_valid():
-            projectuser_status_removed = ProjectUserStatusChoice.objects.get(
-                name='Removed'
-            )
-            allocationuser_status_removed = AllocationUserStatusChoice.objects.get(
-                name='Removed'
-            )
-            for form in formset:
-                user_form_data = form.cleaned_data
-                if user_form_data['selected']:
-                    user_obj = get_user_model().objects.get(
-                        username=user_form_data.get('username')
-                    )
-                    if project_obj.pi == user_obj:
-                        continue
-
-                    project_user_obj = project_obj.projectuser_set.get(user=user_obj)
-
-                    try:
-                        project_preremove_projectuser.send(
-                            sender=self.__class__,
-                            user_name=user_obj.username, group_name=project_obj.title
-                        )
-                        logger.info(
-                            "P815: Coldfront user %s removed AD User for %s from AD Group for %s",
-                            self.request.user,
-                            user_obj.username,
-                            project_obj.title,
-                        )
-                    except Exception as e:
-                        failed_user_removals += [f"could not remove user {user_obj}: {e}"]
-                        logger.exception(
-                            "P815: Coldfront user %s could NOT remove AD User for %s from AD Group for %s: %s",
-                            self.request.user,
-                            user_obj.username,
-                            project_obj.title,
-                            e
-                        )
-                        continue
-
-                    project_user_obj.status = projectuser_status_removed
-                    project_user_obj.save()
-
-                    # get allocation to remove users from
-                    allocations_to_remove_user_from = project_obj.allocation_set.filter(
-                        status__name__in=['Active', 'New', 'Renewal Requested'],
-                        resources__resource_type__name='Storage'
-                    )
-                    for allocation in allocations_to_remove_user_from:
-                        for alloc_user in allocation.allocationuser_set.filter(
-                            user=user_obj, status__name='Active'
-                        ):
-                            alloc_user.status = allocationuser_status_removed
-                            alloc_user.save()
-
-                            allocation_remove_user.send(
-                                sender=self.__class__, allocation_user_pk=alloc_user.pk
-                            )
-                    remove_users_count += 1
-            user_pl = 'user' if remove_users_count == 1 else 'users'
-            for fail in failed_user_removals:
-                messages.error(request, fail)
-            messages.success(
-                request, f'Removed {remove_users_count} {user_pl} from project.'
-            )
-        else:
+        if not formset.is_valid():
             for error in formset.errors:
                 messages.error(request, error)
+            return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
+        projectuser_status_removed = ProjectUserStatusChoice.objects.get(name='Removed')
+        allocationuser_status_removed = AllocationUserStatusChoice.objects.get(name='Removed')
+        for form in formset:
+            user_form_data = form.cleaned_data
+            if user_form_data['selected']:
+                user_obj = get_user_model().objects.get(username=user_form_data.get('username'))
+                if project_obj.pi == user_obj:
+                    continue
+
+                project_user_obj = project_obj.projectuser_set.get(user=user_obj)
+
+                try:
+                    project_preremove_projectuser.send(
+                        sender=self.__class__,
+                        user_name=user_obj.username, group_name=project_obj.title
+                    )
+                    logger.info(
+                        "Coldfront user %s removed AD User for %s from AD Group for %s",
+                        self.request.user, user_obj.username, project_obj.title,
+                    )
+                except Exception as e:
+                    failed_user_removals += [f"could not remove user {user_obj}: {e}"]
+                    logger.exception(
+                        "Coldfront user %s could NOT remove AD User for %s from AD Group for %s: %s",
+                        self.request.user,
+                        user_obj.username,
+                        project_obj.title,
+                        e
+                    )
+                    continue
+
+                project_user_obj.status = projectuser_status_removed
+                project_user_obj.save()
+
+                # get allocation to remove users from
+                allocations_to_remove_user_from = project_obj.allocation_set.filter(
+                    status__name__in=['Active', 'New', 'Renewal Requested'],
+                    resources__resource_type__name='Storage'
+                )
+                for allocation in allocations_to_remove_user_from:
+                    for alloc_user in allocation.allocationuser_set.filter(
+                        user=user_obj, status__name='Active'
+                    ):
+                        alloc_user.status = allocationuser_status_removed
+                        alloc_user.save()
+
+                        allocation_remove_user.send(
+                            sender=self.__class__, allocation_user_pk=alloc_user.pk
+                        )
+                remove_users_count += 1
+        user_pl = 'user' if remove_users_count == 1 else 'users'
+        for fail in failed_user_removals:
+            messages.error(request, fail)
+        messages.success(
+            request, f'Removed {remove_users_count} {user_pl} from project.'
+        )
 
         return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 
@@ -1004,48 +998,56 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                 },
             )
 
-            if project_user_update_form.is_valid():
-                form_data = project_user_update_form.cleaned_data
-                project_user_obj.enable_notifications = form_data.get(
-                    'enable_notifications'
-                )
-                old_role = project_user_obj.role.name
-                new_role = form_data.get('role')
-                username = project_user_obj.user.username
-                requester_uname = self.request.user.username
-                project_user_obj.role = ProjectUserRoleChoice.objects.get(name=new_role)
-                project_user_obj.save()
-
-                project_role_change_email_context = email_template_context(
-                    extra_context={
-                        'project_title': project_obj.title,
-                        'username': username,
-                        'old_role': old_role,
-                        'new_role': new_role,
-                        'role_changer': requester_uname,
-                        'project_url': build_link(f'project/{project_obj.pk}/')
-                }
-                )
-
-                send_email_template(
-                    subject=f'Role Change for User {username} in Project {project_obj.title}',
-                    template_name='email/project_role_change.txt',
-                    template_context=project_role_change_email_context,
-                    sender=EMAIL_SENDER,
-                    receiver_list=[project_user_obj.user.email],
-                    cc=[project_obj.pi.email]
-                )
-                messages.success(request, 'User details updated.')
-                logger.info(
-                    'Project %s User %s role changed from %s to %s by %s',
-                    project_obj.title, username, old_role, new_role, requester_uname
-                )
+            if not project_user_update_form.is_valid():
+                for error in project_user_update_form.errors:
+                    messages.error(request, error)
                 return HttpResponseRedirect(
                     reverse(
                         'project-user-detail',
                         kwargs={'pk': pk, 'project_user_pk': project_user_obj.pk},
                     )
                 )
+            form_data = project_user_update_form.cleaned_data
+            project_user_obj.enable_notifications = form_data.get(
+                'enable_notifications'
+            )
+            old_role = project_user_obj.role.name
+            new_role = form_data.get('role')
+            username = project_user_obj.user.username
+            requester_uname = self.request.user.username
+            project_user_obj.role = ProjectUserRoleChoice.objects.get(name=new_role)
+            project_user_obj.save()
+
+            project_role_change_email_context = email_template_context(
+                extra_context={
+                    'project_title': project_obj.title,
+                    'username': username,
+                    'old_role': old_role,
+                    'new_role': new_role,
+                    'role_changer': requester_uname,
+                    'project_url': build_link(f'project/{project_obj.pk}/')
+                }
+            )
+
+            send_email_template(
+                subject=f'Role Change for User {username} in Project {project_obj.title}',
+                template_name='email/project_role_change.txt',
+                template_context=project_role_change_email_context,
+                sender=EMAIL_SENDER,
+                receiver_list=[project_user_obj.user.email],
+                cc=[project_obj.pi.email]
+            )
+            messages.success(request, 'User details updated.')
+            logger.info(
+                'Project %s User %s role changed from %s to %s by user %s',
+                project_obj.title, username, old_role, new_role, requester_uname
+            )
+            return HttpResponseRedirect(
+                reverse(
+                    'project-user-detail',
+                    kwargs={'pk': pk, 'project_user_pk': project_user_obj.pk},
+                )
+            )
 
 
 @login_required
