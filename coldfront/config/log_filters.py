@@ -36,4 +36,6 @@ class RequestFilter(logging.Filter):
         else:
             record.ip_addr = ''
             record.user = ''
+        if not hasattr(record, 'category'):
+            record.category = ''
         return True

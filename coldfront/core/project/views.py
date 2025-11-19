@@ -724,15 +724,21 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             user_name=user_obj.username, group_name=project_obj.title
                         )
                     except Exception as e:
-                        error = f"Could not add user {user_obj} to AD Group for {project_obj.title}"
-                        logger.exception('%s : %s', error, e)
+                        logger.exception(
+                            "User %s could not add AD user %s to AD Group for %s: %s",
+                            request.user, user_obj, project_obj.title, e,
+                            extra={'category': 'integration:AD'}
+                        )
                         errors.append(
-                            error + "\nPlease contact a Coldfront admin for further assistance."
+                            f"Could not add user {user_obj} to AD Group for {project_obj.title}\nPlease contact a Coldfront admin for further assistance."
                         )
                         continue
-                    success_msg = f"User {user_obj} added by {request.user} to AD Group for {project_obj.title}"
-                    logger.info(success_msg)
-                    successes.append(success_msg)
+                    logger.info(
+                        "User %s added by %s to AD Group for %s",
+                        user_obj, request.user, project_obj.title,
+                        extra={'category': 'integration:AD'}
+                    )
+                    successes.append(f"User {user_obj} added to AD Group for {project_obj.title}")
 
                     # Is the user already in the project?
                     project_obj.projectuser_set.update_or_create(
@@ -886,8 +892,9 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         user_name=user_obj.username, group_name=project_obj.title
                     )
                     logger.info(
-                        "Coldfront user %s removed AD User for %s from AD Group for %s",
+                        "ColdFront user %s removed AD User for %s from AD Group for %s",
                         self.request.user, user_obj.username, project_obj.title,
+                        extra={'category': 'integration:AD'}
                     )
                 except Exception as e:
                     failed_user_removals += [f"could not remove user {user_obj}: {e}"]
@@ -896,7 +903,8 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         self.request.user,
                         user_obj.username,
                         project_obj.title,
-                        e
+                        e,
+                        extra={'category': 'integration:AD'}
                     )
                     continue
 
