@@ -194,14 +194,12 @@ class LDAPConn:
     def add_user_to_group(self, user_name, group_name):
         user = self.return_user_by_name(user_name)
         group = self.return_group_by_name(group_name)
-        result = self.add_member_to_group(user, group)
-        return result
+        self.add_member_to_group(user, group)
 
     def add_group_to_group(self, group_name, parent_group_name):
         group = self.return_group_by_name(group_name)
         parent_group = self.return_group_by_name(parent_group_name)
-        result = self.add_member_to_group(group, parent_group)
-        return result
+        self.add_member_to_group(group, parent_group)
 
     def add_member_to_group(self, member, group):
         member_dn = member['distinguishedName']
