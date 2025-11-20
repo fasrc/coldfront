@@ -317,6 +317,12 @@ def create_isilon_allocation_quota(
         allocation_attribute_type_id=subdir_type.pk,
         value=f'{subdir}/{lab_name}'
     )
+
+    logger.info(
+        "Auto-created Isilon allocation quota for project %s resource %s at path %s (id %s). Actions performed: %s Exmceptions: %s",
+        lab_name, resource, path, allocation.pk, actions_performed, option_exceptions,
+        extra={'category':'integration:isilon', 'status':'success'}
+    )
     return option_exceptions
 
 
@@ -344,7 +350,7 @@ def update_isilon_allocation_quota(allocation, new_quota):
     )
     if unallocated_space < (new_quota_bytes-current_quota):
         raise ValueError(
-            'ERROR: not enough space on volume to set quota to %s TiB for %s'
+            'not enough space on volume to set quota to %s TiB for %s'
             % (new_quota, allocation)
         )
     if current_quota > new_quota_bytes:
@@ -352,15 +358,21 @@ def update_isilon_allocation_quota(allocation, new_quota):
         space_needed = new_quota_bytes * .8
         if current_quota_usage > space_needed:
             raise ValueError(
-                'ERROR: cannot automatically shrink the size of allocations to a quota smaller than 80 percent of the space in use. Current size: %s Desired size: %s Space used: %s Allocation: %s'
+                'Cannot automatically shrink the size of allocations to a quota smaller than 80 percent of the space in use. Current size: %s Desired size: %s Space used: %s Allocation: %s'
                 % (allocation.size, new_quota, allocation.usage, allocation)
             )
     try:
         new_quota_obj = {'thresholds': {'hard': new_quota_bytes}}
         isilon_conn.quota_client.update_quota_quota(new_quota_obj, current_quota_obj.id)
         print(f'SUCCESS: updated quota for {allocation} to {new_quota}')
-        logger.info('SUCCESS: updated quota for %s to %s', allocation, new_quota)
+        logger.info(
+            'updated quota for %s (resource %s path %s) to %s',
+            allocation, isilon_resource, allocation.path, new_quota,
+            extra={'category':'integration:isilon', 'status':'success'}
+        )
     except ApiException as e:
+        logger.exception('could not update quota for %s to %s', allocation, new_quota,
+                         extra={'category':'integration:isilon', 'status':'failure'})
         err = f'ERROR: could not update quota for {allocation} to {new_quota} - {e}'
         print_log_error(e, err)
         raise

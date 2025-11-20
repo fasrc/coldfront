@@ -22,6 +22,9 @@ LOGGING = {
         'require_debug_true': {
             '()': 'django.utils.log.RequireDebugTrue'
         },
+        'request': {
+            '()': 'coldfront.config.log_filters.RequestFilter',
+        },
     },
     'formatters': {
         'key-events': {
@@ -33,6 +36,10 @@ LOGGING = {
             "()": "django.utils.log.ServerFormatter",
             "format": "[{server_time}] {name} {levelname} {message}",
             "style": "{",
+        },
+        'json': {
+            '()': "pythonjsonlogger.jsonlogger.JsonFormatter",
+            'fmt': '%(asctime)s %(name)s %(levelname)s %(message)s %(ip_addr) %(user)',
         },
     },
     'handlers': {
@@ -66,6 +73,15 @@ LOGGING = {
             'filters': ['require_debug_false'],
             'class': 'django.utils.log.AdminEmailHandler',
         },
+        'json': {
+            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'filename': 'logs/coldfront.json.log',
+            'when': 'midnight',
+            'backupCount': 10,
+            'formatter': 'json',
+            'level': 'INFO',
+            'filters': ['request'],
+        },
         # 'file': {
         #     'class': 'logging.FileHandler',
         #     'filename': '/tmp/debug.log',
@@ -75,17 +91,17 @@ LOGGING = {
         'django_auth_ldap': {
             'level': 'INFO',
             # 'handlers': ['console', 'file'],
-            'handlers': ['console', ],
+            'handlers': ['console', 'json'],
         },
         'django': {
-            'handlers': ['console'],
+            'handlers': ['console', 'json'],
             'level': 'INFO',
         },
         'django-q': {
-            'handlers': ['django-q', 'key-events'],
+            'handlers': ['django-q', 'key-events', 'json'],
         },
         'ifx': {
-            'handlers': ['console', 'key-events', 'console_debug', 'mail_admins'],
+            'handlers': ['console', 'key-events', 'console_debug', 'mail_admins', 'json'],
             'level': 'INFO',
         },
         'ifxbilling': {
@@ -93,8 +109,12 @@ LOGGING = {
             'level': 'INFO',
         },
         'coldfront': {
-            'handlers': ['key-events'],
+            'handlers': ['key-events', 'json'],
             'level': 'INFO',
         },
+        'request': {
+            'handlers': ['json'],
+            'level': 'INFO',
+        }
     },
 }

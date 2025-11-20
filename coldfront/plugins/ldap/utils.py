@@ -204,15 +204,23 @@ class LDAPConn:
     def add_member_to_group(self, member, group):
         member_dn = member['distinguishedName']
         group_dn = group['distinguishedName']
+        member_name = member['sAMAccountName']
+        group_name = group['sAMAccountName']
+        member_sid = member['objectSid']
+        group_sid = group['objectSid']
         try:
             result = ad_add_members_to_groups(
-                self.conn, [member_dn], group_dn, fix=True, raise_error=True)
+                self.conn, [member_sid], group_sid, fix=True, raise_error=True)
         except Exception as e:
             logger.exception("Error encountered while adding user to group: %s", e)
             raise LDAPUserAdditionError("Error adding user to group.")
         if not self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserAdditionError("Member not successfully added to group.")
-        logger.info('user %s added to AD group %s', member_dn, group_dn)
+        logger.info(
+            'Member %s (sid %s) added to AD group %s (sid %s)',
+            member_name, member_sid, group_name, group_sid,
+            extra={ 'category': 'integration:AD' }
+        )
         return result
 
     def remove_member_from_group(self, user_name, group_name):
@@ -223,18 +231,26 @@ class LDAPConn:
         if user['gidNumber'] == group['gidNumber']:
             raise ValueError(
                 "Group is member's primary group. Please contact FASRC support to remove this member from your group.")
+        member_dn = user['distinguishedName']
         group_dn = group['distinguishedName']
-        user_dn = user['distinguishedName']
+        member_name = member['sAMAccountName']
+        group_name = group['sAMAccountName']
+        member_sid = member['objectSid']
+        group_sid = group['objectSid']
         try:
             result = ad_remove_members_from_groups(
-                self.conn, [user_dn], group_dn, fix=True, raise_error=True
+                self.conn, [member_dn], group_dn, fix=True, raise_error=True
             )
         except Exception as e:
             logger.exception("Error encountered while removing user from group: %s", e)
             raise LDAPUserRemovalError("Error removing user from group.")
-        if self.member_in_group(user_dn, group_dn) or not result:
+        if self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserRemovalError("Member not successfully removed from group.")
-        logger.info('user %s removed from AD group %s', user_dn, group_dn)
+        logger.info(
+            'Member %s (sid %s) removed from AD group %s (sid %s)',
+            member_name, member_sid, group_name, group_sid,
+            extra={ 'category': 'integration:AD' }
+        )
         return result
 
     def users_in_primary_group(self, usernames, groupname):
@@ -244,7 +260,12 @@ class LDAPConn:
         """
         group = self.return_group_by_name(groupname)
         attrs = ['sAMAccountName', 'gidNumber']
-        users = [self.return_user_by_name(user, attributes=attrs) for user in usernames]
+        users = []
+        for user in usernames:
+            try:
+                users.append(self.return_user_by_name(user, attributes=attrs))
+            except ValueError:
+                logger.warning('user %s not found in LDAP when checking primary group membership', user)
         return [
             u['sAMAccountName'][0] for u in users if u['gidNumber'] == group['gidNumber']
         ]
@@ -267,8 +288,10 @@ class LDAPConn:
             attributes=['managedBy', 'distinguishedName','sAMAccountName', 'member']
         )
         if len(group_entries) > 1:
+            logger.error('multiple groups with same sAMAccountName: %s', samaccountname)
             return 'multiple groups with same sAMAccountName'
         if not group_entries:
+            logger.error('no groups found with sAMAccountName: %s', samaccountname)
             return 'no matching groups found'
         group_entry = group_entries[0]
         return self.manager_members_from_group(group_entry)
@@ -284,6 +307,7 @@ class LDAPConn:
         try:
             group_manager_dn = group_entry['managedBy'][0]
         except Exception as e:
+            logger.error('no manager specified for group %s', group_dn)
             return 'no manager specified'
         manager_attr_list = user_attr_list + ['memberOf']
         group_manager = self.search_users(
@@ -291,6 +315,7 @@ class LDAPConn:
         )
         logger.debug('group_manager:\n%s', group_manager)
         if not group_manager:
+            logger.error('no ADUser manager found for group %s', group_dn)
             return 'no ADUser manager found'
         return (group_members, group_manager[0])
 
@@ -432,16 +457,20 @@ def collect_update_project_status_membership():
         allocation__resources__resource_type__name="Storage", allocation__status__name="Active"
     )
     projects_to_deactivate.update(status=ProjectStatusChoice.objects.get(name='Archived'))
-    logger.debug('projects_to_deactivate %s', projects_to_deactivate)
+    logger.info('deactivated projects due to deactivated AD PIs: %s',
+        [project.title for project in projects_to_deactivate],
+        extra={ 'category': 'database_change:Project', 'status': 'success' }
+    )
     if projects_to_deactivate:
         pis_to_deactivate = ProjectUser.objects.filter(
             reduce(operator.or_, (
                 Q(project=p) & Q(user=p.pi) for p in projects_to_deactivate)
             ))
-        logger.debug('pis_to_deactivate %s', pis_to_deactivate)
         pis_to_deactivate.update(status=ProjectUserStatusChoice.objects.get(name='Removed'))
-        logger.info('deactivated projects and pis: %s',
-            [(pi.project.title, pi.user.username) for pi in pis_to_deactivate])
+        logger.info('deactivated PIs: %s',
+            [(pi.project.title, pi.user.username) for pi in pis_to_deactivate],
+            extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+        )
 
     ### identify projects for which PIs have changed ###
     projects_with_changed_pis = Project.objects.filter(
@@ -457,9 +486,13 @@ def collect_update_project_status_membership():
     )
     for project in projects_with_changed_pis:
         matching_group = next(g for g in active_pi_groups if g.project == project)
-        logger.info("changing pi for %s from %s to %s", project.title, project.pi.username, matching_group.pi['sAMAccountName'][0])
         project.pi = get_user_model().objects.get(username=matching_group.pi['sAMAccountName'][0])
         project.save()
+        logger.info(
+            "changed pi for %s from %s to %s",
+            project.title, project.pi.username, matching_group.pi['sAMAccountName'][0],
+            extra={ 'category': 'database_change:Project', 'status': 'success' }
+        )
 
 
     ### identify PIs with incorrect roles and change their status ###
@@ -484,7 +517,7 @@ def collect_update_project_status_membership():
         pk__in=[g.project.pk for g in active_pi_groups]).exclude(
         status=project_active_status
     )
-    logger.info("projects to reactivate: %s", [p.title for p in active_pi_group_projs_statuschange])
+    logger.info("Reactivating projects: %s", [p.title for p in active_pi_group_projs_statuschange])
     active_pi_group_projs_statuschange.update(status=project_active_status)
     for group in active_pi_groups:
 
@@ -513,8 +546,11 @@ def collect_update_project_status_membership():
                 'present_users - ADUsers who have ifxuser accounts:\n%s', ad_users_not_added
             )
             if present_projectusers:
-                logger.warning('found reactivated ADUsers for project %s: %s',
-                    group.project.title, [u.user.username for u in present_projectusers])
+                logger.warning(
+                    'reactivating projectusers for project %s: %s',
+                    group.project.title, [u.user.username for u in present_projectusers],
+                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+                )
 
                 present_projectusers.update(
                     role=projectuser_role_user, status=projectuserstatus_active
@@ -522,10 +558,6 @@ def collect_update_project_status_membership():
             # create new entries for all new ProjectUsers
             missing_projectusers = present_project_ifxusers.exclude(
                 pk__in=[pu.user.pk for pu in present_projectusers]
-            )
-            logger.debug(
-                "missing_projectusers - ifxusers in present_project_ifxusers who are not projectusers in project %s: %s",
-                group.project.title, [u.username for u in missing_projectusers]
             )
             ProjectUser.objects.bulk_create([
                 ProjectUser(
@@ -535,6 +567,11 @@ def collect_update_project_status_membership():
                     status=projectuserstatus_active
                 ) for user in missing_projectusers
             ])
+            logger.info(
+                "added projectusers to project %s: %s",
+                group.project.title, [u.username for u in missing_projectusers],
+                extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+            )
 
         ### identify inactive ProjectUsers, slate for status change ###
         remove_projusers = group.project.projectuser_set.filter(
@@ -547,8 +584,13 @@ def collect_update_project_status_membership():
     projectuserstatus_removed = ProjectUserStatusChoice.objects.get(name='Removed')
     projectusers_to_remove_queryset = ProjectUser.objects.filter(pk__in=[pu.pk for pu in projectusers_to_remove])
     projectusers_to_remove_queryset.update(status=projectuserstatus_removed)
-    logger.info('changing status of these ProjectUsers to "Removed":%s',
-                [{"uname":pu.user.username, "lab": pu.project.title} for pu in projectusers_to_remove])
+    projuser_remove_log = [
+        {"uname":pu.user.username, "lab": pu.project.title} for pu in projectusers_to_remove
+    ]
+    logger.info(
+        'changed status of ProjectUsers to "Removed": %s', projuser_remove_log,
+        extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+    )
 
 def import_projects_projectusers(projects_list):
     """Use AD user and group information to automatically create new
@@ -676,21 +718,33 @@ def add_new_projects(groupusercollections, errortracker):
                 )
                 for user in users_to_add
         ])
-        logger.debug('added projectusers: %s', added_projectusers)
+        logger.info('added projectusers: %s', added_projectusers,
+                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+        )
         # add permissions to PI/manager-status ProjectUsers
-        logger.debug('adding manager status to ProjectUser %s for Project %s',
-                    group.pi['sAMAccountName'][0], group.name)
+        logger.info('adding manager status to ProjectUser %s for Project %s',
+                    group.pi['sAMAccountName'][0], group.name,
+                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+        )
         try:
             pi_projuser = group.project.projectuser_set.get(
                 user__username=group.pi['sAMAccountName'][0]
             )
         except ProjectUser.DoesNotExist:
-            logger.warning('PI %s not found in %s AD Group Members',
-                        group.pi['sAMAccountName'][0], group.name)
+            logger.warning(
+                'Could not change ProjectUser role for PI ProjectUser %s in Project %s: ProjectUser not found in AD Group Members',
+                group.pi['sAMAccountName'][0], group.name,
+                extra={'category': 'database_change:ProjectUser', 'status': 'failure'}
+            )
             errortracker['pi_not_projectuser'].append(group.name)
             continue
         pi_projuser.role = ProjectUserRoleChoice.objects.get(name='PI')
         pi_projuser.save()
+        logger.info(
+            'changed ProjectUser role to PI for %s in Project %s',
+            group.pi['sAMAccountName'][0], group.name,
+            extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+        )
         added_projects.append([group.name, group.project])
 
     for errortype in errortracker:
@@ -754,6 +808,10 @@ def update_new_project(sender, **kwargs):
             user=user_obj,
             role=ProjectUserRoleChoice.objects.get(name=role_name),
             status=ProjectUserStatusChoice.objects.get(name='Active'),
+        )
+        logger.info('added User %s to Project %s as %s',
+                    user_obj.username, project.title, role_name,
+                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
         )
 
 @receiver(project_filter_users_to_remove)

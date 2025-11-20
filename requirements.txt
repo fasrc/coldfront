@@ -47,8 +47,9 @@ django-datatable==0.3.1
 django-datatables-view==1.19.1
 django-renderpdf
 django-easy-pdf3==0.1.4
-django-filter==24.2
 django-extensions==3.2.3
+django-filter==24.2
+django-ipware
 django-mathfilters==1.0.0
 django-tables2==2.3.4
 djangorestframework==3.15.2
@@ -63,6 +64,7 @@ logging_tree==1.9
 mysqlclient==2.2.0
 natural-keys
 python-dateutil
+python-json-logger
 pandas==2.2.1
 reportlab==4.0.5
 xhtml2pdf==0.2.15
