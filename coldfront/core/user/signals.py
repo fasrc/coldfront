@@ -21,15 +21,12 @@ def save_user_profile(sender, instance, **kwargs):
 
 @receiver(user_logged_in)
 def user_logged_in_callback(sender, request, user, **kwargs):
-    log.info('successful user login')
+    log.info('successful user login', extra={'category': 'auth', 'status': 'success'})
 
 @receiver(user_logged_out)
 def user_logged_out_callback(sender, request, user, **kwargs):
-    log.info('successful user logout')
+    log.info('successful user logout', extra={'category': 'auth', 'status': 'success'})
 
 @receiver(user_login_failed)
 def user_login_failed_callback(sender, credentials, **kwargs):
-    log.warning('failed user login', extra={
-            'username': credentials['username']
-        }
-    )
+    log.warning('failed user login', extra={'category': 'auth', 'status': 'failure'})
