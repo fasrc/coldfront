@@ -33,9 +33,11 @@ class RequestFilter(logging.Filter):
                 record.user = getattr(user, "get_username", lambda: str(user))()
             else:
                 record.user = 'anonymous'
+            record.auth_backend = request.session._session_cache.get('_auth_user_backend', 'unknown')
         else:
             record.ip_addr = ''
             record.user = ''
+            record.auth_backend = ''
         if not hasattr(record, 'category'):
             record.category = ''
         return True
