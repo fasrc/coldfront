@@ -611,9 +611,10 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
             for allocation in resource_allocations:
                 current_rawshare = allocation.rawshares
                 new_rawshare = allocation_rawshares.get(str(allocation.pk), None)
+                project_title = allocation.project.title
                 if new_rawshare and str(current_rawshare) != str(new_rawshare): # Ignore unchanged values
                     logger.info(
-                        'recognized changes in RawShares value for %s slurm account: %s changed to %s',
+                        'updating RawShare value for %s slurm account from %s to %s',
                         allocation.project.title, current_rawshare, new_rawshare
                     )
                     try:
@@ -623,22 +624,30 @@ class ResourceAllocationsEditView(LoginRequiredMixin, UserPassesTestMixin, Templ
                             cluster=resource_obj.get_attribute('slurm_cluster'),
                             raw_share=new_rawshare
                         )
-                        msg = f'RawShares value for {allocation.project.title} slurm account successfully updated from {current_rawshare} to {new_rawshare}'
-                        logger.info(msg)
+                        msg = f'Updated {project_title} slurm account RawShare from {current_rawshare} to {new_rawshare}'
+                        logger.info(
+                            msg, extra={'category': 'integration:slurm', 'status': 'success'}
+                        )
                         messages.success(request, msg)
                     except SlurmError as e:
-                        err = f'SlurmError encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
-                        logger.exception(err)
+                        err = f'SlurmError updating {project_title} slurm account RawShare'
+                        logger.exception(
+                            '%s: %s', err, e,
+                            extra={'category': 'integration:slurm', 'status': 'failure'}
+                        )
                         messages.error(request, err)
                         continue
                     except Exception as e:
-                        err = f'Problem encountered while editing RawShares value for {allocation.project.title} slurm account: {e}'
-                        logger.exception(err)
+                        err = f'Exception updating {project_title} slurm account RawShare'
+                        logger.exception(
+                            '%s: %s', err, e,
+                            extra={'category': 'integration:slurm', 'status': 'failure'}
+                        )
                         messages.error(request, err)
                         continue
                     spec_update = self.update_rawshare(allocation, new_rawshare)
                     if spec_update != True:
-                        err = f'Slurm account for {allocation.project.title} successfully updated, but a problem was encountered while reflecting the updates in ColdFront: {spec_update}'
+                        err = f'{project_title} Slurm account RawShare successfully updated, but a problem was encountered while reflecting the updates in ColdFront: {spec_update}'
                         logger.error(err)
                         messages.error(request, err)
 
