@@ -1556,7 +1556,8 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
                         try:
                             logger.info(
                                 "Triggered update of Slurm user %s rawshare from %s to %s via account %s on cluster %s",
-                                username, allocuser_current_rawshare_val, allocuser_new_rawshare_val, account, cluster
+                                username, allocuser_current_rawshare_val,
+                                allocuser_new_rawshare_val, account, cluster
                             )
                             allocation_user_attribute_edit.send(
                                 sender=self.__class__,
@@ -1566,8 +1567,8 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
                                 raw_share=allocuser_new_rawshare_val
                             )
                         except Exception as e:
-                            err = f"Failed to update Rawshare on slurm for user {username} account {account} with value {allocuser_new_rawshare_val}: {str(e)}"
-                            logger.exception(err)
+                            err = f"Failed to update Rawshare on slurm for user {username} account {account} with value {allocuser_new_rawshare_val}"
+                            logger.exception('%s: %s', err, e)
                             error_messages.append(err)
                             continue
                         rawshare_updated = self.update_rawshare(allocation_user, allocuser_new_rawshare_val)
