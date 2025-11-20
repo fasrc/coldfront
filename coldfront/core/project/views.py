@@ -1035,6 +1035,11 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             requester_uname = self.request.user.username
             project_user_obj.role = ProjectUserRoleChoice.objects.get(name=new_role)
             project_user_obj.save()
+            logger.info(
+                'Project %s User %s role changed from %s to %s by user %s',
+                project_obj.title, username, old_role, new_role, requester_uname,
+                extra={'category': 'database_change:ProjectUser', 'status': 'success'}
+            )
 
             project_role_change_email_context = email_template_context(
                 extra_context={
@@ -1056,10 +1061,6 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                 cc=[project_obj.pi.email]
             )
             messages.success(request, 'User details updated.')
-            logger.info(
-                'Project %s User %s role changed from %s to %s by user %s',
-                project_obj.title, username, old_role, new_role, requester_uname
-            )
             return HttpResponseRedirect(
                 reverse(
                     'project-user-detail',
