@@ -461,7 +461,7 @@ def collect_update_project_status_membership():
     projects_to_deactivate.update(status=ProjectStatusChoice.objects.get(name='Archived'))
     logger.info('deactivated projects due to deactivated AD PIs: %s',
         [project.title for project in projects_to_deactivate],
-        extra={ 'category': 'database_change:Project' }
+        extra={ 'category': 'database_change:Project', 'status': 'success' }
     )
     if projects_to_deactivate:
         pis_to_deactivate = ProjectUser.objects.filter(
@@ -471,7 +471,7 @@ def collect_update_project_status_membership():
         pis_to_deactivate.update(status=ProjectUserStatusChoice.objects.get(name='Removed'))
         logger.info('deactivated PIs: %s',
             [(pi.project.title, pi.user.username) for pi in pis_to_deactivate],
-            extra={ 'category': 'database_change:ProjectUser' }
+            extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
         )
 
     ### identify projects for which PIs have changed ###
@@ -488,13 +488,13 @@ def collect_update_project_status_membership():
     )
     for project in projects_with_changed_pis:
         matching_group = next(g for g in active_pi_groups if g.project == project)
-        logger.info(
-            "changing pi for %s from %s to %s",
-            project.title, project.pi.username, matching_group.pi['sAMAccountName'][0],
-            extra={ 'category': 'database_change:Project' }
-        )
         project.pi = get_user_model().objects.get(username=matching_group.pi['sAMAccountName'][0])
         project.save()
+        logger.info(
+            "changed pi for %s from %s to %s",
+            project.title, project.pi.username, matching_group.pi['sAMAccountName'][0],
+            extra={ 'category': 'database_change:Project', 'status': 'success' }
+        )
 
 
     ### identify PIs with incorrect roles and change their status ###
@@ -548,8 +548,11 @@ def collect_update_project_status_membership():
                 'present_users - ADUsers who have ifxuser accounts:\n%s', ad_users_not_added
             )
             if present_projectusers:
-                logger.warning('reactivating projectusers for project %s: %s',
-                    group.project.title, [u.user.username for u in present_projectusers])
+                logger.warning(
+                    'reactivating projectusers for project %s: %s',
+                    group.project.title, [u.user.username for u in present_projectusers],
+                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+                )
 
                 present_projectusers.update(
                     role=projectuser_role_user, status=projectuserstatus_active
@@ -557,11 +560,6 @@ def collect_update_project_status_membership():
             # create new entries for all new ProjectUsers
             missing_projectusers = present_project_ifxusers.exclude(
                 pk__in=[pu.user.pk for pu in present_projectusers]
-            )
-            logger.info(
-                "adding projectusers to project %s: %s",
-                group.project.title, [u.username for u in missing_projectusers],
-                extra={ 'category': 'database_change:ProjectUser' }
             )
             ProjectUser.objects.bulk_create([
                 ProjectUser(
@@ -571,6 +569,11 @@ def collect_update_project_status_membership():
                     status=projectuserstatus_active
                 ) for user in missing_projectusers
             ])
+            logger.info(
+                "added projectusers to project %s: %s",
+                group.project.title, [u.username for u in missing_projectusers],
+                extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+            )
 
         ### identify inactive ProjectUsers, slate for status change ###
         remove_projusers = group.project.projectuser_set.filter(
@@ -588,7 +591,7 @@ def collect_update_project_status_membership():
     ]
     logger.info(
         'changed status of ProjectUsers to "Removed": %s', projuser_remove_log,
-        extra={ 'category': 'database_change:ProjectUser' }
+        extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
     )
 
 def import_projects_projectusers(projects_list):
@@ -717,21 +720,33 @@ def add_new_projects(groupusercollections, errortracker):
                 )
                 for user in users_to_add
         ])
-        logger.debug('added projectusers: %s', added_projectusers)
+        logger.info('added projectusers: %s', added_projectusers,
+                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+        )
         # add permissions to PI/manager-status ProjectUsers
-        logger.debug('adding manager status to ProjectUser %s for Project %s',
-                    group.pi['sAMAccountName'][0], group.name)
+        logger.info('adding manager status to ProjectUser %s for Project %s',
+                    group.pi['sAMAccountName'][0], group.name,
+                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+        )
         try:
             pi_projuser = group.project.projectuser_set.get(
                 user__username=group.pi['sAMAccountName'][0]
             )
         except ProjectUser.DoesNotExist:
-            logger.warning('PI %s not found in %s AD Group Members',
-                        group.pi['sAMAccountName'][0], group.name)
+            logger.warning(
+                'Could not change ProjectUser role for PI ProjectUser %s in Project %s: ProjectUser not found in AD Group Members',
+                group.pi['sAMAccountName'][0], group.name,
+                extra={'category': 'database_change:ProjectUser', 'status': 'failure'}
+            )
             errortracker['pi_not_projectuser'].append(group.name)
             continue
         pi_projuser.role = ProjectUserRoleChoice.objects.get(name='PI')
         pi_projuser.save()
+        logger.info(
+            'changed ProjectUser role to PI for %s in Project %s',
+            group.pi['sAMAccountName'][0], group.name,
+            extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+        )
         added_projects.append([group.name, group.project])
 
     for errortype in errortracker:
@@ -795,6 +810,10 @@ def update_new_project(sender, **kwargs):
             user=user_obj,
             role=ProjectUserRoleChoice.objects.get(name=role_name),
             status=ProjectUserStatusChoice.objects.get(name='Active'),
+        )
+        logger.info('added User %s to Project %s as %s',
+                    user_obj.username, project.title, role_name,
+                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
         )
 
 @receiver(project_filter_users_to_remove)
