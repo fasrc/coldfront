@@ -727,7 +727,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         logger.exception(
                             "User %s could not add AD user %s to AD Group for %s: %s",
                             request.user, user_obj, project_obj.title, e,
-                            extra={'category': 'integration:AD'}
+                            extra={'category': 'integration:AD', 'status': 'failure'}
                         )
                         errors.append(
                             f"Could not add user {user_obj} to AD Group for {project_obj.title}\nPlease contact a Coldfront admin for further assistance."
@@ -736,7 +736,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                     logger.info(
                         "User %s added by %s to AD Group for %s",
                         user_obj, request.user, project_obj.title,
-                        extra={'category': 'integration:AD'}
+                        extra={'category': 'integration:AD', 'status': 'success'}
                     )
                     successes.append(f"User {user_obj} added to AD Group for {project_obj.title}")
 
@@ -747,6 +747,11 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             'role': role_choice,
                             'status': projuserstatus_active,
                         }
+                    )
+                    logger.info(
+                        "User %s added to project %s by %s",
+                        user_obj.username, project_obj.title, request.user,
+                        extra={'category': 'database_change:ProjectUser', 'status': 'success'}
                     )
                     added_users_count += 1
                     for allocation in Allocation.objects.filter(
@@ -894,7 +899,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     logger.info(
                         "ColdFront user %s removed AD User for %s from AD Group for %s",
                         self.request.user, user_obj.username, project_obj.title,
-                        extra={'category': 'integration:AD'}
+                        extra={'category': 'integration:AD', 'status': 'success'}
                     )
                 except Exception as e:
                     failed_user_removals += [f"could not remove user {user_obj}: {e}"]
@@ -904,12 +909,17 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         user_obj.username,
                         project_obj.title,
                         e,
-                        extra={'category': 'integration:AD'}
+                        extra={'category': 'integration:AD', 'status': 'failure'}
                     )
                     continue
 
                 project_user_obj.status = projectuser_status_removed
                 project_user_obj.save()
+                logger.info(
+                    "User %s removed from project %s by %s",
+                    user_obj.username, project_obj.title, request.user,
+                    extra={'category': 'database_change:ProjectUser', 'status': 'success'}
+                )
 
                 # get allocation to remove users from
                 allocations_to_remove_user_from = project_obj.allocation_set.filter(
