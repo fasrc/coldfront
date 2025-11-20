@@ -2427,6 +2427,7 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                         return self.redirect_to_detail(pk)
                     # get new quota value
                     quantity_label = alloc_change_obj.allocation.unit_label
+                    old_quota = alloc_change_obj.allocation.size
                     new_quota = next((
                         a for a in attrs_to_change if a['name'] == f'Storage Quota ({quantity_label})'), None)
                     if not new_quota:
@@ -2443,7 +2444,15 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                             update_isilon_allocation_quota(
                                 alloc_change_obj.allocation, new_quota_value
                             )
+                            logger.info(
+                                "Auto-updated allocation %s quota from %s to %s",
+                                alloc_change_obj.allocation, old_quota, new_quota_value,
+                                extra={'category': 'integration:isilon', 'status': 'success'},
+                            )
                         except Exception as e:
+                            logger.exception('Auto-update of allocation quota failed: %s ', e,
+                                extra={'category': 'integration:isilon', 'status': 'error'}
+                            )
                             err = ("An error was encountered while auto-updating"
                                 "the allocation quota. Please contact Coldfront "
                                 "administration and/or manually update the allocation.")
