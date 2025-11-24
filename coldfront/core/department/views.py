@@ -251,7 +251,10 @@ class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
                 ('Your Allocations', allocation_objs.count()),
                 ('Total Users in Your Allocations', allocation_users.count()),
             ])
+        approvers = department_obj.members.filter(role="Approver")
+        approvers_string = ', '.join([m.user.full_name for m in approvers])
         detail_table.extend([
+            ('Approvers', approvers_string),
             ('Service Period', '1 Month'),
             ('Total Amount Due, Monthly Storage', f'${round(storage_full_price, 2)}'),
             # ( 'Total Amount Due, Quarterly Compute':f'${round(compute_full_price, 2)}')
