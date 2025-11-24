@@ -210,7 +210,7 @@ class LDAPConn:
         group_sid = group['objectSid']
         try:
             result = ad_add_members_to_groups(
-                self.conn, [member_sid], group_sid, fix=True, raise_error=True)
+                self.conn, [member_dn], group_dn, fix=True, raise_error=True)
         except Exception as e:
             logger.exception("Error encountered while adding user to group: %s", e)
             raise LDAPUserAdditionError("Error adding user to group.")
