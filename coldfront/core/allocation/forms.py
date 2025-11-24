@@ -345,12 +345,12 @@ class AllocationSearchForm(forms.Form):
     username = forms.CharField(label='Username', max_length=100, required=False)
     resource_type = forms.ModelChoiceField(
         label='Resource Type',
-        queryset=ResourceType.objects.all().order_by(Lower('name')),
+        queryset=ResourceType.objects.exclude(name="Compute Node").order_by(Lower('name')),
         required=False)
     resource_name = forms.ModelMultipleChoiceField(
         label='Resource Name',
         queryset=Resource.objects.filter(
-            is_public=True).order_by(Lower('name')),
+            is_public=True).exclude(resource_type__name="Compute Node").order_by(Lower('name')),
         required=False)
     allocation_attribute_name = forms.ModelChoiceField(
         label='Allocation Attribute Name',
