@@ -5,6 +5,7 @@ from django import forms
 from django.conf import settings
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
+from django.utils.safestring import mark_safe
 from django.core.exceptions import ValidationError
 
 from coldfront.core.allocation.models import (
@@ -197,7 +198,12 @@ class AllocationApprovalForm(forms.Form):
         choices=ALLOCATION_AUTOCREATE_OPTIONS,
     )
     path = forms.CharField(
-        label='If you have opted for manual allocation creation, please input the path where the allocation will be created. Start it with C/ or F/ for lfs (e.g., C/example_lab) and rc_labs/ or rc_fasse_labs for isilon (e.g., rc_labs/example_lab)',
+        label=mark_safe(
+            'If you have opted for manual allocation creation, please input the path where the '
+            'allocation will be created. Start it with <code>C/</code> or <code>F/<code> for lfs '
+            '(e.g., <code>C/example_lab</code>) and <code>rc_labs/</code> or '
+            '<code>c_fasse_labs/</code> for isilon (e.g., <code>rc_labs/example_lab</code>)',
+        ),
         max_length=255,
         required=False,
     )
