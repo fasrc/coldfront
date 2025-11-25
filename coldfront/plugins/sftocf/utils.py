@@ -199,7 +199,7 @@ class StarFishServer:
     def get_zones(self, zone_id=''):
         """Get all zones from the API, or the zone with the corresponding ID
         """
-        url = self.api_url + f'zone/{zone_id}'
+        url = self.api_url + f'v2/zones/{zone_id}'
         response = return_get_json(url, self.headers)
         return response
 
@@ -210,7 +210,7 @@ class StarFishServer:
 
     def create_zone(self, zone_name, paths, managers, managing_groups):
         """Create a zone via the API"""
-        url = self.api_url + 'zone/'
+        url = self.api_url + 'v2/zones/'
         data = {
             "name": zone_name,
             "managers": managers,
@@ -228,7 +228,7 @@ class StarFishServer:
         if not zone_id:
             zone = self.get_zone_by_name(zone_name)
             zone_id = zone['id']
-        url = self.api_url + f'zone/{zone_id}?force=True'
+        url = self.api_url + f'v2/zones/{zone_id}?force=True'
         response = requests.delete(url, headers=self.headers)
         if response.status_code not in [204]:
             raise ValueError(f'Cannot delete zone {zone_name} ({zone_id}): {response.text}')
@@ -237,7 +237,7 @@ class StarFishServer:
     def put_zone(self, zone_id, paths=(), managers=(), managing_groups=()):
         """Update a zone via the API"""
         zone_data = self.get_zones(zone_id=zone_id)
-        url = self.api_url + f'zone/{zone_id}/'
+        url = self.api_url + f'v2/zones/{zone_id}/'
         data = {'name': zone_data['name']}
         data['paths'] = paths if paths else zone_data['paths']
         data['managers'] = managers if managers else zone_data['managers']
@@ -245,44 +245,67 @@ class StarFishServer:
         response = return_put_json(url, data=data, headers=self.headers)
         return response
 
+    def update_zone_members(
+        self, zone_id, member_users=(), member_groups=(), admin_users=(), admin_groups=()
+    ):
+        url = self.api_url + f"v2/zones/{zone_id}/members/"
+        data = {}
+        if member_users or member_groups:
+            data["members"] = {}
+            if member_users:
+                data["members"]['users'] = {'set': [{'username': m} for m in member_users]}
+            if member_groups:
+                data["members"]['groups'] = {'set': [{'groupname': m} for m in member_groups]}
+        if admin_users or admin_groups:
+            data["admins"] = {}
+            if admin_users:
+                data["admins"]['users'] = {'set': [{'username': m} for m in admin_users]}
+            if admin_groups:
+                data["admins"]['groups'] = {'set': [{'groupname': m} for m in admin_groups]}
+        response = return_put_json(url, data=data, headers=self.headers)
+        return response
+
+
     def update_zone(self, zone_name, paths=(), managers=(), managing_groups=()):
         """Update a zone via the API"""
         zone_data = self.get_zone_by_name(zone_name)
         zone_id = zone_data['id']
         for group in managing_groups:
             add_zone_group_to_ad(group['groupname'])
-        response = self.put_zone(
-            zone_id, managers=managers, managing_groups=managing_groups
+        response = self.update_zone_members(
+            zone_id, admin_users=managers, admin_groups=managing_groups
         )
         if paths and paths != zone_data['paths']:
             self.update_zone_paths(zone_id, paths)
         return response
 
+    def get_zone_paths(self, zone_id):
+        url = self.api_url + f'v2/zones/{zone_id}/zones_roots/'
+        response = return_get_json(url, self.headers)
+        return response
+
+
     def update_zone_paths(self, zone_id, paths):
-        """Add paths to an existing zone
-        Because the API will reject a full creation or update call if any of the
-        paths are not found in Starfish, loop through the path_list to add paths to the zone
-        if the initial update fails and record any paths that cannot be added.
-        """
-        #1. get the existing paths
+        """Update paths in a zone via the API"""
         zone = self.get_zones(zone_id=zone_id)
+        url = self.api_url + f'v2/zones/{zone_id}/zones_roots/'
+        data = {'set': paths}
         try:
-            self.put_zone(zone['name'], paths=paths)
+            response = return_put_json(url, data=data, headers=self.headers)
         except Exception as e:
             logger.warning('Error adding paths to zone %s: %s', zone['name'], e)
             failed_paths = []
-            existing_paths = zone['paths']
+            existing_paths = [p['vol_path'] for p in self.get_zone_paths(zone_id)]
             paths_to_remove = [p for p in existing_paths if p not in paths]
             if paths_to_remove:
                 logger.warning('Removing paths from zone %s: %s', zone['name'], paths_to_remove)
                 new_paths = [p for p in existing_paths if p not in paths_to_remove]
-                self.put_zone(zone['id'], paths=new_paths)
+                return_put_json(url, data={'delete': paths_to_remove}, headers=self.headers)
                 existing_paths = new_paths
             for path in paths:
                 if path not in existing_paths:
                     try:
-                        new_paths = list(set(existing_paths + [path]))
-                        self.put_zone(zone['id'], paths=new_paths)
+                        return_put_json(url, data={'add': [path]}, headers=self.headers)
                         existing_paths.append(path)
                     except Exception as e:
                         logger.warning(
@@ -317,7 +340,7 @@ class StarFishServer:
         paths = [
             f"{a.resources.first().name.split('/')[0]}:{a.path}"
             for a in project_obj.allocation_set.filter(
-                status__name__in=['Active', 'New', 'Updated', 'Ready for Review'],
+                status__name__in=['Active', 'Pending Deactivation', 'Updated', 'Ready for Review'],
                 resources__in=self.get_corresponding_coldfront_resources()
             )
             if a.path
@@ -825,14 +848,19 @@ class RedashDataPipeline(UsageDataPipelineBase):
 
     def collect_sf_data_for_lab(self, lab_name, volume_name, path):
         """Collect user-level and allocation-level usage data for a specific lab."""
-        lab_allocation_data = [d for d in self.sf_usage_data if d['group_name'] == lab_name and d['volume'] == volume_name]
+        lab_allocation_data = [
+            d for d in self.sf_usage_data
+            if d['group_name'] == lab_name and d['volume'] == volume_name
+        ]
         if len(lab_allocation_data) > 1:
             lab_allocation_data = [d for d in lab_allocation_data if d['path'] == path]
             if len(lab_allocation_data) == 0:
                 raise ValueError(f"cannot identify correct allocation for {lab_name} on {volume_name}")
 
-        lab_allocation_data = lab_allocation_data
-        lab_user_data = [d for d in self.sf_user_data if d['volume'] == volume_name and d['path'] == lab_allocation_data[0]['path']]
+        try:
+            lab_user_data = [d for d in self.sf_user_data if d['volume'] == volume_name and d['path'] == path]
+        except IndexError:
+            lab_user_data = []
         return lab_user_data, lab_allocation_data
 
 
