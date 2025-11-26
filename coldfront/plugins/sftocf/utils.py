@@ -213,8 +213,10 @@ class StarFishServer:
         url = self.api_url + 'v2/zones/'
         data = {
             "name": zone_name,
-            "managers": managers,
-            "managing_groups": managing_groups,
+            "members": {
+                'users': managers,
+                'groups': managing_groups,
+            },
         }
         logger.debug(data)
         response = return_post_json(url, data=data, headers=self.headers)
@@ -262,7 +264,7 @@ class StarFishServer:
                 data["admins"]['users'] = {'set': [{'username': m} for m in admin_users]}
             if admin_groups:
                 data["admins"]['groups'] = {'set': [{'groupname': m} for m in admin_groups]}
-        response = return_put_json(url, data=data, headers=self.headers)
+        response = return_patch_json(url, data=data, headers=self.headers)
         return response
 
 
@@ -273,9 +275,9 @@ class StarFishServer:
         for group in managing_groups:
             add_zone_group_to_ad(group['groupname'])
         response = self.update_zone_members(
-            zone_id, admin_users=managers, admin_groups=managing_groups
+            zone_id, member_users=managers, member_groups=managing_groups
         )
-        if paths and paths != zone_data['paths']:
+        if paths and paths != [p['vol_path'] for p in zone_data['vol_paths']]:
             self.update_zone_paths(zone_id, paths)
         return response
 
@@ -291,7 +293,7 @@ class StarFishServer:
         url = self.api_url + f'v2/zones/{zone_id}/zones_roots/'
         data = {'set': paths}
         try:
-            response = return_put_json(url, data=data, headers=self.headers)
+            response = return_patch_json(url, data=data, headers=self.headers)
         except Exception as e:
             logger.warning('Error adding paths to zone %s: %s', zone['name'], e)
             failed_paths = []
@@ -300,12 +302,13 @@ class StarFishServer:
             if paths_to_remove:
                 logger.warning('Removing paths from zone %s: %s', zone['name'], paths_to_remove)
                 new_paths = [p for p in existing_paths if p not in paths_to_remove]
-                return_put_json(url, data={'delete': paths_to_remove}, headers=self.headers)
+                return_patch_json(url, data={'delete': paths_to_remove}, headers=self.headers)
+
                 existing_paths = new_paths
             for path in paths:
                 if path not in existing_paths:
                     try:
-                        return_put_json(url, data={'add': [path]}, headers=self.headers)
+                        return_patch_json(url, data={'add': [path]}, headers=self.headers)
                         existing_paths.append(path)
                     except Exception as e:
                         logger.warning(
@@ -345,7 +348,6 @@ class StarFishServer:
             )
             if a.path
         ]
-        managers = [f'{project_obj.pi.username}']
         managing_groups = [{'groupname': project_obj.title}]
         add_zone_group_to_ad(project_obj.title)
         return self.create_zone(zone_name, paths, [], managing_groups)
@@ -574,6 +576,11 @@ class AsyncQuery:
 
 def return_get_json(url, headers):
     response = requests.get(url, headers=headers)
+    return response.json()
+
+def return_patch_json(url, data, headers):
+    response = requests.patch(url, json=data, headers=headers)
+    response.raise_for_status()
     return response.json()
 
 def return_put_json(url, data, headers):
