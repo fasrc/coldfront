@@ -198,10 +198,10 @@ class ClusterResourceManager:
         # create or get the node resource
         node_resource, created = Resource.objects.get_or_create(
             name=node_data['name'],
-            parent_resource=self.cluster_resource,
             resource_type=self.node_resource_type,
             defaults={
-                'description': f"Node {node_data['name']} on {self.cluster_resource.name}"
+                'parent_resource': self.cluster_resource,
+                'description': f"Node {node_data['name']} on {self.cluster_resource.name}",
             }
         )
         # create or update resource attributes
@@ -224,6 +224,13 @@ class ClusterResourceManager:
         )
         if created:
             logger.info("Created new node resource: %s", node_resource.name)
+        else:
+            if node_resource.parent_resource != self.cluster_resource:
+                logger.info("changing parent_resource of %s from %s to %s",
+                    node_resource.name, node_resource.parent_resource, self.cluster_resource)
+                node_resource.parent_resource = self.cluster_resource
+                node_resource.is_available = True
+                node_resource.save()
         return node_resource
 
 

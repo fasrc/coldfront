@@ -14,7 +14,6 @@ import logging
 from requests.exceptions import HTTPError
 
 from django.core.management.base import BaseCommand
-from django.db.models import Count, Q
 
 from coldfront.core.project.models import Project, ProjectAttributeType
 from coldfront.core.department.models import Department
@@ -100,7 +99,7 @@ class Command(BaseCommand):
                         status__name__in=['Active', 'New'],
                         )
                     for a in p.allocation_set.filter(
-                        status__name__in=['Active', 'New'],
+                        status__name__in=['Active', 'Pending Deactivation'],
                         resources__in=sf.get_corresponding_coldfront_resources()
                     )
                     if a.path
@@ -110,7 +109,7 @@ class Command(BaseCommand):
 
         projects_with_allocations = Project.objects.filter(
             status__name='Active',
-            allocation__status__name='Active',
+            allocation__status__name__in=['Active', 'Pending Deactivation'],
             allocation__resources__in=sf.get_corresponding_coldfront_resources(),
             title__in=sf.get_groups() # confirm the projects have groups in Starfish
         ).distinct()
@@ -126,10 +125,13 @@ class Command(BaseCommand):
 
             # has all the allocation paths associated with the project
             storage_allocations = project.allocation_set.filter(
-                status__name='Active',
+                status__name__in=['Active', 'Pending Deactivation'],
                 resources__in=sf.get_corresponding_coldfront_resources(),
             )
-            zone_paths_not_in_cf = [p for p in zone['paths'] if p.split(':')[0] not in sf_cf_vols]
+            zone_paths_not_in_cf = [
+                p['vol_path'] for p in zone['vol_paths']
+                if p['vol_path'].split(':')[0] not in sf_cf_vols
+            ]
             # don't update if any paths are missing
             missing_paths = False
             for a in storage_allocations:
@@ -143,16 +145,16 @@ class Command(BaseCommand):
 
             update = False
             paths = [f'{a.resources.first().name.split("/")[0]}:{a.path}' for a in storage_allocations] + zone_paths_not_in_cf
-            if not set(paths) == set(zone['paths']):
+            if not set(paths) == set([p['vol_path'] for p in zone['vol_paths']]):
                 update = True
                 report['updated_zone_paths'].append({
                     'zone': zone['name'],
-                    'old_paths': zone['paths'],
+                    'old_paths': zone['vol_paths'],
                     'new_paths': paths,
                 })
 
             # has the project AD group in “managing_groups”
-            update_groups = zone['managing_groups']
+            update_groups = zone['members']['groups']
             zone_group_names = [g['groupname'] for g in update_groups]
             if project.title not in zone_group_names:
                 update = True
@@ -162,6 +164,8 @@ class Command(BaseCommand):
                     'old_groups': zone_group_names,
                     'new_groups': zone_group_names + [project.title],
                 })
+            else:
+                update_groups = ()
             if update and not dry_run:
                 sf.update_zone(zone['name'], paths=paths, managing_groups=update_groups)
         # if project lacks "Starfish Zone" attribute, create or update the zone and save zone id to ProjectAttribute "Starfish Zone"
@@ -207,7 +211,10 @@ class Command(BaseCommand):
         for project in potential_delete_zone_attr_projs:
             print(project, project.pk)
             zone = sf.get_zones(project.sf_zone)
-            zone_paths_not_in_cf = [p for p in zone['paths'] if p.split(':')[0] not in sf_cf_vols]
+            zone_paths_not_in_cf = [
+                p['vol_path'] for p in zone['vol_paths']
+                if p['vol_path'].split(':')[0] not in sf_cf_vols
+            ]
             # delete any zones that have no paths
             if not zone_paths_not_in_cf:
                 if not dry_run:

@@ -210,7 +210,7 @@ class LDAPConn:
         group_sid = group['objectSid']
         try:
             result = ad_add_members_to_groups(
-                self.conn, [member_sid], group_sid, fix=True, raise_error=True)
+                self.conn, [member_dn], group_dn, fix=True, raise_error=True)
         except Exception as e:
             logger.exception("Error encountered while adding user to group: %s", e)
             raise LDAPUserAdditionError("Error adding user to group.")
@@ -233,9 +233,9 @@ class LDAPConn:
                 "Group is member's primary group. Please contact FASRC support to remove this member from your group.")
         member_dn = user['distinguishedName']
         group_dn = group['distinguishedName']
-        member_name = member['sAMAccountName']
+        member_name = user['sAMAccountName']
         group_name = group['sAMAccountName']
-        member_sid = member['objectSid']
+        member_sid = user['objectSid']
         group_sid = group['objectSid']
         try:
             result = ad_remove_members_from_groups(
