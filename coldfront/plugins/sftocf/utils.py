@@ -255,15 +255,15 @@ class StarFishServer:
         if member_users or member_groups:
             data["members"] = {}
             if member_users:
-                data["members"]['users'] = {'set': [{'username': m} for m in member_users]}
+                data["members"]['users'] = {'set': member_users}
             if member_groups:
-                data["members"]['groups'] = {'set': [{'groupname': m} for m in member_groups]}
+                data["members"]['groups'] = {'set': member_groups}
         if admin_users or admin_groups:
             data["admins"] = {}
             if admin_users:
-                data["admins"]['users'] = {'set': [{'username': m} for m in admin_users]}
+                data["admins"]['users'] = {'set': admin_users}
             if admin_groups:
-                data["admins"]['groups'] = {'set': [{'groupname': m} for m in admin_groups]}
+                data["admins"]['groups'] = {'set': admin_groups}
         response = return_patch_json(url, data=data, headers=self.headers)
         return response
 
@@ -274,12 +274,15 @@ class StarFishServer:
         zone_id = zone_data['id']
         for group in managing_groups:
             add_zone_group_to_ad(group['groupname'])
-        response = self.update_zone_members(
-            zone_id, member_users=managers, member_groups=managing_groups
-        )
+        if managing_groups != ():
+            for group in managing_groups:
+                add_zone_group_to_ad(group['groupname'])
+        if managing_groups != () or managers != ():
+            self.update_zone_members(
+                zone_id, member_users=managers, member_groups=managing_groups
+            )
         if paths and paths != [p['vol_path'] for p in zone_data['vol_paths']]:
             self.update_zone_paths(zone_id, paths)
-        return response
 
     def get_zone_paths(self, zone_id):
         url = self.api_url + f'v2/zones/{zone_id}/zones_roots/'
@@ -579,7 +582,7 @@ def return_get_json(url, headers):
     return response.json()
 
 def return_patch_json(url, data, headers):
-    response = requests.patch(url, json=data, headers=headers)
+    response = requests.patch(url, data=data, headers=headers)
     response.raise_for_status()
     return response.json()
 

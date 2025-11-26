@@ -14,7 +14,6 @@ import logging
 from requests.exceptions import HTTPError
 
 from django.core.management.base import BaseCommand
-from django.db.models import Count, Q
 
 from coldfront.core.project.models import Project, ProjectAttributeType
 from coldfront.core.department.models import Department
@@ -155,7 +154,7 @@ class Command(BaseCommand):
                 })
 
             # has the project AD group in “managing_groups”
-            update_groups = zone['managing_groups']
+            update_groups = zone['members']['groups']
             zone_group_names = [g['groupname'] for g in update_groups]
             if project.title not in zone_group_names:
                 update = True
@@ -165,6 +164,8 @@ class Command(BaseCommand):
                     'old_groups': zone_group_names,
                     'new_groups': zone_group_names + [project.title],
                 })
+            else:
+                update_groups = ()
             if update and not dry_run:
                 sf.update_zone(zone['name'], paths=paths, managing_groups=update_groups)
         # if project lacks "Starfish Zone" attribute, create or update the zone and save zone id to ProjectAttribute "Starfish Zone"
