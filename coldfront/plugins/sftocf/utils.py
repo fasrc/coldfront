@@ -84,7 +84,7 @@ def zone_report():
 
     # get all projects with at least one storage allocation
     projects = Project.objects.filter(
-        allocation__status__name__in=['Active'],
+        allocation__status__name__in=['Active', 'Pending Deactivation'],
         allocation__resources__in=server.get_corresponding_coldfront_resources(),
     ).distinct()
     # check which of these projects have zones
@@ -321,7 +321,7 @@ class StarFishServer:
                 status__name__in=['Active', 'New'],
                 )
             for a in p.allocation_set.filter(
-                status__name__in=['Active', 'New'],
+                status__name__in=['Active', 'Pending Deactivation'],
                 resources__in=self.get_corresponding_coldfront_resources()
             )
             if a.path

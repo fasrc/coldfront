@@ -100,7 +100,7 @@ class Command(BaseCommand):
                         status__name__in=['Active', 'New'],
                         )
                     for a in p.allocation_set.filter(
-                        status__name__in=['Active', 'New'],
+                        status__name__in=['Active', 'Pending Deactivation'],
                         resources__in=sf.get_corresponding_coldfront_resources()
                     )
                     if a.path
@@ -110,7 +110,7 @@ class Command(BaseCommand):
 
         projects_with_allocations = Project.objects.filter(
             status__name='Active',
-            allocation__status__name='Active',
+            allocation__status__name__in=['Active', 'Pending Deactivation'],
             allocation__resources__in=sf.get_corresponding_coldfront_resources(),
             title__in=sf.get_groups() # confirm the projects have groups in Starfish
         ).distinct()
@@ -126,7 +126,7 @@ class Command(BaseCommand):
 
             # has all the allocation paths associated with the project
             storage_allocations = project.allocation_set.filter(
-                status__name='Active',
+                status__name__in=['Active', 'Pending Deactivation'],
                 resources__in=sf.get_corresponding_coldfront_resources(),
             )
             zone_paths_not_in_cf = [p for p in zone['paths'] if p.split(':')[0] not in sf_cf_vols]
