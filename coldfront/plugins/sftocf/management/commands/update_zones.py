@@ -129,7 +129,10 @@ class Command(BaseCommand):
                 status__name__in=['Active', 'Pending Deactivation'],
                 resources__in=sf.get_corresponding_coldfront_resources(),
             )
-            zone_paths_not_in_cf = [p for p in zone['paths'] if p.split(':')[0] not in sf_cf_vols]
+            zone_paths_not_in_cf = [
+                p['vol_path'] for p in zone['vol_paths']
+                if p['vol_path'].split(':')[0] not in sf_cf_vols
+            ]
             # don't update if any paths are missing
             missing_paths = False
             for a in storage_allocations:
@@ -143,11 +146,11 @@ class Command(BaseCommand):
 
             update = False
             paths = [f'{a.resources.first().name.split("/")[0]}:{a.path}' for a in storage_allocations] + zone_paths_not_in_cf
-            if not set(paths) == set(zone['paths']):
+            if not set(paths) == set([p['vol_path'] for p in zone['vol_paths']]):
                 update = True
                 report['updated_zone_paths'].append({
                     'zone': zone['name'],
-                    'old_paths': zone['paths'],
+                    'old_paths': zone['vol_paths'],
                     'new_paths': paths,
                 })
 
@@ -207,7 +210,10 @@ class Command(BaseCommand):
         for project in potential_delete_zone_attr_projs:
             print(project, project.pk)
             zone = sf.get_zones(project.sf_zone)
-            zone_paths_not_in_cf = [p for p in zone['paths'] if p.split(':')[0] not in sf_cf_vols]
+            zone_paths_not_in_cf = [
+                p['vol_path'] for p in zone['vol_paths']
+                if p['vol_path'].split(':')[0] not in sf_cf_vols
+            ]
             # delete any zones that have no paths
             if not zone_paths_not_in_cf:
                 if not dry_run:
