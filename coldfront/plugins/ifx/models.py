@@ -217,8 +217,9 @@ def update_allocation_product(allocation):
                         fiine_product.is_active = is_active
                         fiine_product_dict = fiine_product.to_dict()
                         fiine_product_dict.pop('product_number')
+                        fiine_product_dict.pop('id')
                         updated_fiine_product = FiineAPI.updateProduct(product_number=product.product_number, **fiine_product_dict)
-                        for field in ['product_name', 'product_description', 'object_code_category']:
+                        for field in ['product_name', 'product_description', 'object_code_category', 'product_category', 'is_active']:
                             setattr(product, field, getattr(updated_fiine_product, field))
                     else:
                         product.product_name = product_name
@@ -257,6 +258,7 @@ def update_allocation_product(allocation):
                 logger.error(f'Allocation {allocation} has no Storage Quota (TB) or Storage Quota (TiB) attribute')
                 raise Exception(f'Allocation {allocation} has no Storage Quota (TB) or Storage Quota (TiB) attribute')
 
+@receiver(post_save, sender=Allocation)
 def allocation_post_save(sender, instance, **kwargs):
     '''
     Create a Product, ProductAllocation for each Allocation
