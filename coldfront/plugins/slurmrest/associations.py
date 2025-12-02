@@ -209,10 +209,14 @@ class ClusterResourceManager:
             resource_attribute_type=self.features_attribute_type,
             defaults={'value': ','.join(node_data['features'])}
         )
-        node_resource.resourceattribute_set.update_or_create(
-            resource_attribute_type=self.gpu_count_attribute_type,
-            defaults={'value': str(node_data.get('gpus', 0))}
-        )
+        tres = node_data.get('tres_used', 0)
+        if tres != 0:
+            tres_dict = dict([i.split('=') for i in tres.split(',')])
+            gpu_count = tres_dict.get('gres/gpu', 0)
+            node_resource.resourceattribute_set.update_or_create(
+                resource_attribute_type=self.gpu_count_attribute_type,
+                defaults={'value': str(gpu_count)}
+            )
         node_resource.resourceattribute_set.update_or_create(
             resource_attribute_type=self.core_count_attribute_type,
             defaults={'value': str(node_data.get('cores', 0))}
