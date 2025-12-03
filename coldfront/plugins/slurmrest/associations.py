@@ -182,7 +182,8 @@ class ClusterResourceManager:
             resource_type=self.node_resource_type,
             is_available=True,
         ).exclude(name__in=[n['name'] for n in self.nodes]):
-            logger.info("Node resource %s no longer exists in Slurm cluster %s; marking unavailable.",
+            logger.info(
+                "Node resource %s no longer exists in Slurm cluster %s; marking unavailable.",
                 resource_to_delete.name, self.cluster_name
             )
             resource_to_delete.is_available = False
@@ -192,6 +193,46 @@ class ClusterResourceManager:
                 resource_attribute_type=self.service_end_attribute_type,
                 defaults={'value':timezone.now()}
             )
+
+    def determine_node_owner(self, node_data):
+        node_partitions = node_data.get('partitions', [])
+        for partition_name in ['serial_requeue', 'gpu_requeue']:
+            if partition_name in node_partitions:
+                node_partitions.remove(partition_name)
+        group_list = []
+        for partition_name in node_partitions:
+            partition = next(
+                (p for p in self.partitions if p['name'] == partition_name), None
+            )
+            partition_groups = partition['groups'].get('allowed', '').split(',')
+            if 'seas' in partition_groups:
+                return 'seas'
+            # add all groups that aren't slurm_admin to group_list
+            group_list.extend(
+                [g for g in partition_groups if '-admin' not in g]
+            )
+        group_list = list(set(group_list))
+        if group_list in (['cluster_users_2', 'cluster_users'], ['fasse_users']):
+            return 'fasrc'
+        if len(group_list) == 1:
+            return group_list[0]
+        for group in group_list:
+            if 'kempner' in group:
+                return 'kempner_partition'
+            if 'iaifi' in group:
+                return 'iaifi_partition'
+            try:
+                Project.objects.get(title=group)
+            except Project.DoesNotExist:
+                group_list = [g for g in group_list if g != group]
+        if len(group_list) == 1:
+            return group_list[0]
+        logger.warning(
+            "can't determine owner of node_name %s. Partitions: %s Group list: %s",
+            node_data['name'], node_partitions, set(group_list)
+        )
+        return ''
+
 
     def create_update_node_resource(self, node_data):
         """Create or update a Coldfront Resource for a Slurm node."""
@@ -221,10 +262,11 @@ class ClusterResourceManager:
             resource_attribute_type=self.core_count_attribute_type,
             defaults={'value': str(node_data.get('cores', 0))}
         )
-        # owner sometimes needs to be set manually, so we don't update it if it exists
-        node_resource.resourceattribute_set.get_or_create(
+
+        owner = self.determine_node_owner(node_data)
+        node_resource.resourceattribute_set.update_or_create(
             resource_attribute_type=self.owner_attribute_type,
-            defaults={'value': node_data.get('owner', 'unknown')}
+            defaults={'value': owner}
         )
         if created:
             logger.info("Created new node resource: %s", node_resource.name)
