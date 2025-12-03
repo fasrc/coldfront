@@ -160,10 +160,6 @@ def update_allocation_product(allocation):
     resource = allocation.resources.first()
     if resource.resource_type.name == "Storage":
 
-        if allocation.status.name != 'Active':
-            logger.debug(f'Allocation {allocation} is not active')
-            return
-
         if not allocation.get_attribute(name='RequiresPayment') == 'True':
             logger.debug(f'Allocation {allocation} does not require payment')
             return
@@ -171,6 +167,7 @@ def update_allocation_product(allocation):
         with transaction.atomic():
             tb_str = None
             attr_val = allocation.get_attribute(name='Storage Quota (TB)')
+            is_active = allocation.status.name == 'Active'
             if attr_val:
                 tb_str = f"{attr_val} TB"
             else:
@@ -217,10 +214,12 @@ def update_allocation_product(allocation):
                         fiine_product.billing_calculator = billing_calculator
                         fiine_product.product_category = product_category
                         fiine_product.object_code_category = object_code_category
+                        fiine_product.is_active = is_active
                         fiine_product_dict = fiine_product.to_dict()
                         fiine_product_dict.pop('product_number')
+                        fiine_product_dict.pop('id')
                         updated_fiine_product = FiineAPI.updateProduct(product_number=product.product_number, **fiine_product_dict)
-                        for field in ['product_name', 'product_description', 'object_code_category']:
+                        for field in ['product_name', 'product_description', 'object_code_category', 'product_category', 'is_active']:
                             setattr(product, field, getattr(updated_fiine_product, field))
                     else:
                         product.product_name = product_name
@@ -228,26 +227,28 @@ def update_allocation_product(allocation):
                         product.object_code_category = object_code_category
                         product.billing_calculator = billing_calculator
                         product.product_category = product_category
+                        product.is_active = is_active
                     product.facility = facility
                     product.product_organization = allocation_organization
                     product.parent = resource_product
                     product.save()
                     return product
                 except ProductAllocation.DoesNotExist:
-                    pa = ProductAllocation(allocation=allocation)
-                    # Create a new Product.  create_new_product method knows about FIINELESS
-                    product = create_new_product(
-                        product_name=product_name,
-                        product_description=product_description,
-                        facility=facility,
-                        parent=resource_product,
-                        product_organization=allocation_organization,
-                        object_code_category='Technical Services',
-                        billing_calculator='coldfront.plugins.ifx.calculator.NewColdfrontBillingCalculator',
-                        product_category='Storage Allocation',
-                    )
-                    pa.product = product
-                    pa.save()
+                    if is_active:
+                        pa = ProductAllocation(allocation=allocation)
+                        # Create a new Product.  create_new_product method knows about FIINELESS
+                        product = create_new_product(
+                            product_name=product_name,
+                            product_description=product_description,
+                            facility=facility,
+                            parent=resource_product,
+                            product_organization=allocation_organization,
+                            object_code_category='Technical Services',
+                            billing_calculator='coldfront.plugins.ifx.calculator.NewColdfrontBillingCalculator',
+                            product_category='Storage Allocation',
+                        )
+                        pa.product = product
+                        pa.save()
                 except ValidationError as e:
                     logger.error(f'Validation error creating product for allocation {allocation}: {e}')
                 except Exception as e:
@@ -257,6 +258,7 @@ def update_allocation_product(allocation):
                 logger.error(f'Allocation {allocation} has no Storage Quota (TB) or Storage Quota (TiB) attribute')
                 raise Exception(f'Allocation {allocation} has no Storage Quota (TB) or Storage Quota (TiB) attribute')
 
+@receiver(post_save, sender=Allocation)
 def allocation_post_save(sender, instance, **kwargs):
     '''
     Create a Product, ProductAllocation for each Allocation
