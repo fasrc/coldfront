@@ -196,6 +196,12 @@ class ClusterResourceManager:
             )
 
     def determine_node_owner(self, node_data):
+        features = node_data.get('features', [])
+        joined = ','.join(features)
+        if 'o_s_' in joined or 'o_g_' in joined:
+            for feature in features:
+                if feature.startswith('o_s_') or feature.startswith('o_g_'):
+                    return feature[4:]
         node_partitions = node_data.get('partitions', [])
         for partition_name in ['serial_requeue', 'gpu_requeue']:
             if partition_name in node_partitions:
