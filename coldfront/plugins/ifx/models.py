@@ -291,7 +291,7 @@ def allocation_attribute_post_save(sender, instance, **kwargs):
             try:
                 update_allocation_product(instance.allocation)
             except Exception as e:
-                logger.error(f'Error updating product for allocation {instance.allocation} after change to attribute {instance.name}: {e}')
+                logger.error(f'Error updating product for allocation {instance.allocation} after change to attribute {instance}: {e}')
 
 
 @receiver(post_save, sender=Resource)
