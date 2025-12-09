@@ -49,6 +49,7 @@ class ClusterResourceManager:
 
         self.owner_attribute_type = ResourceAttributeType.objects.get(name='Owner')
         self.features_attribute_type = ResourceAttributeType.objects.get(name='Features')
+        self.nodetype_attribute_type = ResourceAttributeType.objects.get(name='NodeType')
         self.gpu_count_attribute_type = ResourceAttributeType.objects.get(name='GPU Count')
         self.core_count_attribute_type = ResourceAttributeType.objects.get(name='Core Count')
         self.service_end_attribute_type = ResourceAttributeType.objects.get(name='ServiceEnd')
@@ -182,7 +183,8 @@ class ClusterResourceManager:
             resource_type=self.node_resource_type,
             is_available=True,
         ).exclude(name__in=[n['name'] for n in self.nodes]):
-            logger.info("Node resource %s no longer exists in Slurm cluster %s; marking unavailable.",
+            logger.info(
+                "Node resource %s no longer exists in Slurm cluster %s; marking unavailable.",
                 resource_to_delete.name, self.cluster_name
             )
             resource_to_delete.is_available = False
@@ -192,6 +194,71 @@ class ClusterResourceManager:
                 resource_attribute_type=self.service_end_attribute_type,
                 defaults={'value':timezone.now()}
             )
+
+    def determine_node_owner(self, node_data):
+        features = node_data.get('features', [])
+        joined = ','.join(features)
+        if 'o_s_' in joined or 'o_g_' in joined:
+            for feature in features:
+                if feature.startswith('o_s_') or feature.startswith('o_g_'):
+                    return feature[4:]
+        node_partitions = node_data.get('partitions', [])
+        for partition_name in ['serial_requeue', 'gpu_requeue']:
+            if partition_name in node_partitions:
+                node_partitions.remove(partition_name)
+        group_list = []
+        for partition_name in node_partitions:
+            partition = next(
+                (p for p in self.partitions if p['name'] == partition_name), None
+            )
+            partition_groups = partition['groups'].get('allowed', '').split(',')
+            if 'seas' in partition_groups:
+                return 'seas'
+            # add all groups that aren't slurm_admin to group_list
+            group_list.extend(
+                [g for g in partition_groups if '-admin' not in g]
+            )
+        group_list = list(set(group_list))
+        if group_list in (['cluster_users_2', 'cluster_users'], ['fasse_users']):
+            return 'fasrc'
+        if len(group_list) == 1:
+            return group_list[0]
+        for group in group_list:
+            if 'kempner' in group:
+                return 'kempner_partition'
+            if 'iaifi' in group:
+                return 'iaifi_partition'
+            try:
+                Project.objects.get(title=group)
+            except Project.DoesNotExist:
+                group_list = [g for g in group_list if g != group]
+        if len(group_list) == 1:
+            return group_list[0]
+        logger.warning(
+            "can't determine owner of node_name %s. Partitions: %s Group list: %s",
+            node_data['name'], node_partitions, set(group_list)
+        )
+        return ''
+
+    def determine_node_type(self, node_data):
+        features = node_data.get('features', [])
+        if 'gpu' in features:
+            for node_type in ['h200', 'h100', 'a100', 'a100-mig', 'v100', 'a40', 'rtxa6000']:
+                if node_type in features:
+                    return node_type
+            logger.error(
+                "can't determine type of node_name %s. Features: %s",
+                node_data['name'], features
+            )
+            raise SlurmError(f"Unable to determine node type for node {node_data['name']}")
+        for node_type in ['icelake', 'cascadelake', 'sapphirerapids', 'genoa', 'milan', 'skylake']:
+            if node_type in features:
+                return node_type
+        logger.error(
+            "can't determine type of node_name %s. Features: %s",
+            node_data['name'], features
+        )
+        raise SlurmError(f"Unable to determine node type for node {node_data['name']}")
 
     def create_update_node_resource(self, node_data):
         """Create or update a Coldfront Resource for a Slurm node."""
@@ -209,19 +276,31 @@ class ClusterResourceManager:
             resource_attribute_type=self.features_attribute_type,
             defaults={'value': ','.join(node_data['features'])}
         )
-        node_resource.resourceattribute_set.update_or_create(
-            resource_attribute_type=self.gpu_count_attribute_type,
-            defaults={'value': str(node_data.get('gpus', 0))}
-        )
+        tres = node_data.get('tres_used', 0)
+        if tres != 0:
+            tres_dict = dict([i.split('=') for i in tres.split(',')])
+            gpu_count = tres_dict.get('gres/gpu', 0)
+            node_resource.resourceattribute_set.update_or_create(
+                resource_attribute_type=self.gpu_count_attribute_type,
+                defaults={'value': str(gpu_count)}
+            )
         node_resource.resourceattribute_set.update_or_create(
             resource_attribute_type=self.core_count_attribute_type,
             defaults={'value': str(node_data.get('cores', 0))}
         )
-        # owner sometimes needs to be set manually, so we don't update it if it exists
-        node_resource.resourceattribute_set.get_or_create(
+
+        owner = self.determine_node_owner(node_data)
+        node_resource.resourceattribute_set.update_or_create(
             resource_attribute_type=self.owner_attribute_type,
-            defaults={'value': node_data.get('owner', 'unknown')}
+            defaults={'value': owner}
         )
+
+        node_type = self.determine_node_type(node_data)
+        node_resource.resourceattribute_set.update_or_create(
+            resource_attribute_type=self.nodetype_attribute_type,
+            defaults={'value': node_type}
+        )
+
         if created:
             logger.info("Created new node resource: %s", node_resource.name)
         else:
