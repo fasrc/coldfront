@@ -15,11 +15,11 @@ from django.conf import settings
 from rest_framework.exceptions import ValidationError
 from fiine.client import API as FiineAPI
 from fiine.client import ApiException
-from coldfront.core.allocation.models import AllocationUser, Allocation
+from coldfront.core.allocation.models import AllocationUser, Allocation, AllocationAttribute
 from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project
 from ifxbilling.models import ProductUsage, Product, Facility
-from ifxbilling.fiine import create_new_product
+from ifxbilling.fiine import create_new_product, migrate_product
 from ifxuser.models import Organization
 
 logger = logging.getLogger('ifx')
@@ -201,26 +201,38 @@ def update_allocation_product(allocation):
                     pa = ProductAllocation.objects.get(allocation=allocation)
                     product = pa.product
                     if not hasattr(settings, 'FIINELESS') or not settings.FIINELESS:
-                        fiine_product = FiineAPI.readProduct(product_number=product.product_number)
-                        fiine_product.product_name = product_name
-                        fiine_product.product_description = product_description
-                        fiine_product.facility = facility.name
-                        fiine_product.parent = {
-                            'product_number': resource_product.product_number,
-                        }
-                        fiine_product.product_organization = {
-                            'ifxorg': allocation_organization.ifxorg,
-                        }
-                        fiine_product.billing_calculator = billing_calculator
-                        fiine_product.product_category = product_category
-                        fiine_product.object_code_category = object_code_category
-                        fiine_product.is_active = is_active
-                        fiine_product_dict = fiine_product.to_dict()
-                        fiine_product_dict.pop('product_number')
-                        fiine_product_dict.pop('id')
-                        updated_fiine_product = FiineAPI.updateProduct(product_number=product.product_number, **fiine_product_dict)
-                        for field in ['product_name', 'product_description', 'object_code_category', 'product_category', 'is_active']:
-                            setattr(product, field, getattr(updated_fiine_product, field))
+                        if tb_str not in product.product_name:
+                            # Need to migrate product in Fiine because the size has changed
+                            mods = {
+                                'product_name': product_name,
+                                'product_description': product_description,
+                                'is_active': True,
+                            }
+                            new_product = migrate_product(product, mods=mods, migrate_authorizations=True, deactivate_old_product=True)
+                            pa.product = new_product
+                            pa.save()
+                            product = new_product
+                        else:
+                            fiine_product = FiineAPI.readProduct(product_number=product.product_number)
+                            fiine_product.product_name = product_name
+                            fiine_product.product_description = product_description
+                            fiine_product.facility = facility.name
+                            fiine_product.parent = {
+                                'product_number': resource_product.product_number,
+                            }
+                            fiine_product.product_organization = {
+                                'ifxorg': allocation_organization.ifxorg,
+                            }
+                            fiine_product.billing_calculator = billing_calculator
+                            fiine_product.product_category = product_category
+                            fiine_product.object_code_category = object_code_category
+                            fiine_product.is_active = is_active
+                            fiine_product_dict = fiine_product.to_dict()
+                            fiine_product_dict.pop('product_number')
+                            fiine_product_dict.pop('id')
+                            updated_fiine_product = FiineAPI.updateProduct(product_number=product.product_number, **fiine_product_dict)
+                            for field in ['product_name', 'product_description', 'object_code_category', 'product_category', 'is_active']:
+                                setattr(product, field, getattr(updated_fiine_product, field))
                     else:
                         product.product_name = product_name
                         product.product_description = product_description
@@ -268,6 +280,18 @@ def allocation_post_save(sender, instance, **kwargs):
             update_allocation_product(instance)
         except Exception as e:
             logger.error(f'Error creating product for allocation {instance}: {e}')
+
+@receiver(post_save, sender=AllocationAttribute)
+def allocation_attribute_post_save(sender, instance, **kwargs):
+    '''
+    When certain AllocationAttributes are changed, update the Product
+    '''
+    if not kwargs.get('raw'):
+        if instance.allocation_attribute_type.name in ['Storage Quota (TB)', 'Storage Quota (TiB)', 'RequiresPayment', 'Subdirectory']:
+            try:
+                update_allocation_product(instance.allocation)
+            except Exception as e:
+                logger.error(f'Error updating product for allocation {instance.allocation} after change to attribute {instance.name}: {e}')
 
 
 @receiver(post_save, sender=Resource)
