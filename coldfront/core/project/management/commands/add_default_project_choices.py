@@ -21,7 +21,9 @@ class Command(BaseCommand):
         for choice in ['User', 'General Manager', 'Storage Manager', 'Access Manager', 'PI']:
             ProjectUserRoleChoice.objects.get_or_create(name=choice)
 
-        for choice in ['Active', 'Pending - Add', 'Pending - Remove', 'Denied', 'Removed', ]:
+        for choice in [
+            'Active', 'Pending - Add', 'Pending - Remove', 'Denied', 'Removed', 'Deactivated'
+        ]:
             ProjectUserStatusChoice.objects.get_or_create(name=choice)
 
         for attribute_type in ('Date', 'Float', 'Int', 'Text', 'Yes/No'):
