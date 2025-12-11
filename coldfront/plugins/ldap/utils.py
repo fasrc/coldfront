@@ -345,8 +345,31 @@ class GroupUserCollection:
         """Return true if PI's account is both unexpired and not disabled."""
         return user_valid(self.pi)
 
-    def compare_active_members_projectusers(self):
+    def compare_members_projectusers(self):
         """Compare ADGroup members to ProjectUsers.
+
+        Returns
+        -------
+        members_only : list
+            users present in the members list and not as Coldfront ProjectUsers.
+        projuser_only : list
+            Coldfront ProjectUsers missing from the members list.
+        """
+        ### check presence of ADGroup members in Coldfront  ###
+        logger.debug('membership data collected for %s\nraw ADUser data for %s users',
+        self.name, len(self.members))
+        ad_users = [u['sAMAccountName'][0] for u in self.members]
+        proj_usernames = [
+            pu.user.username for pu in self.project.projectuser_set.filter(
+                    (~Q(status__name='Removed')))
+        ]
+        logger.debug('projectusernames: %s', proj_usernames)
+
+        members_only, _, projuser_only = uniques_and_intersection(ad_users, proj_usernames)
+        return (members_only, projuser_only)
+
+    def compare_active_members_projectusers(self):
+        """Compare ADGroup active members to ProjectUsers.
 
         Returns
         -------
@@ -521,7 +544,7 @@ def collect_update_project_status_membership():
     active_pi_group_projs_statuschange.update(status=project_active_status)
     for group in active_pi_groups:
 
-        ad_users_not_added, remove_projuser_names = group.compare_active_members_projectusers()
+        ad_users_not_added, remove_projuser_names = group.compare_members_projectusers()
 
         # handle any AD users not in Coldfront
         if ad_users_not_added:
@@ -575,7 +598,7 @@ def collect_update_project_status_membership():
 
         ### identify inactive ProjectUsers, slate for status change ###
         remove_projusers = group.project.projectuser_set.filter(
-                        user__username__in=remove_projuser_names)
+                user__username__in=remove_projuser_names).exclude(status__name='Removed')
         logger.debug("remove_projusers - projectusers slated for removal:\n %s", remove_projusers)
         projectusers_to_remove.extend(list(remove_projusers))
 
