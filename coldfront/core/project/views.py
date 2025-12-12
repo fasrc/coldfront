@@ -854,7 +854,8 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             primaryuser_formset = formset_factory(
                 ProjectRemoveUserForm, max_num=len(primary_group_users)
             )
-            primaryuser_formset = primaryuser_formset(initial=primary_group_users, prefix='userform')
+            primaryuser_formset = primaryuser_formset(
+                    initial=primary_group_users, prefix='userform')
             context['primary_group_users'] = primaryuser_formset
         else:
             context['primary_group_users'] = primary_group_users
@@ -867,14 +868,12 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         project_obj = get_object_or_404(Project, pk=pk)
 
         users_to_remove = self.get_users_to_remove(project_obj)
-        # if ldap is activated, prevent selection of users with project corresponding to primary group
+        # if ldap is activated, identify users with project corresponding to primary group
         signal_response = project_filter_users_to_remove.send(
             sender=self.__class__, users_to_remove=users_to_remove, project=project_obj
         )
         if signal_response:
             users_to_remove = signal_response[0][1]
-        else:
-            users_to_remove = users_to_remove
 
         formset = formset_factory(ProjectRemoveUserForm, max_num=len(users_to_remove))
         formset = formset(request.POST, initial=users_to_remove, prefix='userform')
