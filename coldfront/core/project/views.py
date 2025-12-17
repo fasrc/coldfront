@@ -244,7 +244,8 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         allocations = allocations.filter(
             status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested']
         ).distinct().order_by('-end_date')
-        storage_allocations = allocations.filter(resources__resource_type__name='Storage').order_by('resources__name')
+        storage_allocations = allocations.filter(
+            resources__resource_type__name='Storage').order_by('resources__name')
         compute_allocations = allocations.filter(resources__resource_type__name='Cluster')
         allocation_total = {'allocation_user_count': 0, 'size': 0, 'cost': 0, 'usage':0}
         for allocation in storage_allocations:

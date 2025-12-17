@@ -1,6 +1,7 @@
 import logging
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
+from coldfront.core.utils.common import import_from_settings
 from coldfront.core.field_of_science.models import FieldOfScience
 from coldfront.core.project.signals import (
     project_filter_users_to_remove,

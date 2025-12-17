@@ -232,7 +232,6 @@ class LDAPConn:
             )
             result = self.deactivate_user(user['distinguishedName'])
             return result
-
         try:
             result = ad_remove_members_from_groups(
                 self.conn, [member_dn], group_dn, fix=True, raise_error=True

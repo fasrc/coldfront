@@ -19,8 +19,8 @@
       <p>
         {% if request.user.is_superuser %}
           As a superuser, you can remove any user from the project. Please be aware that
-          removing a user that has your lab as their primary group may cause issues with
-          that user's access to other resources. If you are unsure, please
+          removing a user from their primary group will cause their account to be deactivated and
+          prevent access to computational resources. If you are unsure, please
           contact FASRC support or the ColdFront system administrator.
         {% else %}
           To be removed from a lab, the user must not have the lab as their primary

@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 
 import pandas as pd
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 
 from coldfront.plugins.ldap.utils import import_projects_projectusers
 
