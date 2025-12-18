@@ -876,12 +876,33 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 messages.error(request, error)
             return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
         projectuser_status_removed = ProjectUserStatusChoice.objects.get(name='Removed')
+        projectuser_status_deactivated = ProjectUserStatusChoice.objects.get(name='Deactivated')
         allocationuser_status_removed = AllocationUserStatusChoice.objects.get(name='Removed')
         for form in formset:
             user_form_data = form.cleaned_data
+
             if user_form_data['selected']:
                 user_obj = get_user_model().objects.get(username=user_form_data.get('username'))
+
+                if user_form_data['primary_group'] and not request.user.is_superuser:
+                    failed_user_removals += [
+                        f"{project_obj.title} is user {user_obj.username}'s primary group"
+                    ]
+                    logger.warning(
+                        "non-admin attempted removal of primary group user. request_user=%s,member=%s,project=%s",
+                        request.user, user_form_data['username'], project_obj.title,
+                        extra={'category': 'integration:AD', 'status': 'failure'}
+                    )
+                    continue
                 if project_obj.pi == user_obj:
+                    failed_user_removals += [
+                        f"{user_obj.username} is the PI of {project_obj.title}"
+                    ]
+                    logger.warning(
+                        "attempted PI removal via ProjectUserRemovalForm. request_user=%s,member=%s,project=%s",
+                        request.user, user_form_data['username'], project_obj.title,
+                        extra={'category': 'integration:AD', 'status': 'failure'}
+                    )
                     continue
 
                 project_user_obj = project_obj.projectuser_set.get(user=user_obj)
@@ -892,27 +913,33 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         user_name=user_obj.username, group_name=project_obj.title
                     )
                     logger.info(
-                        "ColdFront user %s removed AD User for %s from AD Group for %s",
-                        self.request.user, user_obj.username, project_obj.title,
+                        "AD Group member removed/deactivated. request_user=%s,member=%s,group=%s,primary_group=%s",
+                        self.request.user, user_obj.username, project_obj.title, user_form_data['primary_group'],
                         extra={'category': 'integration:AD', 'status': 'success'}
                     )
                 except Exception as e:
                     failed_user_removals += [f"could not remove user {user_obj}: {e}"]
                     logger.exception(
-                        "Coldfront user %s could NOT remove AD User for %s from AD Group for %s: %s",
+                        "Failed AD Group member removal. request_user=%s,member=%s,group=%s,primary_group=%s,error=%s",
                         self.request.user,
                         user_obj.username,
                         project_obj.title,
+                        user_form_data['primary_group'],
                         e,
                         extra={'category': 'integration:AD', 'status': 'failure'}
                     )
                     continue
 
-                project_user_obj.status = projectuser_status_removed
+                if user_form_data['primary_group']:
+                    project_user_obj.status = projectuser_status_deactivated
+                    action = 'deactivated'
+                else:
+                    project_user_obj.status = projectuser_status_removed
+                    action = 'removed'
                 project_user_obj.save()
                 logger.info(
-                    "User %s removed from project %s by %s",
-                    user_obj.username, project_obj.title, request.user,
+                    "User %s %s from project %s by %s",
+                    user_obj.username, action, project_obj.title, request.user,
                     extra={'category': 'database_change:ProjectUser', 'status': 'success'}
                 )
 
