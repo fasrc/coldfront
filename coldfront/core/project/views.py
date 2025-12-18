@@ -46,6 +46,7 @@ from coldfront.core.project.forms import (
     ProjectUserUpdateForm,
     ProjectReviewEmailForm,
     ProjectAttributeAddForm,
+    ProjectReactivateUserForm,
     ProjectAttributeDeleteForm,
     ProjectAttributeUpdateForm,
     ProjectAddUsersToAllocationForm,
@@ -554,7 +555,18 @@ class ProjectAddUsersSearchView(LoginRequiredMixin, UserPassesTestMixin, Templat
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         context['user_search_form'] = UserSearchForm()
-        context['project'] = Project.objects.get(pk=self.kwargs.get('pk'))
+        project = Project.objects.get(pk=self.kwargs.get('pk'))
+        context['project'] = project
+        disabled_users = project.projectuser_set.filter(status__name='Disabled')
+        if disabled_users.exists():
+
+            formset = formset_factory(
+                ProjectReactivateUserForm, max_num=len(disabled_users)
+            )
+            disabled_formset = formset(initial=disabled_users, prefix='userform')
+            context['disabled_users'] = disabled_formset
+        else:
+            context['disabled_users'] = None
         return context
 
 
@@ -933,9 +945,28 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 if user_form_data['primary_group']:
                     project_user_obj.status = projectuser_status_deactivated
                     action = 'deactivated'
+                    # change status to "removed" for all other projectusers with this user
+                    ProjectUser.objects.filter(
+                        user=user_obj,
+                        status__name='Active',
+                        project__status__name__in=['Active', 'New'],
+                    ).exclude(project=project_obj).update(status=projectuser_status_removed)
+                    # get allocations to remove user from across all active/new projects
+                    allocations_to_remove_user_from = Allocation.objects.filter(
+                        allocationuser__user=user_obj,
+                        project__projectuser__status__name='Active',
+                        project__projectuser__user=user_obj,
+                        status__name__in=['Active', 'Renewal Requested'],
+                        resources__resource_type__name='Storage'
+                    ).distinct()
                 else:
                     project_user_obj.status = projectuser_status_removed
                     action = 'removed'
+                    # get allocation to remove users from
+                    allocations_to_remove_user_from = project_obj.allocation_set.filter(
+                        status__name__in=['Active', 'Renewal Requested'],
+                        resources__resource_type__name='Storage'
+                    )
                 project_user_obj.save()
                 logger.info(
                     "User %s %s from project %s by %s",
@@ -943,11 +974,6 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     extra={'category': 'database_change:ProjectUser', 'status': 'success'}
                 )
 
-                # get allocation to remove users from
-                allocations_to_remove_user_from = project_obj.allocation_set.filter(
-                    status__name__in=['Active', 'New', 'Renewal Requested'],
-                    resources__resource_type__name='Storage'
-                )
                 for allocation in allocations_to_remove_user_from:
                     for alloc_user in allocation.allocationuser_set.filter(
                         user=user_obj, status__name='Active'

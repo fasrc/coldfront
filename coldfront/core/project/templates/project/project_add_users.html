@@ -44,6 +44,46 @@ Add Users to Project
       </div>
   </div>
 </div>
+
+{% if disabled_users %}
+<br>
+<p>
+  The following users, which had this lab's AD Group as their primary group, are currently disabled.
+  You can reenable them by selecting them and clicking "Reactivate Users" below.
+</p>
+<div class="row">
+  <div class="col" id="disabled_users">
+          <table class="table table-sm table-hover">
+            <thead>
+              <tr>
+                <th><input type="checkbox" class="check" id="selectAll"></th>
+                <th scope="col">Username</th>
+                <th scope="col">First Name</th>
+                <th scope="col">Last Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Role</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for form in formset %}
+                  <tr>
+                    <td>{{ form.selected }}</td>
+                    <td>{{ form.username.value }}</td>
+                    <td>{{ form.first_name.value }}</td>
+                    <td>{{ form.last_name.value }}</td>
+                    <td>{{ form.email.value }}</td>
+                    <td>{{ form.role.value }}</td>
+                  </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+
+  </div>
+</div>
+{% endif %}
+
+
 {% endblock %}
 
 
