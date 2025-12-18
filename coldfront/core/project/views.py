@@ -832,7 +832,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         project_obj = get_object_or_404(Project, pk=pk)
         users_list = self.get_users_to_remove(project_obj)
 
-        # if ldap is activated, prevent selection of users with project corresponding to primary group
+        # if ldap activated, prevent selection of users with project corresponding to primary group
         signal_response = project_filter_users_to_remove.send(
             sender=self.__class__, users_to_remove=users_list, project=project_obj
         )
@@ -840,8 +840,6 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             users_to_remove = signal_response[0][1]
         else:
             users_to_remove = users_list
-
-        primary_group_users = [u for u in users_list if u not in users_to_remove]
 
         context = {}
 
@@ -851,15 +849,6 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             )
             formset = formset(initial=users_to_remove, prefix='userform')
             context['formset'] = formset
-        if self.request.user.is_superuser:
-            primaryuser_formset = formset_factory(
-                ProjectRemoveUserForm, max_num=len(primary_group_users)
-            )
-            primaryuser_formset = primaryuser_formset(
-                    initial=primary_group_users, prefix='userform')
-            context['primary_group_users'] = primaryuser_formset
-        else:
-            context['primary_group_users'] = primary_group_users
         context['project'] = get_object_or_404(Project, pk=pk)
         context['EMAIL_TICKET_SYSTEM_ADDRESS'] = EMAIL_TICKET_SYSTEM_ADDRESS
         return render(request, self.template_name, context)

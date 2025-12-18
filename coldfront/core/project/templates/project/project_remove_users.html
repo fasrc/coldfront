@@ -48,42 +48,43 @@
               </tr>
             </thead>
             <tbody>
-              {% for user in primary_group_users %}
-                {% if request.user.is_superuser %}
-                   <tr class="font-weight-bold">
-                     <td>{{ user.selected }}</td>
-                     <td>{{ forloop.counter }}</td>
-                     <td><i class="fas fa-check" aria-hidden="true"></i></td>
-                     <td>{{ user.username.value }}</td>
-                     <td>{{ user.first_name.value }}</td>
-                     <td>{{ user.last_name.value }}</td>
-                     <td>{{ user.email.value }}</td>
-                     <td>{{ user.role.value }}</td>
-                   </tr>
-                {% else %}
-                   <tr>
-                     <td></td>
-                     <td></td>
-                     <td><i class="fas fa-check" aria-hidden="true"></i></td>
-                     <td style="color: gray;">{{ user.username }}</td>
-                     <td style="color: gray;">{{ user.first_name }}</td>
-                     <td style="color: gray;">{{ user.last_name }}</td>
-                     <td style="color: gray;">{{ user.email }}</td>
-                     <td style="color: gray;">{{ user.role }}</td>
-                   </tr>
-                {% endif %}
-              {% endfor %}
               {% for form in formset %}
-                <tr>
-                  <td>{{ form.selected }}</td>
-                  <td>{{ forloop.counter }}</td>
-                  <td></td>
-                  <td>{{ form.username.value }}</td>
-                  <td>{{ form.first_name.value }}</td>
-                  <td>{{ form.last_name.value }}</td>
-                  <td>{{ form.email.value }}</td>
-                  <td>{{ form.role.value }}</td>
-                </tr>
+                {% if form.primary_group.value %}
+                  {% if request.user.is_superuser %}
+                    <tr class="font-weight-bold">
+                      <td>{{ form.selected }}</td>
+                      <td>{{ forloop.counter }}</td>
+                      <td><i class="fas fa-check" aria-hidden="true"></i></td>
+                      <td>{{ form.username.value }}</td>
+                      <td>{{ form.first_name.value }}</td>
+                      <td>{{ form.last_name.value }}</td>
+                      <td>{{ form.email.value }}</td>
+                      <td>{{ form.role.value }}</td>
+                    </tr>
+                  {% else %}
+                    <tr>
+                      <td></td>
+                      <td>{{ forloop.counter }}</td>
+                      <td><i class="fas fa-check" aria-hidden="true"></i></td>
+                      <td style="color: gray;">{{ form.username }}</td>
+                      <td style="color: gray;">{{ form.first_name }}</td>
+                      <td style="color: gray;">{{ form.last_name }}</td>
+                      <td style="color: gray;">{{ form.email }}</td>
+                      <td style="color: gray;">{{ form.role }}</td>
+                    </tr>
+                  {% endif %}
+                {% else %}
+                  <tr>
+                    <td>{{ form.selected }}</td>
+                    <td>{{ forloop.counter }}</td>
+                    <td></td>
+                    <td>{{ form.username.value }}</td>
+                    <td>{{ form.first_name.value }}</td>
+                    <td>{{ form.last_name.value }}</td>
+                    <td>{{ form.email.value }}</td>
+                    <td>{{ form.role.value }}</td>
+                  </tr>
+                {% endif %}
               {% endfor %}
             </tbody>
           </table>

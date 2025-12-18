@@ -96,9 +96,9 @@ def filter_project_users_to_remove(sender, **kwargs):
     usernames = [u['username'] for u in users_to_remove]
     ldap_conn = LDAPConn()
     users_main_group = ldap_conn.users_in_primary_group(usernames, kwargs['project'].title)
-    users_to_remove = [
-        u for u in users_to_remove if u['username'] not in users_main_group
-    ]
+    for user in users_to_remove:
+        user['primary_group'] = user['username'] in users_main_group
+    users_to_remove = sorted(users_to_remove, key=lambda x: x['primary_group'], reverse=True)
     return users_to_remove
 
 @receiver(project_make_projectuser)
