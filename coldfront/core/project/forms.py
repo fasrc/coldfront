@@ -46,6 +46,16 @@ class ProjectAddUserForm(forms.Form):
     selected = forms.BooleanField(initial=False, required=False)
 
 
+class ProjectReactivateUserForm(forms.Form):
+    username = forms.CharField(max_length=150, disabled=True)
+    first_name = forms.CharField(max_length=150, required=False, disabled=True)
+    last_name = forms.CharField(max_length=150, required=False, disabled=True)
+    email = forms.EmailField(max_length=100, required=False, disabled=True)
+    role = forms.ModelChoiceField(
+        queryset=ProjectUserRoleChoice.objects.all(), empty_label=None)
+    selected = forms.BooleanField(initial=False, required=False)
+
+
 class ProjectAddUsersToAllocationForm(forms.Form):
     allocation = forms.MultipleChoiceField(
         widget=forms.CheckboxSelectMultiple(attrs={'checked': 'checked'}), required=False)
@@ -55,7 +65,9 @@ class ProjectAddUsersToAllocationForm(forms.Form):
         project_obj = get_object_or_404(Project, pk=project_pk)
 
         allocation_query_set = project_obj.allocation_set.filter(
-            resources__is_allocatable=True, is_locked=False, status__name__in=PENDING_ACTIVE_ALLOCATION_STATUSES).distinct()
+            resources__is_allocatable=True, is_locked=False,
+            status__name__in=PENDING_ACTIVE_ALLOCATION_STATUSES
+        ).distinct()
         allocation_choices = [(
             allocation.id, "%s (%s) %s" % (
                 allocation.get_parent_resource.name,
