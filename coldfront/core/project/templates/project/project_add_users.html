@@ -53,32 +53,37 @@ Add Users to Project
 </p>
 <div class="row">
   <div class="col" id="disabled_users">
-          <table class="table table-sm table-hover">
-            <thead>
+    <form action="{% url 'project-add-users' project.pk %}" method="post">
+      {% csrf_token %}
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr>
+            <th><input type="checkbox" class="check" id="selectAll"></th>
+            <th scope="col">Username</th>
+            <th scope="col">First Name</th>
+            <th scope="col">Last Name</th>
+            <th scope="col">Email</th>
+            <th scope="col">Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for form in deactivated_formset %}
               <tr>
-                <th><input type="checkbox" class="check" id="selectAll"></th>
-                <th scope="col">Username</th>
-                <th scope="col">First Name</th>
-                <th scope="col">Last Name</th>
-                <th scope="col">Email</th>
-                <th scope="col">Role</th>
+                <td>{{ form.selected }}</td>
+                <td>{{ form.username.value }}</td>
+                <td>{{ form.first_name.value }}</td>
+                <td>{{ form.last_name.value }}</td>
+                <td>{{ form.email.value }}</td>
+                <td>{{ form.role.value }}</td>
               </tr>
-            </thead>
-            <tbody>
-              {% for form in formset %}
-                  <tr>
-                    <td>{{ form.selected }}</td>
-                    <td>{{ form.username.value }}</td>
-                    <td>{{ form.first_name.value }}</td>
-                    <td>{{ form.last_name.value }}</td>
-                    <td>{{ form.email.value }}</td>
-                    <td>{{ form.role.value }}</td>
-                  </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-
-
+          {% endfor %}
+        </tbody>
+      </table>
+      {{ formset.management_form }}
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-user-minus" aria-hidden="true"></i> Reactivate Selected Users
+      </button>
+    </form>
   </div>
 </div>
 {% endif %}

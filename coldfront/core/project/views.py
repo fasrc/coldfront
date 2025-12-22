@@ -557,16 +557,22 @@ class ProjectAddUsersSearchView(LoginRequiredMixin, UserPassesTestMixin, Templat
         context['user_search_form'] = UserSearchForm()
         project = Project.objects.get(pk=self.kwargs.get('pk'))
         context['project'] = project
-        disabled_users = project.projectuser_set.filter(status__name='Disabled')
-        if disabled_users.exists():
-
+        deactivated_users = project.projectuser_set.filter(status__name='Deactivated')
+        if deactivated_users.exists():
             formset = formset_factory(
-                ProjectReactivateUserForm, max_num=len(disabled_users)
+                ProjectReactivateUserForm, max_num=len(deactivated_users)
             )
-            disabled_formset = formset(initial=disabled_users, prefix='userform')
-            context['disabled_users'] = disabled_formset
+            deactivated_forms = [{
+                'username': u.user.username,
+                'first_name': u.user.first_name,
+                'last_name': u.user.last_name,
+                'email': u.user.email,
+                'role': u.role,
+            } for u in deactivated_users]
+            deactivated_formset = formset(initial=deactivated_forms, prefix='userform')
+            context['deactivated_formset'] = deactivated_formset
         else:
-            context['disabled_users'] = None
+            context['deactivated_formset'] = None
         return context
 
 
