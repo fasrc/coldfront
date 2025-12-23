@@ -29,4 +29,5 @@ def user_logged_out_callback(sender, request, user, **kwargs):
 
 @receiver(user_login_failed)
 def user_login_failed_callback(sender, credentials, **kwargs):
-    log.warning('failed user login', extra={'category': 'auth', 'status': 'failure'})
+    log.warning('failed user login', extra={
+        'category': 'auth', 'status': 'failure', 'credentials': credentials})
