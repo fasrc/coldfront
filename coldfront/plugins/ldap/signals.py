@@ -49,8 +49,9 @@ def identify_ad_group(sender, **kwargs):
     return ifx_pi
 
 @receiver(project_reactivate_projectuser)
-def reactivate_user(user):
+def reactivate_user(sender, **kwargs):
     """Reactivate a user in LDAP"""
+    user = kwargs['user']
     ldap_conn = LDAPConn()
     ldap_conn.reactivate_user(user.username)
     ldap_user = ldap_conn.return_user_by_name(user.username)
