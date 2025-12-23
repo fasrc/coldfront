@@ -689,6 +689,8 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             user=user_obj,
             allocation__project__status__name__in=['Active', 'Renewal Requested'],
             allocation__status__name__in=['Active','Pending Deactivation'],
+            allocation__project__projectuser__user=user_obj,
+            allocation__project__projectuser__status__name='Active',
             resources__resource_type__name='Storage'
         ).distinct().update(
             status=AllocationUserStatusChoice.objects.get(name='Active')
