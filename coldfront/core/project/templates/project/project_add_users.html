@@ -45,14 +45,14 @@ Add Users to Project
   </div>
 </div>
 
-{% if disabled_users %}
+{% if deactivated_formset %}
 <br>
 <p>
   The following users, which had this lab's AD Group as their primary group, are currently disabled.
   You can reenable them by selecting them and clicking "Reactivate Users" below.
 </p>
 <div class="row">
-  <div class="col" id="disabled_users">
+  <div class="col" id="deactivated_formset">
     <form action="{% url 'project-add-users' project.pk %}" method="post">
       {% csrf_token %}
       <table class="table table-sm table-hover">

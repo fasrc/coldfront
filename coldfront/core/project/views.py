@@ -672,12 +672,67 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
         return super().dispatch(request, *args, **kwargs)
 
+    def reactivate_user(self, project_obj, user_form_data):
+        """Full organizational logic for user reactivation
+        - reactivate projectuser entry
+        x reactivate any other projectusers in active projects that still have this user in AD
+          (taken care of by ldap sync)
+        - reactivate any related allocationuser entries in active storage allocations
+        """
+        user_username = user_form_data.get('username')
+        user_obj = get_user_model().objects.get(username=user_username)
+        project_obj.projectuser_set.filter(
+            user=user_obj,
+            status__name='Deactivated'
+        ).update(status=ProjectUserStatusChoice.objects.get(name='Active'))
+        AllocationUser.objects.filter(
+            user=user_obj,
+            allocation__project__status__name__in=['Active', 'Renewal Requested'],
+            allocation__status__name__in=['Active','Pending Deactivation'],
+            resources__resource_type__name='Storage'
+        ).distinct().update(
+            status=AllocationUserStatusChoice.objects.get(name='Active')
+        )
+
     def post(self, request, *args, **kwargs):
+        pk = self.kwargs.get('pk')
+        project_obj = get_object_or_404(Project, pk=pk)
+        deactivated_users = project_obj.projectuser_set.filter(status__name='Deactivated')
+        projuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
+        if deactivated_users.exists():
+            formset = formset_factory(
+                ProjectReactivateUserForm, max_num=len(deactivated_users)
+            )
+            deactivated_forms = [{
+                'username': u.user.username,
+                'first_name': u.user.first_name,
+                'last_name': u.user.last_name,
+                'email': u.user.email,
+                'role': u.role,
+            } for u in deactivated_users]
+            deactivated_formset = formset(
+                    request.POST, initial=deactivated_forms, prefix='userform')
+            # if any have been selected for reactivation, reactivate them
+            if deactivated_formset.is_valid() and any(
+                form.cleaned_data.get('selected') for form in deactivated_formset
+            ):
+                reactivated_users_count = 0
+                for form in deactivated_formset:
+                    user_form_data = form.cleaned_data
+                    if user_form_data['selected']:
+                        self.reactivate_user(project_obj, user_form_data)
+                        reactivated_users_count += 1
+                if reactivated_users_count:
+                    messages.success(
+                        request,
+                        f'Reactivated {reactivated_users_count} users in project.'
+                    )
+            # otherwise, proceed to normal user addition flow
+
+
+
         user_search_string = request.POST.get('q')
         search_by = request.POST.get('search_by')
-        pk = self.kwargs.get('pk')
-
-        project_obj = get_object_or_404(Project, pk=pk)
 
         users_to_exclude = [
             u.user.username
@@ -703,7 +758,6 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         added_users_count = 0
 
         if formset.is_valid() and allocation_form.is_valid():
-            projuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
             allocuser_status_active = AllocationUserStatusChoice.objects.get(
                 name='Active'
             )
@@ -951,12 +1005,6 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 if user_form_data['primary_group']:
                     project_user_obj.status = projectuser_status_deactivated
                     action = 'deactivated'
-                    # change status to "removed" for all other projectusers with this user
-                    ProjectUser.objects.filter(
-                        user=user_obj,
-                        status__name='Active',
-                        project__status__name__in=['Active', 'New'],
-                    ).exclude(project=project_obj).update(status=projectuser_status_removed)
                     # get allocations to remove user from across all active/new projects
                     allocations_to_remove_user_from = Allocation.objects.filter(
                         allocationuser__user=user_obj,
@@ -965,6 +1013,12 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         status__name__in=['Active', 'Renewal Requested'],
                         resources__resource_type__name='Storage'
                     ).distinct()
+                    # change status to "removed" for all other projectusers with this user
+                    ProjectUser.objects.filter(
+                        user=user_obj,
+                        status__name='Active',
+                        project__status__name__in=['Active', 'New'],
+                    ).exclude(project=project_obj).update(status=projectuser_status_removed)
                 else:
                     project_user_obj.status = projectuser_status_removed
                     action = 'removed'
