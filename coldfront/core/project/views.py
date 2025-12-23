@@ -33,6 +33,7 @@ from coldfront.core.allocation.signals import (
 from coldfront.core.project.signals import (
     project_filter_users_to_remove,
     project_preremove_projectuser,
+    project_reactivate_projectuser,
     project_make_projectuser,
     project_create,
     project_post_create
@@ -676,7 +677,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         """Full organizational logic for user reactivation
         - reactivate projectuser entry
         x reactivate any other projectusers in active projects that still have this user in AD
-          (taken care of by ldap sync)
+          (taken care of by ldap signal)
         - reactivate any related allocationuser entries in active storage allocations
         """
         user_username = user_form_data.get('username')
@@ -685,6 +686,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             user=user_obj,
             status__name='Deactivated'
         ).update(status=ProjectUserStatusChoice.objects.get(name='Active'))
+        project_reactivate_projectuser.send(sender=self.__class__, user=user_obj)
         AllocationUser.objects.filter(
             user=user_obj,
             allocation__project__status__name__in=['Active', 'Renewal Requested'],
@@ -1007,20 +1009,25 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 if user_form_data['primary_group']:
                     project_user_obj.status = projectuser_status_deactivated
                     action = 'deactivated'
-                    # get allocations to remove user from across all active/new projects
+                    # change status to "removed" for all other projectusers with this user
+                    secondary_projectusers = ProjectUser.objects.filter(
+                        user=user_obj,
+                        status__name='Active',
+                        project__status__name__in=['Active', 'New'],
+                    ).exclude(project=project_obj)
+                    secondary_projectusers.update(status=projectuser_status_removed)
+                    # get allocations to remove user from in projects where they have been removed
                     allocations_to_remove_user_from = Allocation.objects.filter(
                         allocationuser__user=user_obj,
-                        project__projectuser__status__name='Active',
+                        project__projectuser__status__name='Removed',
                         project__projectuser__user=user_obj,
                         status__name__in=['Active', 'Renewal Requested'],
                         resources__resource_type__name='Storage'
                     ).distinct()
-                    # change status to "removed" for all other projectusers with this user
-                    ProjectUser.objects.filter(
-                        user=user_obj,
-                        status__name='Active',
-                        project__status__name__in=['Active', 'New'],
-                    ).exclude(project=project_obj).update(status=projectuser_status_removed)
+                    secondary_projects = ','.join(
+                        [sp.project.title for sp in secondary_projectusers]
+                    )
+                    extra_log = f',secondary_projects="{secondary_projects}"'
                 else:
                     project_user_obj.status = projectuser_status_removed
                     action = 'removed'
@@ -1029,10 +1036,11 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         status__name__in=['Active', 'Renewal Requested'],
                         resources__resource_type__name='Storage'
                     )
+                    extra_log = ''
                 project_user_obj.save()
                 logger.info(
-                    "User %s %s from project %s by %s",
-                    user_obj.username, action, project_obj.title, request.user,
+                    "User %s from project. requesting_user=%s,project_user=%s,project=%s%s",
+                    action, request.user, user_obj.username, project_obj.title, extra_log,
                     extra={'category': 'database_change:ProjectUser', 'status': 'success'}
                 )
 

@@ -9,6 +9,7 @@ from coldfront.core.project.signals import (
     project_make_projectuser,
     project_create,
     project_post_create,
+    project_reactivate_projectuser,
 )
 from coldfront.core.project.models import (
     ProjectUserRoleChoice,
@@ -46,6 +47,29 @@ def identify_ad_group(sender, **kwargs):
     except Exception as e:
         raise ValueError(f"issue retrieving pi's ifxuser entry: {e}") from e
     return ifx_pi
+
+@receiver(project_reactivate_projectuser)
+def reactivate_user(user):
+    """Reactivate a user in LDAP"""
+    ldap_conn = LDAPConn()
+    ldap_conn.reactivate_user(user.username)
+    ldap_user = ldap_conn.return_user_by_name(user.username)
+    user_group_names = [group.split(',')[0].replace('CN=', '') for group in ldap_user['memberOf']]
+    projectuser_entries = ProjectUser.objects.filter(
+        user=user,
+        project__title__in=user_group_names,
+        project__status__name='Active',
+        status__name__in=['Removed', 'Deactivated'],
+    )
+    projectuser_entries.update(
+        status=ProjectUserStatusChoice.objects.get(name='Active')
+    )
+    projects = ', '.join([pu.project.title for pu in projectuser_entries])
+    logger.info(
+        'Reactivated AD user and related ProjectUsers. user=%s, projects=%s',
+        user.username, projects,
+        extra={ 'category': 'ldap:User', 'status': 'success' }
+    )
 
 @receiver(project_post_create)
 def update_new_project(sender, **kwargs):

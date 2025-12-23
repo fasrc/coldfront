@@ -1,4 +1,8 @@
+import logging
 import django.dispatch
+
+log = logging.getLogger(__name__)
+
 
 project_create = django.dispatch.Signal()
     #providing_args=["project_title"]
@@ -10,6 +14,8 @@ project_make_projectuser = django.dispatch.Signal()
 
 project_preremove_projectuser = django.dispatch.Signal()
     #providing_args=["user_name", "group_name"]
+
+project_reactivate_projectuser = django.dispatch.Signal()
 
 project_filter_users_to_remove = django.dispatch.Signal()
     #providing_args=["project_user_list"]
