@@ -79,9 +79,9 @@ Add Users to Project
           {% endfor %}
         </tbody>
       </table>
-      {{ formset.management_form }}
+      {{ deactivated_formset.management_form }}
       <button type="submit" class="btn btn-primary">
-        <i class="fas fa-user-minus" aria-hidden="true"></i> Reactivate Selected Users
+        <i class="fas fa-user-plus" aria-hidden="true"></i> Reactivate Selected Users
       </button>
     </form>
   </div>

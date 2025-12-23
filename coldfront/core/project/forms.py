@@ -52,7 +52,7 @@ class ProjectReactivateUserForm(forms.Form):
     last_name = forms.CharField(max_length=150, required=False, disabled=True)
     email = forms.EmailField(max_length=100, required=False, disabled=True)
     role = forms.ModelChoiceField(
-        queryset=ProjectUserRoleChoice.objects.all(), empty_label=None)
+        queryset=ProjectUserRoleChoice.objects.all(), required=False, empty_label=None)
     selected = forms.BooleanField(initial=False, required=False)
 
 

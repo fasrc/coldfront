@@ -568,7 +568,7 @@ class ProjectAddUsersSearchView(LoginRequiredMixin, UserPassesTestMixin, Templat
                 'first_name': u.user.first_name,
                 'last_name': u.user.last_name,
                 'email': u.user.email,
-                'role': u.role,
+                'role': u.role.name,
             } for u in deactivated_users]
             deactivated_formset = formset(initial=deactivated_forms, prefix='userform')
             context['deactivated_formset'] = deactivated_formset
@@ -712,7 +712,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                 'first_name': u.user.first_name,
                 'last_name': u.user.last_name,
                 'email': u.user.email,
-                'role': u.role,
+                'role': u.role.name,
             } for u in deactivated_users]
             deactivated_formset = formset(
                     request.POST, initial=deactivated_forms, prefix='userform')
@@ -725,6 +725,9 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                     user_form_data = form.cleaned_data
                     if user_form_data['selected']:
                         self.reactivate_user(project_obj, user_form_data)
+                        messages.success(
+                            request, f'Reactivated {user_form_data.user.username}.'
+                        )
                         reactivated_users_count += 1
                 if reactivated_users_count:
                     messages.success(
@@ -732,6 +735,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         f'Reactivated {reactivated_users_count} users in project.'
                     )
             # otherwise, proceed to normal user addition flow
+            return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 
 
 
