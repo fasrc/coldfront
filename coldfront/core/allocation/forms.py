@@ -133,7 +133,7 @@ We do not have information about your research. Please provide a detailed descri
         super().__init__(*args, **kwargs)
         project_obj = get_object_or_404(Project, pk=project_pk)
         self.fields['tier'].queryset = get_user_resources(request_user).filter(
-            resource_type__name='Storage Tier'
+            resource_type__name='Storage Tier', is_allocatable=True
         ).order_by(Lower('name'))
         existing_expense_codes = [(None, '------')] + [
             (a.code, f'{a.code} ({a.name})') for a in Account.objects.filter(

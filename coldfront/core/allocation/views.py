@@ -365,11 +365,11 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             # ensure that Tier gets swapped out for storage volume
             resource = form_data.get('resource')
             if not resource:
-                if "Tier " in allocation_obj.get_parent_resource.name:
+                if "Tier" in allocation_obj.get_parent_resource.resource_type.name:
                     err = "You must select a resource to approve the form."
                 else:
                     resource = allocation_obj.get_parent_resource
-            elif 'Tier ' in resource.name:
+            elif 'Tier' in resource.resource_type.name:
                 err = 'You must select a volume for the selected tier.'
             if err:
                 messages.error(request, err)
@@ -444,7 +444,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         )
         if old_status != 'Active' == allocation_obj.status.name:
 
-            if not form_data.get('resource') and 'Tier ' in allocation_obj.get_parent_resource.name:
+            if not form_data.get('resource') and 'Tier' in allocation_obj.get_parent_resource.resource_type.name:
                 err = "You must select a resource to approve the form. If you do not have the option to select a resource, update the status of the Allocation to 'New' first."
                 messages.error(request, err)
                 return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
@@ -696,8 +696,8 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         quantity = form_data.get('quantity', 1)
         allocation_account = form_data.get('allocation_account', None)
 
-        if resource_obj.name == "Tier 3" and quantity % 20 != 0:
-            form.add_error("quantity", format_html("Tier 3 quantity must be a multiple of 20."))
+        if resource_obj.name == "Tape" and quantity % 20 != 0:
+            form.add_error("quantity", format_html("Tape quantity must be a multiple of 20."))
             return self.form_invalid(form)
 
         # A resource is selected that requires an account name selection but user has no account names
@@ -791,7 +791,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             )
 
         # if requested resource is on NESE, add to vars
-        nese = bool(allocation_obj.resources.filter(name__contains="Tier 3"))
+        nese = bool(allocation_obj.resources.filter(name="Tape"))
         used_percentage = allocation_obj.get_parent_resource.used_percentage
 
         other_vars = {
@@ -983,7 +983,10 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     logger.info(
                         "addition of user %s to account %s on cluster %s successful",
                         username, allocation_obj.project.title, cluster,
-                        extra={'category': 'integration:slurmrest', 'status': 'success'}
+                        extra={
+                            'username': username,
+                            'allocation': allocation_obj.pk,
+                            'category': 'integration:slurmrest', 'status': 'success'}
                     )
                 except Exception as e:
                     logger.exception(
@@ -1676,7 +1679,7 @@ class AllocationRequestListView(LoginRequiredMixin, UserPassesTestMixin, Templat
 
         allocation_obj.status = active_status
         chosen_resource = Resource.objects.get(pk=chosen_resource_id)
-        if 'Tier ' in allocation_obj.get_resources_as_string:
+        if 'Tier' in allocation_obj.get_resources_as_string:
             # remove current resource from resources
             allocation_obj.resources.clear()
             # add form_data.get(resource)
@@ -2656,7 +2659,7 @@ class AllocationChangeView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                 else:
                     tbs = False
                 if nese and tbs and tbs % 20 != 0:
-                    messages.error(request, "Tier 3 quantity must be a multiple of 20.")
+                    messages.error(request, "Tape quantity must be a multiple of 20.")
                     return HttpResponseRedirect(reverse('allocation-change', kwargs={'pk': pk}))
 
                 if new_value != '':

@@ -18,9 +18,11 @@ Request new or update existing allocation
   more than one of these, please submit a separate allocation request for each
   resource. For each request you must provide the justification for how you
   intend to use the resource to further the research goals of your project. <br><br>
-  <b>Note : </b> Please review the information about our <a target="_blank" href="https://www.rc.fas.harvard.edu/services/data-storage/#Offerings_Tiers_of_Service">
-    Tier offerings</a> before
-  submitting your request.</p>
+
+  <b>Note: </b> FASRC is in the process of adding <a target="_blank" href="https://docs.rc.fas.harvard.edu/kb/data-storage-workflow-rdm/">new Storage Offerings</a>. 
+  Further information about the new storage options will be made available over the next few
+  months as we <a target="_blank" href="https://www.rc.fas.harvard.edu/data-storage/">transition to the new architecture</a>.
+</p>
 
 <li>Please provide details in the justification such as: what data needs to be accessed, expectation of frequent transfer to or from Campus, need for Samba connectivity, etc. </li>
 </br>
@@ -125,6 +127,10 @@ Request new or update existing allocation
         let allocation_pk = tiers_with_allocations[resource];
         url = "{% url 'allocation-change' 99999 %}".replace("99999", allocation_pk);
         message = `<div class="alert alert-warning" role="alert">Warning: you already have an allocation in the selected tier. Did you mean to submit an <a href=${url}>Allocation Change Request<\a> instead?</div>`;
+        messages.push(message);
+      }
+      if (resource == "1932") {
+        message = `<div class="alert alert-warning" role="alert">Lab Storage is currently being tested and implemented. It will be available for use starting February 2026.</div>`;
         messages.push(message);
       }
       if (messages.length > 0) {

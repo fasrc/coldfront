@@ -86,14 +86,16 @@ class Command(BaseCommand):
         label_type = ResourceAttributeType.objects.get(name='quantity_label')
 
         for name, desc, is_public, rtype, parent_name, default_value, reqspayment, is_allocatable in (
-            ('Tier 0', 'Bulk - Lustre', True, storage_tier, None, 1, True, True),
-            ('Tier 1', 'Enterprise - Isilon', True, storage_tier, None, 1, True, True),
-            ('Tier 2', 'CEPH storage', True, storage_tier, None, 1, True, True),
-            ('Tier 3', 'Attic Storage - Tape', True, storage_tier, None, 20, True, True),
+
+            ('Tier 0',       'Bulk - Lustre', True, storage_tier, None, 1, True, True),
+            ('Tier 1', 'Enterprise - Isilon', False, storage_tier, None, 1, True, False),
+            ('Tier 2',        'CEPH storage', False, storage_tier, None, 1, True, False),
+            ('Lab Storage',    'Lab Storage', True, storage_tier, None, 1, True, True),
+            ('Tape',  'Attic Storage - Tape', True, storage_tier, None, 20, True, True),
             ('holylfs04/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('holylfs05/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('holylfs06/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
-            ('nesetape/tier3', 'Cold storage for past projects', True, storage, 'Tier 3', 20, True, True),
+            ('nesetape/tier3', 'Cold storage for past projects', True, storage, 'Tape', 20, True, True),
             ('holy-isilon/tier1', 'Tier1 storage with snapshots and disaster recovery copy', True, storage, 'Tier 1', 1, True, True),
             ('bos-isilon/tier1', 'Tier1 storage for on-campus storage mounting', True, storage, 'Tier 1', 1, True, True),
             ('holystore01/tier0', 'Luster storage under Tier0', True, storage, 'Tier 0', 1, True, True),
