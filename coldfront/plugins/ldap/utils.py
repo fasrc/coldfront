@@ -259,6 +259,11 @@ class LDAPConn:
                 'userAccountControl': [(MODIFY_REPLACE, ['514'])]
             }
         )
+        if not result:
+            reason = self.conn.last_error
+            logger.error('Failed to deactivate user %s: %s', username, reason)
+            raise LDAPException(f'Failed to deactivate user {username}: {reason}')
+
         return result
 
     def reactivate_user(self, username):
@@ -271,6 +276,10 @@ class LDAPConn:
                 'userAccountControl': [(MODIFY_REPLACE, ['512'])]
             }
         )
+        if not result:
+            reason = self.conn.last_error
+            logger.error('Failed to deactivate user %s: %s', username, reason)
+            raise LDAPException(f'Failed to reactivate user {username}: {reason}')
         return result
 
     def users_in_primary_group(self, usernames, groupname):
