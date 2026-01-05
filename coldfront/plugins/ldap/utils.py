@@ -263,6 +263,10 @@ class LDAPConn:
             reason = self.conn.last_error
             logger.error('Failed to deactivate user %s: %s', username, reason)
             raise LDAPException(f'Failed to deactivate user {username}: {reason}')
+        logger.info(
+            'Deactivated user %s (dn: %s)', username, user_dn,
+            extra={ 'category': 'integration:AD' }
+        )
 
         return result
 
@@ -294,7 +298,9 @@ class LDAPConn:
             try:
                 users.append(self.return_user_by_name(user, attributes=attrs))
             except ValueError:
-                logger.warning('user %s not found in LDAP when checking primary group membership', user)
+                logger.warning(
+                    'user %s not found in LDAP when checking primary group membership', user
+                )
         return [
             u['sAMAccountName'][0] for u in users if u['gidNumber'] == group['gidNumber']
         ]

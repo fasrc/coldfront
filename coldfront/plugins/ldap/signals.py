@@ -62,10 +62,10 @@ def reactivate_user(sender, **kwargs):
         project__status__name='Active',
         status__name__in=['Removed', 'Deactivated'],
     )
+    projects = ', '.join([pu.project.title for pu in projectuser_entries])
     projectuser_entries.update(
         status=ProjectUserStatusChoice.objects.get(name='Active')
     )
-    projects = ', '.join([pu.project.title for pu in projectuser_entries])
     logger.info(
         'Reactivated AD user and related ProjectUsers. user=%s, projects=%s',
         user.username, projects,
