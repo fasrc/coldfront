@@ -9,7 +9,6 @@ from coldfront.core.project.views import ProjectStorageReportView
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.mail import send_email_template, email_template_context, build_link
 
-EMAIL_SENDER = import_from_settings('EMAIL_SENDER')
 TESTUSER = import_from_settings('TESTUSER')
 EMAIL_TICKET_SYSTEM_ADDRESS = import_from_settings('EMAIL_TICKET_SYSTEM_ADDRESS')
 
@@ -24,7 +23,6 @@ def send_storage_report_emails():
     ).distinct()
     for project in projects:
         send_storagereport_pdf(project)
-
 
 def send_storagereport_pdf(project, context=None):
     """
@@ -64,12 +62,12 @@ def send_storagereport_pdf(project, context=None):
             subject,
             'email/storage_report.txt',
             context,
-            EMAIL_SENDER,
+            EMAIL_TICKET_SYSTEM_ADDRESS,
             receiver_list,
             attachments=(attachment,)
         )
     except Exception as e:
         logger.exception(
             'could not send storage report email for project %s to receivers %s from sender %s: %s',
-            title, receiver_list, EMAIL_SENDER, e
+            title, receiver_list, EMAIL_TICKET_SYSTEM_ADDRESS, e
         )
