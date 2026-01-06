@@ -734,9 +734,6 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         request,
                         f'Reactivated {reactivated_users_count} users in project.'
                     )
-            # otherwise, proceed to normal user addition flow
-            return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
-
 
 
         user_search_string = request.POST.get('q')
@@ -750,8 +747,10 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         combined_user_search_obj = CombinedUserSearch(
             user_search_string, search_by, users_to_exclude
         )
-
-        context = combined_user_search_obj.search()
+        try:
+            context = combined_user_search_obj.search()
+        except AttributeError:
+            return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 
         matches = context.get('matches')
         for match in matches:
