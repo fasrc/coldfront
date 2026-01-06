@@ -570,7 +570,7 @@ class ProjectAddUsersSearchView(LoginRequiredMixin, UserPassesTestMixin, Templat
                 'email': u.user.email,
                 'role': u.role.name,
             } for u in deactivated_users]
-            deactivated_formset = formset(initial=deactivated_forms, prefix='userform')
+            deactivated_formset = formset(initial=deactivated_forms, prefix='reactivateuserform')
             context['deactivated_formset'] = deactivated_formset
         else:
             context['deactivated_formset'] = None
@@ -693,7 +693,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             allocation__status__name__in=['Active','Pending Deactivation'],
             allocation__project__projectuser__user=user_obj,
             allocation__project__projectuser__status__name='Active',
-            resources__resource_type__name='Storage'
+            allocation__resources__resource_type__name='Storage'
         ).distinct().update(
             status=AllocationUserStatusChoice.objects.get(name='Active')
         )
@@ -704,7 +704,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         deactivated_users = project_obj.projectuser_set.filter(status__name='Deactivated')
         projuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
         if deactivated_users.exists():
-            formset = formset_factory(
+            deactivated_formset = formset_factory(
                 ProjectReactivateUserForm, max_num=len(deactivated_users)
             )
             deactivated_forms = [{
@@ -714,8 +714,8 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                 'email': u.user.email,
                 'role': u.role.name,
             } for u in deactivated_users]
-            deactivated_formset = formset(
-                    request.POST, initial=deactivated_forms, prefix='userform')
+            deactivated_formset = deactivated_formset(
+                    request.POST, initial=deactivated_forms, prefix='reactivateuserform')
             # if any have been selected for reactivation, reactivate them
             if deactivated_formset.is_valid() and any(
                 form.cleaned_data.get('selected') for form in deactivated_formset
@@ -726,7 +726,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                     if user_form_data['selected']:
                         self.reactivate_user(project_obj, user_form_data)
                         messages.success(
-                            request, f'Reactivated {user_form_data.user.username}.'
+                            request, f'Reactivated {user_form_data["username"]}.'
                         )
                         reactivated_users_count += 1
                 if reactivated_users_count:
@@ -850,10 +850,20 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                                 user=user_obj,
                                 status=allocuser_status_active,
                             )
-                        allocation_activate_user.send(
-                            sender=self.__class__,
-                            allocation_user_pk=allocation_user_obj.pk,
-                        )
+                        try:
+                            allocation_activate_user.send(
+                                sender=self.__class__,
+                                allocation_user_pk=allocation_user_obj.pk,
+                            )
+                        except Exception as e:
+                            logger.exception(
+                                "user added to project but not allocation. user=%s,project=%s,allocation_resource=%s,error=%s",
+                                user_obj.username, project_obj.title,
+                                allocation.get_parent_resource.name, e
+                            )
+                            errors.append(
+                                f"User {user_obj.username} was added to the project but an error occurred when activating them in allocation for {allocation.get_parent_resource.name}: {e}"
+                            )
             if errors:
                 for error in errors:
                     messages.error(request, error)
