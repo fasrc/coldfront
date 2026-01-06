@@ -4,22 +4,15 @@ utility functions for LDAP interaction
 import logging
 import operator
 from functools import reduce
+from datetime import datetime
 
 from django.db.models import Q
-from django.dispatch import receiver
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from ldap3 import Connection, Server, ALL_ATTRIBUTES
+from ldap3 import Connection, Server, ALL_ATTRIBUTES, MODIFY_REPLACE
 from ldap3.extend.microsoft.addMembersToGroups import ad_add_members_to_groups
 from ldap3.extend.microsoft.removeMembersFromGroups import ad_remove_members_from_groups
 
-from coldfront.core.project.signals import (
-    project_filter_users_to_remove,
-    project_preremove_projectuser,
-    project_make_projectuser,
-    project_create,
-    project_post_create,
-)
 from coldfront.core.utils.common import (
     import_from_settings, uniques_and_intersection
 )
@@ -37,16 +30,14 @@ from coldfront.core.project.models import (
     ProjectUser,
 )
 
-if 'coldfront.plugins.sftocf' in import_from_settings('INSTALLED_APPS', []):
-    from coldfront.plugins.sftocf.signals import (
-        starfish_add_aduser,
-        starfish_remove_aduser,
-        starfish_add_adgroup,
-    )
 
 logger = logging.getLogger(__name__)
 
 username_ignore_list = import_from_settings('username_ignore_list', [])
+
+def now_filetime():
+    FILETIME_EPOCH = datetime(1601, 1, 1)
+    return int((datetime.utcnow() - FILETIME_EPOCH).total_seconds() * 10**7)
 
 class LDAPException(Exception):
     """The base exception class for all LDAPExceptions"""
@@ -228,15 +219,19 @@ class LDAPConn:
         group = self.return_group_by_name(group_name)
         # get user
         user = self.return_user_by_name(user_name)
-        if user['gidNumber'] == group['gidNumber']:
-            raise ValueError(
-                "Group is member's primary group. Please contact FASRC support to remove this member from your group.")
         member_dn = user['distinguishedName']
         group_dn = group['distinguishedName']
         member_name = user['sAMAccountName']
         group_name = group['sAMAccountName']
         member_sid = user['objectSid']
         group_sid = group['objectSid']
+        if user['gidNumber'] == group['gidNumber']:
+            logger.warning("Deactivating member %s (sid %s) from primary group %s (sid %s)",
+                member_name, member_sid, group_name, group_sid,
+                extra={ 'category': 'integration:AD' }
+            )
+            result = self.deactivate_user(user['distinguishedName'])
+            return result
         try:
             result = ad_remove_members_from_groups(
                 self.conn, [member_dn], group_dn, fix=True, raise_error=True
@@ -253,6 +248,44 @@ class LDAPConn:
         )
         return result
 
+    def deactivate_user(self, username):
+        user = self.return_user_by_name(username)
+        user_dn = user['distinguishedName']
+        filetime_now = now_filetime()
+        result = self.conn.modify(
+            user_dn,
+            changes={
+                'accountExpires': [(MODIFY_REPLACE, [str(filetime_now)])],
+                'userAccountControl': [(MODIFY_REPLACE, ['514'])]
+            }
+        )
+        if not result:
+            reason = self.conn.last_error
+            logger.error('Failed to deactivate user %s: %s', username, reason)
+            raise LDAPException(f'Failed to deactivate user {username}: {reason}')
+        logger.info(
+            'Deactivated user %s (dn: %s)', username, user_dn,
+            extra={ 'category': 'integration:AD' }
+        )
+
+        return result
+
+    def reactivate_user(self, username):
+        user = self.return_user_by_name(username)
+        user_dn = user['distinguishedName']
+        result = self.conn.modify(
+            user_dn,
+            changes={
+                'accountExpires': [(MODIFY_REPLACE, ['9223372036854775807'])],
+                'userAccountControl': [(MODIFY_REPLACE, ['512'])]
+            }
+        )
+        if not result:
+            reason = self.conn.last_error
+            logger.error('Failed to deactivate user %s: %s', username, reason)
+            raise LDAPException(f'Failed to reactivate user {username}: {reason}')
+        return result
+
     def users_in_primary_group(self, usernames, groupname):
         """
         Return list of usernames representing users that are members of the
@@ -265,7 +298,9 @@ class LDAPConn:
             try:
                 users.append(self.return_user_by_name(user, attributes=attrs))
             except ValueError:
-                logger.warning('user %s not found in LDAP when checking primary group membership', user)
+                logger.warning(
+                    'user %s not found in LDAP when checking primary group membership', user
+                )
         return [
             u['sAMAccountName'][0] for u in users if u['gidNumber'] == group['gidNumber']
         ]
@@ -345,8 +380,31 @@ class GroupUserCollection:
         """Return true if PI's account is both unexpired and not disabled."""
         return user_valid(self.pi)
 
-    def compare_active_members_projectusers(self):
+    def compare_members_projectusers(self):
         """Compare ADGroup members to ProjectUsers.
+
+        Returns
+        -------
+        members_only : list
+            users present in the members list and not as Coldfront ProjectUsers.
+        projuser_only : list
+            Coldfront ProjectUsers missing from the members list.
+        """
+        ### check presence of ADGroup members in Coldfront  ###
+        logger.debug('membership data collected for %s\nraw ADUser data for %s users',
+        self.name, len(self.members))
+        ad_users = [u['sAMAccountName'][0] for u in self.members]
+        proj_usernames = [
+            pu.user.username for pu in self.project.projectuser_set.filter(
+                    (~Q(status__name='Removed')))
+        ]
+        logger.debug('projectusernames: %s', proj_usernames)
+
+        members_only, _, projuser_only = uniques_and_intersection(ad_users, proj_usernames)
+        return (members_only, projuser_only)
+
+    def compare_active_members_projectusers(self):
+        """Compare ADGroup active members to ProjectUsers.
 
         Returns
         -------
@@ -521,7 +579,7 @@ def collect_update_project_status_membership():
     active_pi_group_projs_statuschange.update(status=project_active_status)
     for group in active_pi_groups:
 
-        ad_users_not_added, remove_projuser_names = group.compare_active_members_projectusers()
+        ad_users_not_added, remove_projuser_names = group.compare_members_projectusers()
 
         # handle any AD users not in Coldfront
         if ad_users_not_added:
@@ -575,7 +633,7 @@ def collect_update_project_status_membership():
 
         ### identify inactive ProjectUsers, slate for status change ###
         remove_projusers = group.project.projectuser_set.filter(
-                        user__username__in=remove_projuser_names)
+                user__username__in=remove_projuser_names).exclude(status__name='Removed')
         logger.debug("remove_projusers - projectusers slated for removal:\n %s", remove_projusers)
         projectusers_to_remove.extend(list(remove_projusers))
 
@@ -750,103 +808,3 @@ def add_new_projects(groupusercollections, errortracker):
     for errortype in errortracker:
         logger.warning('AD groups with %s: %s', errortype, errortracker[errortype])
     return added_projects, errortracker
-
-@receiver(project_create)
-def identify_ad_group(sender, **kwargs):
-    """Confirm that a project's name corresponds to an existing AD group"""
-    project_title = kwargs['project_title']
-    try:
-        ad_conn = LDAPConn()
-        members, manager = ad_conn.return_group_members_manager(project_title)
-    except Exception as e:
-        logger.exception(
-            "error encountered retrieving members and manager for Project %s: %s",
-            project_title, e
-        )
-        raise ValueError(f"ldap error: {e}") from e
-
-    try:
-        ifx_pi = get_user_model().objects.get(username=manager['sAMAccountName'][0])
-    except Exception as e:
-        raise ValueError(f"issue retrieving pi's ifxuser entry: {e}") from e
-    return ifx_pi
-
-@receiver(project_post_create)
-def update_new_project(sender, **kwargs):
-    """Update the new project using the AD group information"""
-    project = kwargs['project_obj']
-    try:
-        ad_conn = LDAPConn()
-        members, manager = ad_conn.return_group_members_manager(project.title)
-    except Exception as e:
-        raise ValueError(f"ldap connection error: {e}")
-    # locate field_of_science
-    if 'department' in manager.keys() and manager['department']:
-        field_of_science_name=manager['department'][0]
-        logger.debug('field_of_science_name %s', field_of_science_name)
-        field_of_science_obj, created = FieldOfScience.objects.get_or_create(
-            description=field_of_science_name, defaults={'is_selectable':'True'}
-        )
-        if created:
-            logger.info('added new field_of_science: %s', field_of_science_name)
-    else:
-        raise ValueError(f'no department for AD group {project.title}, will not add unless fixed')
-
-    project.field_of_science = field_of_science_obj
-    project.pi = get_user_model().objects.get(username=manager['sAMAccountName'][0])
-    project.save()
-    for member in members:
-        role_name = "User" if member['sAMAccountName'][0] != manager['sAMAccountName'][0] else "PI"
-        try:
-            user_obj = get_user_model().objects.get(username=member['sAMAccountName'][0])
-        except get_user_model().DoesNotExist:
-            logger.warning('User %s not found when trying to add to Project %s',
-                           member['sAMAccountName'][0], project.title)
-            continue
-        ProjectUser.objects.create(
-            project=project,
-            user=user_obj,
-            role=ProjectUserRoleChoice.objects.get(name=role_name),
-            status=ProjectUserStatusChoice.objects.get(name='Active'),
-        )
-        logger.info('added User %s to Project %s as %s',
-                    user_obj.username, project.title, role_name,
-                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
-        )
-
-@receiver(project_filter_users_to_remove)
-def filter_project_users_to_remove(sender, **kwargs):
-    users_to_remove = kwargs['users_to_remove']
-    usernames = [u['username'] for u in users_to_remove]
-    ldap_conn = LDAPConn()
-    users_main_group = ldap_conn.users_in_primary_group(usernames, kwargs['project'].title)
-    users_to_remove = [
-        u for u in users_to_remove if u['username'] not in users_main_group
-    ]
-    return users_to_remove
-
-@receiver(project_make_projectuser)
-def add_user_to_group(sender, **kwargs):
-    ldap_conn = LDAPConn()
-    ldap_conn.add_user_to_group(kwargs['user_name'], kwargs['group_name'])
-
-@receiver(project_preremove_projectuser)
-def remove_member_from_group(sender, **kwargs):
-    ldap_conn = LDAPConn()
-    ldap_conn.remove_member_from_group(kwargs['user_name'], kwargs['group_name'])
-
-if 'coldfront.plugins.sftocf' in import_from_settings('INSTALLED_APPS', []):
-    @receiver(starfish_add_aduser)
-    def starfish_add_user(sender, **kwargs):
-        ldap_conn = LDAPConn()
-        ldap_conn.add_user_to_group(kwargs['username'], 'starfish_users')
-
-    @receiver(starfish_remove_aduser)
-    def starfish_remove_user(sender, **kwargs):
-        ldap_conn = LDAPConn()
-        ldap_conn.remove_member_from_group(kwargs['username'], 'starfish_users')
-
-    @receiver(starfish_add_adgroup)
-    def starfish_add_group(sender, **kwargs):
-        ldap_conn = LDAPConn()
-        ldap_conn.add_group_to_group(kwargs['groupname'], 'starfish_users')

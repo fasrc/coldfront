@@ -33,6 +33,7 @@ from coldfront.core.allocation.signals import (
 from coldfront.core.project.signals import (
     project_filter_users_to_remove,
     project_preremove_projectuser,
+    project_reactivate_projectuser,
     project_make_projectuser,
     project_create,
     project_post_create
@@ -46,6 +47,7 @@ from coldfront.core.project.forms import (
     ProjectUserUpdateForm,
     ProjectReviewEmailForm,
     ProjectAttributeAddForm,
+    ProjectReactivateUserForm,
     ProjectAttributeDeleteForm,
     ProjectAttributeUpdateForm,
     ProjectAddUsersToAllocationForm,
@@ -244,7 +246,8 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         allocations = allocations.filter(
             status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested']
         ).distinct().order_by('-end_date')
-        storage_allocations = allocations.filter(resources__resource_type__name='Storage').order_by('resources__name')
+        storage_allocations = allocations.filter(
+            resources__resource_type__name='Storage').order_by('resources__name')
         compute_allocations = allocations.filter(resources__resource_type__name='Cluster')
         allocation_total = {'allocation_user_count': 0, 'size': 0, 'cost': 0, 'usage':0}
         for allocation in storage_allocations:
@@ -553,7 +556,24 @@ class ProjectAddUsersSearchView(LoginRequiredMixin, UserPassesTestMixin, Templat
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         context['user_search_form'] = UserSearchForm()
-        context['project'] = Project.objects.get(pk=self.kwargs.get('pk'))
+        project = Project.objects.get(pk=self.kwargs.get('pk'))
+        context['project'] = project
+        deactivated_users = project.projectuser_set.filter(status__name='Deactivated')
+        if deactivated_users.exists():
+            formset = formset_factory(
+                ProjectReactivateUserForm, max_num=len(deactivated_users)
+            )
+            deactivated_forms = [{
+                'username': u.user.username,
+                'first_name': u.user.first_name,
+                'last_name': u.user.last_name,
+                'email': u.user.email,
+                'role': u.role.name,
+            } for u in deactivated_users]
+            deactivated_formset = formset(initial=deactivated_forms, prefix='reactivateuserform')
+            context['deactivated_formset'] = deactivated_formset
+        else:
+            context['deactivated_formset'] = None
         return context
 
 
@@ -653,12 +673,71 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
         return super().dispatch(request, *args, **kwargs)
 
+    def reactivate_user(self, project_obj, user_form_data):
+        """Full organizational logic for user reactivation
+        - reactivate projectuser entry
+        x reactivate any other projectusers in active projects that still have this user in AD
+          (taken care of by ldap signal)
+        - reactivate any related allocationuser entries in active storage allocations
+        """
+        user_username = user_form_data.get('username')
+        user_obj = get_user_model().objects.get(username=user_username)
+        project_obj.projectuser_set.filter(
+            user=user_obj,
+            status__name='Deactivated'
+        ).update(status=ProjectUserStatusChoice.objects.get(name='Active'))
+        project_reactivate_projectuser.send(sender=self.__class__, user=user_obj)
+        AllocationUser.objects.filter(
+            user=user_obj,
+            allocation__project__status__name__in=['Active', 'Renewal Requested'],
+            allocation__status__name__in=['Active','Pending Deactivation'],
+            allocation__project__projectuser__user=user_obj,
+            allocation__project__projectuser__status__name='Active',
+            allocation__resources__resource_type__name='Storage'
+        ).distinct().update(
+            status=AllocationUserStatusChoice.objects.get(name='Active')
+        )
+
     def post(self, request, *args, **kwargs):
+        pk = self.kwargs.get('pk')
+        project_obj = get_object_or_404(Project, pk=pk)
+        deactivated_users = project_obj.projectuser_set.filter(status__name='Deactivated')
+        projuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
+        if deactivated_users.exists():
+            deactivated_formset = formset_factory(
+                ProjectReactivateUserForm, max_num=len(deactivated_users)
+            )
+            deactivated_forms = [{
+                'username': u.user.username,
+                'first_name': u.user.first_name,
+                'last_name': u.user.last_name,
+                'email': u.user.email,
+                'role': u.role.name,
+            } for u in deactivated_users]
+            deactivated_formset = deactivated_formset(
+                    request.POST, initial=deactivated_forms, prefix='reactivateuserform')
+            # if any have been selected for reactivation, reactivate them
+            if deactivated_formset.is_valid() and any(
+                form.cleaned_data.get('selected') for form in deactivated_formset
+            ):
+                reactivated_users_count = 0
+                for form in deactivated_formset:
+                    user_form_data = form.cleaned_data
+                    if user_form_data['selected']:
+                        self.reactivate_user(project_obj, user_form_data)
+                        messages.success(
+                            request, f'Reactivated {user_form_data["username"]}.'
+                        )
+                        reactivated_users_count += 1
+                if reactivated_users_count:
+                    messages.success(
+                        request,
+                        f'Reactivated {reactivated_users_count} users in project.'
+                    )
+
+
         user_search_string = request.POST.get('q')
         search_by = request.POST.get('search_by')
-        pk = self.kwargs.get('pk')
-
-        project_obj = get_object_or_404(Project, pk=pk)
 
         users_to_exclude = [
             u.user.username
@@ -668,8 +747,10 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         combined_user_search_obj = CombinedUserSearch(
             user_search_string, search_by, users_to_exclude
         )
-
-        context = combined_user_search_obj.search()
+        try:
+            context = combined_user_search_obj.search()
+        except AttributeError:
+            return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 
         matches = context.get('matches')
         for match in matches:
@@ -684,7 +765,6 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         added_users_count = 0
 
         if formset.is_valid() and allocation_form.is_valid():
-            projuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
             allocuser_status_active = AllocationUserStatusChoice.objects.get(
                 name='Active'
             )
@@ -769,10 +849,20 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                                 user=user_obj,
                                 status=allocuser_status_active,
                             )
-                        allocation_activate_user.send(
-                            sender=self.__class__,
-                            allocation_user_pk=allocation_user_obj.pk,
-                        )
+                        try:
+                            allocation_activate_user.send(
+                                sender=self.__class__,
+                                allocation_user_pk=allocation_user_obj.pk,
+                            )
+                        except Exception as e:
+                            logger.exception(
+                                "user added to project but not allocation. user=%s,project=%s,allocation_resource=%s,error=%s",
+                                user_obj.username, project_obj.title,
+                                allocation.get_parent_resource.name, e
+                            )
+                            errors.append(
+                                f"User {user_obj.username} was added to the project but an error occurred when activating them in allocation for {allocation.get_parent_resource.name}: {e}"
+                            )
             if errors:
                 for error in errors:
                     messages.error(request, error)
@@ -831,7 +921,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         project_obj = get_object_or_404(Project, pk=pk)
         users_list = self.get_users_to_remove(project_obj)
 
-        # if ldap is activated, prevent selection of users with project corresponding to primary group
+        # if ldap activated, prevent selection of users with project corresponding to primary group
         signal_response = project_filter_users_to_remove.send(
             sender=self.__class__, users_to_remove=users_list, project=project_obj
         )
@@ -839,8 +929,6 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             users_to_remove = signal_response[0][1]
         else:
             users_to_remove = users_list
-
-        users_no_removal = [u for u in users_list if u not in users_to_remove]
 
         context = {}
 
@@ -850,9 +938,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             )
             formset = formset(initial=users_to_remove, prefix='userform')
             context['formset'] = formset
-
         context['project'] = get_object_or_404(Project, pk=pk)
-        context['users_no_removal'] = users_no_removal
         context['EMAIL_TICKET_SYSTEM_ADDRESS'] = EMAIL_TICKET_SYSTEM_ADDRESS
         return render(request, self.template_name, context)
 
@@ -861,14 +947,12 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         project_obj = get_object_or_404(Project, pk=pk)
 
         users_to_remove = self.get_users_to_remove(project_obj)
-        # if ldap is activated, prevent selection of users with project corresponding to primary group
+        # if ldap is activated, identify users with project corresponding to primary group
         signal_response = project_filter_users_to_remove.send(
             sender=self.__class__, users_to_remove=users_to_remove, project=project_obj
         )
         if signal_response:
             users_to_remove = signal_response[0][1]
-        else:
-            users_to_remove = users_to_remove
 
         formset = formset_factory(ProjectRemoveUserForm, max_num=len(users_to_remove))
         formset = formset(request.POST, initial=users_to_remove, prefix='userform')
@@ -881,12 +965,33 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 messages.error(request, error)
             return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
         projectuser_status_removed = ProjectUserStatusChoice.objects.get(name='Removed')
+        projectuser_status_deactivated = ProjectUserStatusChoice.objects.get(name='Deactivated')
         allocationuser_status_removed = AllocationUserStatusChoice.objects.get(name='Removed')
         for form in formset:
             user_form_data = form.cleaned_data
+
             if user_form_data['selected']:
                 user_obj = get_user_model().objects.get(username=user_form_data.get('username'))
+
+                if user_form_data['primary_group'] and not request.user.is_superuser:
+                    failed_user_removals += [
+                        f"{project_obj.title} is user {user_obj.username}'s primary group"
+                    ]
+                    logger.warning(
+                        "non-admin attempted removal of primary group user. request_user=%s,member=%s,project=%s",
+                        request.user, user_form_data['username'], project_obj.title,
+                        extra={'category': 'integration:AD', 'status': 'failure'}
+                    )
+                    continue
                 if project_obj.pi == user_obj:
+                    failed_user_removals += [
+                        f"{user_obj.username} is the PI of {project_obj.title}"
+                    ]
+                    logger.warning(
+                        "attempted PI removal via ProjectUserRemovalForm. request_user=%s,member=%s,project=%s",
+                        request.user, user_form_data['username'], project_obj.title,
+                        extra={'category': 'integration:AD', 'status': 'failure'}
+                    )
                     continue
 
                 project_user_obj = project_obj.projectuser_set.get(user=user_obj)
@@ -897,35 +1002,61 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         user_name=user_obj.username, group_name=project_obj.title
                     )
                     logger.info(
-                        "ColdFront user %s removed AD User for %s from AD Group for %s",
-                        self.request.user, user_obj.username, project_obj.title,
+                        "AD Group member removed/deactivated. request_user=%s,member=%s,group=%s,primary_group=%s",
+                        self.request.user, user_obj.username, project_obj.title, user_form_data['primary_group'],
                         extra={'category': 'integration:AD', 'status': 'success'}
                     )
                 except Exception as e:
                     failed_user_removals += [f"could not remove user {user_obj}: {e}"]
                     logger.exception(
-                        "Coldfront user %s could NOT remove AD User for %s from AD Group for %s: %s",
+                        "Failed AD Group member removal. request_user=%s,member=%s,group=%s,primary_group=%s,error=%s",
                         self.request.user,
                         user_obj.username,
                         project_obj.title,
+                        user_form_data['primary_group'],
                         e,
                         extra={'category': 'integration:AD', 'status': 'failure'}
                     )
                     continue
 
-                project_user_obj.status = projectuser_status_removed
+                if user_form_data['primary_group']:
+                    project_user_obj.status = projectuser_status_deactivated
+                    action = 'deactivated'
+                    # change status to "removed" for all other projectusers with this user
+                    secondary_projectusers = ProjectUser.objects.filter(
+                        user=user_obj,
+                        status__name='Active',
+                        project__status__name__in=['Active', 'New'],
+                    ).exclude(project=project_obj)
+                    secondary_projectusers.update(status=projectuser_status_removed)
+                    # get allocations to remove user from in projects where they have been removed
+                    allocations_to_remove_user_from = Allocation.objects.filter(
+                        allocationuser__user=user_obj,
+                        project__projectuser__status__name='Removed',
+                        project__projectuser__user=user_obj,
+                        status__name__in=['Active', 'Renewal Requested'],
+                        resources__resource_type__name='Storage'
+                    ).distinct()
+                    secondary_projects = ','.join(
+                        [sp.project.title for sp in secondary_projectusers]
+                    )
+                    extra_log = f',secondary_projects="{secondary_projects}"'
+                else:
+                    project_user_obj.status = projectuser_status_removed
+                    action = 'removed'
+                    # get allocation to remove users from
+                    allocations_to_remove_user_from = project_obj.allocation_set.filter(
+                        status__name__in=['Active', 'Renewal Requested'],
+                        resources__resource_type__name='Storage'
+                    )
+                    extra_log = ''
                 project_user_obj.save()
                 logger.info(
-                    "User %s removed from project %s by %s",
-                    user_obj.username, project_obj.title, request.user,
+                    "User %s from project. requesting_user=%s,project_user=%s,project=%s%s",
+                    action, request.user, user_obj.username, project_obj.title, extra_log,
                     extra={'category': 'database_change:ProjectUser', 'status': 'success'}
                 )
 
-                # get allocation to remove users from
-                allocations_to_remove_user_from = project_obj.allocation_set.filter(
-                    status__name__in=['Active', 'New', 'Renewal Requested'],
-                    resources__resource_type__name='Storage'
-                )
                 for allocation in allocations_to_remove_user_from:
                     for alloc_user in allocation.allocationuser_set.filter(
                         user=user_obj, status__name='Active'

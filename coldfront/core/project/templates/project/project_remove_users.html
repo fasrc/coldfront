@@ -8,7 +8,7 @@
 <h2>Remove users from project: {{project.title}}</h2>
 <hr>
 
-{% if formset or users_no_removal %}
+{% if formset or primary_group_users %}
   <div class="card border-light">
     <div class="card-body">
       <p>
@@ -17,10 +17,17 @@
         remove that user's data from the allocations.
       </p>
       <p>
-        To be removed from a lab, the user must not have the lab as their primary
-        group. If you would like to remove a user that has your lab as their primary
-        group, please <a href="mailto:{{ EMAIL_TICKET_SYSTEM_ADDRESS }}?subject=User removal request for Project {{ project.title }}">
-        contact FASRC support</a>.
+        {% if request.user.is_superuser %}
+          As a superuser, you can remove any user from the project. Please be aware that
+          removing a user from their primary group will cause their account to be deactivated and
+          prevent access to computational resources. If you are unsure, please
+          contact FASRC support or the ColdFront system administrator.
+        {% else %}
+          To be removed from a lab, the user must not have the lab as their primary
+          group. If you would like to remove a user that has your lab as their primary
+          group, please <a href="mailto:{{ EMAIL_TICKET_SYSTEM_ADDRESS }}?subject=User removal request for Project {{ project.title }}">
+          contact FASRC support</a>.
+        {% endif %}
       </p>
       <form action="{% url 'project-remove-users' project.pk %}" method="post">
         {% csrf_token %}
@@ -32,6 +39,7 @@
                   <input type="checkbox" class="check" id="selectAll">
                 </th>
                 <th scope="col">#</th>
+                <th scope="col">Is Primary</th>
                 <th scope="col">Username</th>
                 <th scope="col">First Name</th>
                 <th scope="col">Last Name</th>
@@ -40,27 +48,43 @@
               </tr>
             </thead>
             <tbody>
-              {% for user in users_no_removal %}
-              <tr>
-                <td></td>
-                <td></td>
-                <td style="color: gray;">{{ user.username }}</td>
-                <td style="color: gray;">{{ user.first_name }}</td>
-                <td style="color: gray;">{{ user.last_name }}</td>
-                <td style="color: gray;">{{ user.email }}</td>
-                <td style="color: gray;">{{ user.role }}</td>
-              </tr>
-              {% endfor %}
               {% for form in formset %}
-                <tr>
-                  <td>{{ form.selected }}</td>
-                  <td>{{ forloop.counter }}</td>
-                  <td>{{ form.username.value }}</td>
-                  <td>{{ form.first_name.value }}</td>
-                  <td>{{ form.last_name.value }}</td>
-                  <td>{{ form.email.value }}</td>
-                  <td>{{ form.role.value }}</td>
-                </tr>
+                {% if form.primary_group.value %}
+                  {% if request.user.is_superuser %}
+                    <tr class="font-weight-bold">
+                      <td>{{ form.selected }}</td>
+                      <td>{{ forloop.counter }}</td>
+                      <td><i class="fas fa-check" aria-hidden="true"></i></td>
+                      <td>{{ form.username.value }}</td>
+                      <td>{{ form.first_name.value }}</td>
+                      <td>{{ form.last_name.value }}</td>
+                      <td>{{ form.email.value }}</td>
+                      <td>{{ form.role.value }}</td>
+                    </tr>
+                  {% else %}
+                    <tr>
+                      <td></td>
+                      <td>{{ forloop.counter }}</td>
+                      <td><i class="fas fa-check" aria-hidden="true"></i></td>
+                      <td style="color: gray;">{{ form.username }}</td>
+                      <td style="color: gray;">{{ form.first_name }}</td>
+                      <td style="color: gray;">{{ form.last_name }}</td>
+                      <td style="color: gray;">{{ form.email }}</td>
+                      <td style="color: gray;">{{ form.role }}</td>
+                    </tr>
+                  {% endif %}
+                {% else %}
+                  <tr>
+                    <td>{{ form.selected }}</td>
+                    <td>{{ forloop.counter }}</td>
+                    <td></td>
+                    <td>{{ form.username.value }}</td>
+                    <td>{{ form.first_name.value }}</td>
+                    <td>{{ form.last_name.value }}</td>
+                    <td>{{ form.email.value }}</td>
+                    <td>{{ form.role.value }}</td>
+                  </tr>
+                {% endif %}
               {% endfor %}
             </tbody>
           </table>
