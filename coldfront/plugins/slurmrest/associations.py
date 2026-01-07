@@ -241,24 +241,18 @@ class ClusterResourceManager:
         return ''
 
     def determine_node_type(self, node_data):
+        result = {}
         features = node_data.get('features', [])
         if 'gpu' in features:
             for node_type in ['h200', 'h100', 'a100', 'a100-mig', 'v100', 'a40', 'rtxa6000']:
                 if node_type in features:
-                    return node_type
-            logger.error(
-                "can't determine type of node_name %s. Features: %s",
-                node_data['name'], features
-            )
-            raise SlurmError(f"Unable to determine node type for node {node_data['name']}")
+                    result['gpu_type'] = node_type
+                    continue
         for node_type in ['icelake', 'cascadelake', 'sapphirerapids', 'genoa', 'milan', 'skylake']:
             if node_type in features:
-                return node_type
-        logger.error(
-            "can't determine type of node_name %s. Features: %s",
-            node_data['name'], features
-        )
-        raise SlurmError(f"Unable to determine node type for node {node_data['name']}")
+                result['cpu_type'] = node_type
+                continue
+        return result
 
     def create_update_node_resource(self, node_data):
         """Create or update a Coldfront Resource for a Slurm node."""
@@ -296,9 +290,10 @@ class ClusterResourceManager:
         )
 
         node_type = self.determine_node_type(node_data)
+        node_type_string = ','.join([f"{k}:{v}" for k,v in node_type.items()])
         node_resource.resourceattribute_set.update_or_create(
             resource_attribute_type=self.nodetype_attribute_type,
-            defaults={'value': node_type}
+            defaults={'value': node_type_string}
         )
 
         if created:
