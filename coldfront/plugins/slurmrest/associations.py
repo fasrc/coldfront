@@ -261,6 +261,18 @@ class ClusterResourceManager:
             tres_dict = dict([i.split('=') for i in tres.split(',')])
         return tres_dict
 
+    def update_node_supergroups(self, node_resource, node_owner):
+        """If a supergroup exists for the node owner, link it to the node resource."""
+        try:
+            supergroup_resource = Resource.objects.get(
+                resource_type__name='Supergroup',
+                name=node_owner
+            )
+            if supergroup_resource not in node_resource.parent_resources.all():
+                node_resource.linked_resources.add(supergroup_resource)
+        except Resource.DoesNotExist:
+            pass
+
     def create_update_node_resource(self, node_data):
         """Create or update a Coldfront Resource for a Slurm node."""
         # create or get the node resource
@@ -301,6 +313,8 @@ class ClusterResourceManager:
             resource_attribute_type=self.nodetype_attribute_type,
             defaults={'value': node_type_string}
         )
+
+        self.update_node_supergroups(node_resource, owner)
 
         if created:
             logger.info("Created new node resource: %s", node_resource.name)
