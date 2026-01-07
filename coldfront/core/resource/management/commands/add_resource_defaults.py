@@ -64,6 +64,9 @@ class Command(BaseCommand):
             )
 
         for resource_type, description in (
+            # FASRC
+            ('Supergroup', 'Compute Supergroup'),
+            # UBCCR
             ('Storage', 'Network Storage'),
             ('Storage Tier', 'Storage Tier',),
             ('Cloud', 'Cloud Computing'),

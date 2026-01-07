@@ -254,6 +254,13 @@ class ClusterResourceManager:
                 continue
         return result
 
+    def process_tres(self, node_data):
+        tres = node_data.get('tres', 0)
+        tres_dict = {}
+        if tres != 0:
+            tres_dict = dict([i.split('=') for i in tres.split(',')])
+        return tres_dict
+
     def create_update_node_resource(self, node_data):
         """Create or update a Coldfront Resource for a Slurm node."""
         # create or get the node resource
@@ -270,9 +277,8 @@ class ClusterResourceManager:
             resource_attribute_type=self.features_attribute_type,
             defaults={'value': ','.join(node_data['features'])}
         )
-        tres = node_data.get('tres_used', 0)
-        if tres != 0:
-            tres_dict = dict([i.split('=') for i in tres.split(',')])
+        tres_dict = self.process_tres(node_data)
+        if tres_dict:
             gpu_count = tres_dict.get('gres/gpu', 0)
             node_resource.resourceattribute_set.update_or_create(
                 resource_attribute_type=self.gpu_count_attribute_type,
