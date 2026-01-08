@@ -88,6 +88,21 @@ class LDAPConn:
         group = self.search_groups({'distinguishedName': group_dn, 'member': member_dn})
         return bool(group)
 
+    def check_group_validity(self, group_entry):
+        """Check if group entry is valid.
+
+        A valid group has a valid manager.
+        """
+        # run checks on the groups to ensure they have valid managers and aren't disabled
+        _, manager = self.return_group_members_manager(group_entry['sAMAccountName'][0])
+        if not manager:
+            return False
+        if not user_valid(manager):
+            return False
+        return True
+
+
+
     def search(self, attr_search_dict, search_base, attributes=ALL_ATTRIBUTES):
         """Run an LDAP search.
 
