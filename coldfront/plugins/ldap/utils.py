@@ -172,14 +172,16 @@ class LDAPConn:
             raise ValueError(f"no users returned for username {username}")
         return user[0]
 
-    def return_group_by_name(self, groupname, return_as='dict', attributes=ALL_ATTRIBUTES):
+    def return_group_by_name(self, samaccountname, return_as='dict', attributes=ALL_ATTRIBUTES):
         group = self.search_groups(
-            {"sAMAccountName": groupname}, return_as=return_as, attributes=attributes
+            {"sAMAccountName": samaccountname}, return_as=return_as, attributes=attributes
         )
         if len(group) > 1:
+            logger.error('multiple groups with same sAMAccountName: %s', samaccountname)
             raise ValueError("too many groups in value returned")
         if not group:
-            raise ValueError("no groups returned")
+            logger.error('no groups found with sAMAccountName: %s', samaccountname)
+            raise ValueError("no matching groups returned")
         return group[0]
 
     def add_user_to_group(self, user_name, group_name):
@@ -353,6 +355,15 @@ class LDAPConn:
             logger.error('no ADUser manager found for group %s', group_dn)
             return 'no ADUser manager found'
         return (group_members, group_manager[0])
+
+    def return_group_group_members(self, samaccountname):
+        """return group entries that are members of the specified group."""
+        logger.debug('return_group_group_members for Group %s', samaccountname)
+        group = self.return_group_by_name(samaccountname)
+        group_dn = group['distinguishedName'][0]
+        group_members = self.search_groups({'memberOf': group_dn})
+        logger.debug('group_members:\n%s', group_members)
+        return group_members
 
 
 def user_valid(user):
