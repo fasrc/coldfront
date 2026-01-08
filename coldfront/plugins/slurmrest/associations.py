@@ -268,7 +268,7 @@ class ClusterResourceManager:
                 resource_type__name='Supergroup',
                 name=node_owner
             )
-            if supergroup_resource not in node_resource.parent_resources.all():
+            if supergroup_resource not in node_resource.linked_resources.all():
                 node_resource.linked_resources.add(supergroup_resource)
         except Resource.DoesNotExist:
             pass
