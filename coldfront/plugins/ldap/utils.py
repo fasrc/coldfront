@@ -346,7 +346,10 @@ class LDAPConn:
             logger.error('no groups found with sAMAccountName: %s', samaccountname)
             return 'no matching groups found'
         group_entry = group_entries[0]
-        return self.manager_members_from_group(group_entry)
+        try:
+            return self.manager_members_from_group(group_entry)
+        except LDAPException as e:
+            return str(e)
 
     def manager_members_from_group(self, group_entry):
         group_dn = group_entry['distinguishedName'][0]
@@ -360,7 +363,7 @@ class LDAPConn:
             group_manager_dn = group_entry['managedBy'][0]
         except Exception as e:
             logger.error('no manager specified for group %s', group_dn)
-            return 'no manager specified'
+            raise LDAPException('no manager specified') from e
         manager_attr_list = user_attr_list + ['memberOf']
         group_manager = self.search_users(
             {'distinguishedName': group_manager_dn}, attributes=manager_attr_list
@@ -368,7 +371,7 @@ class LDAPConn:
         logger.debug('group_manager:\n%s', group_manager)
         if not group_manager:
             logger.error('no ADUser manager found for group %s', group_dn)
-            return 'no ADUser manager found'
+            raise LDAPException('no ADUser manager found')
         return (group_members, group_manager[0])
 
     def return_group_group_members(self, samaccountname):
