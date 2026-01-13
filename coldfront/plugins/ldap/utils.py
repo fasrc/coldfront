@@ -94,7 +94,11 @@ class LDAPConn:
         A valid group has a valid manager.
         """
         # run checks on the groups to ensure they have valid managers and aren't disabled
-        _, manager = self.return_group_members_manager(group_entry['sAMAccountName'][0])
+        try:
+            _, manager = self.return_group_members_manager(group_entry['sAMAccountName'][0])
+        except LDAPException as e:
+            logger.warning('group %s invalid: %s', group_entry['sAMAccountName'][0], e)
+            return False
         if not manager:
             return False
         if not user_valid(manager):
