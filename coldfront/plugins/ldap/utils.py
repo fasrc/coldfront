@@ -345,10 +345,10 @@ class LDAPConn:
         )
         if len(group_entries) > 1:
             logger.error('multiple groups with same sAMAccountName: %s', samaccountname)
-            return 'multiple groups with same sAMAccountName'
+            raise LDAPException('multiple groups with same sAMAccountName')
         if not group_entries:
             logger.error('no groups found with sAMAccountName: %s', samaccountname)
-            return 'no matching groups found'
+            raise LDAPException('no matching groups found')
         group_entry = group_entries[0]
         try:
             return self.manager_members_from_group(group_entry)
