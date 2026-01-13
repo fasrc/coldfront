@@ -353,7 +353,7 @@ class LDAPConn:
         try:
             return self.manager_members_from_group(group_entry)
         except LDAPException as e:
-            return str(e)
+            raise
 
     def manager_members_from_group(self, group_entry):
         group_dn = group_entry['distinguishedName'][0]

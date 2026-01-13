@@ -149,7 +149,7 @@ def update_supergroup_membership(sender, **kwargs):
         try:
             project_obj = Project.objects.get(
                 title=member['sAMAccountName'][0],
-            ).project
+            )
         except Exception as e:
             logger.warning(
                 "issue retrieving Project for Supergroup %s member %s: %s",
@@ -159,7 +159,7 @@ def update_supergroup_membership(sender, **kwargs):
         # get allocation corresponding to the Project and supergroup's parent resource
         try:
             allocation_obj = project_obj.allocation_set.get(
-                resources=supergroup_obj.get_parent_resource,
+                resources=supergroup_obj.parent_resource,
             )
         except Exception as e:
             logger.warning(
