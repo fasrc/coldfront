@@ -52,7 +52,9 @@ class ClusterResourceManager:
         self.nodetype_attribute_type = ResourceAttributeType.objects.get(name='NodeType')
         self.gpu_count_attribute_type = ResourceAttributeType.objects.get(name='GPU Count')
         self.core_count_attribute_type = ResourceAttributeType.objects.get(name='Core Count')
+        self.cpu_count_attribute_type = ResourceAttributeType.objects.get(name='CPU Count')
         self.service_end_attribute_type = ResourceAttributeType.objects.get(name='ServiceEnd')
+        self.rawshare_attribute_type = ResourceAttributeType.objects.get(name='Rawshare')
         self.slurm_specs_resourceattribute_type = ResourceAttributeType.objects.get(
             name=SLURMREST_SPECS_ATTRIBUTE_NAME)
         self.account_attribute_type = AllocationAttributeType.objects.get(
@@ -169,6 +171,80 @@ class ClusterResourceManager:
             else:
                 partition_account_names = set(allowed_groups + allowed_accounts)
         return partition_account_names
+
+
+
+    ### Supergroup methods ###
+    def update_supergroups(self):
+        supergroup_resources = Resource.objects.filter(
+            parent_resource=self.cluster_resource,
+            resource_type__name='Supergroup'
+        )
+        for supergroup in supergroup_resources:
+            fairshare = self.calculate_supergroup_fairshare(supergroup.name)
+            logger.info(
+                "Updated supergroup %s fairshare to %s", supergroup.name, fairshare
+            )
+
+    def calculate_supergroup_fairshare(self, supergroup_name):
+        """Calculate fairshare for a given supergroup based on its node cores and types.
+        equation is:
+            """
+        supergroup_resource = Resource.objects.get(
+            resource_type__name='Supergroup',
+            name=supergroup_name
+        )
+        supergroup_nodes = Resource.objects.filter(
+            resource_type__name='Compute Node',
+            linked_resources=supergroup_resource,
+            is_available=True,
+        )
+        node_multiplier_dict = {
+            'h200': 546.9,
+            'h100': 546.9,
+            'a100': 209.1,
+            'a100-mig': 209.1,
+            'v100': 75,
+            'a40': 10,
+            'rtxa6000': 10,
+            'icelake': 1.15,
+            'cascadelake': 1,
+            'sapphirerapids': 0.6,
+            'genoa': 0.6,
+            'milan': 0.5,
+            'skylake': 0.5,
+            'haswell': 0.4,
+            'broadwell': 0.4,
+        }
+        total_fairshare = 0
+        for node in supergroup_nodes:
+            nodetype_attr = node.resourceattribute_set.get(
+                resource_attribute_type__name='NodeType'
+            )
+            nodetype_dict = dict(
+                [item.split(':') for item in nodetype_attr.value.split(',')]
+            )
+
+            cpu_count_attr = node.resourceattribute_set.get(
+                resource_attribute_type__name='CPU Count')
+            cpu_type = nodetype_dict['cpu_type']
+            multiplier = node_multiplier_dict[cpu_type]
+            cpu_value = int(cpu_count_attr.value) * multiplier
+            total_fairshare += cpu_value
+
+            if 'gpu_type' in nodetype_dict:
+                gpu_count_attr = node.resourceattribute_set.get(
+                    resource_attribute_type__name='GPU Count')
+                gpu_type = nodetype_dict['gpu_type']
+                gpu_multiplier = node_multiplier_dict[gpu_type]
+                gpu_value = int(gpu_count_attr.value) * gpu_multiplier
+                total_fairshare += gpu_value
+        # create or update the supergroup's Rawshare attribute
+        supergroup_resource.resourceattribute_set.update_or_create(
+            resource_attribute_type=self.rawshare_attribute_type,
+            defaults={'value': str(int(total_fairshare))}
+        )
+        return str(int(total_fairshare))
 
 
     ### Node import methods ###
@@ -296,6 +372,11 @@ class ClusterResourceManager:
                 resource_attribute_type=self.gpu_count_attribute_type,
                 defaults={'value': str(gpu_count)}
             )
+
+        node_resource.resourceattribute_set.update_or_create(
+            resource_attribute_type=self.cpu_count_attribute_type,
+            defaults={'value': str(node_data.get('cpus', 0))}
+        )
         node_resource.resourceattribute_set.update_or_create(
             resource_attribute_type=self.core_count_attribute_type,
             defaults={'value': str(node_data.get('cores', 0))}
