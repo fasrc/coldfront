@@ -129,76 +129,103 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
             else:
                 active = AllocationStatusChoice.objects.get(name='Active')
                 for project in projects:
-                    for allocation in project.allocation_set.filter(status=active):
-                        resources = allocation.resources.all()
-                        if resources.count() == 1:
-                            resource = resources[0]
-                            if resource.resource_type.name == self.STORAGE_RESOURCE_TYPE:
-                                if resource.requires_payment:
+
+                    # Get offer letter tb and code
+                    offer_letter_tb = self.get_offer_letter_tb(project)
+                    offer_letter_account = self.get_offer_letter_account(project)
+
+                    # First set "current_offer_letter_tb" to full offer letter size; this will get reduced as we create billing records
+                    current_offer_letter_tb = offer_letter_tb if offer_letter_tb else Decimal('0')
+
+                    for allocation in sorted(
+                        project.allocation_set.filter(
+                            status=active,
+                            resources__resource_type__name=self.STORAGE_RESOURCE_TYPE,
+                            resources__requires_payment=True
+                        ), key=lambda a: self.get_allocation_resource_product_rate(a).decimal_price, reverse=True
+                    ):
+                        try:
+                            allocation_tb = self.get_allocation_tb(allocation)
+
+                            offer_letter_br, remaining_tb = self.process_offer_letter(year, month, organization, allocation, allocation_tb, recalculate, current_offer_letter_tb, offer_letter_account, offer_letter_tb)
+                            if offer_letter_br:
+                                successes.append(offer_letter_br)
+                            if remaining_tb and remaining_tb > Decimal('0'):
+                                allocation_brs = []
+                                user_allocation_percentages = self.get_user_allocation_percentages(year, month, allocation)
+                                for user_id, allocation_percentage_data in user_allocation_percentages.items():
                                     try:
-                                        allocation_tb = self.get_allocation_tb(allocation)
-                                        offer_letter_br, remaining_tb = self.process_offer_letter(year, month, organization, allocation, allocation_tb, recalculate)
-                                        if offer_letter_br:
-                                            successes.append(offer_letter_br)
-                                        if remaining_tb > Decimal('0'):
-                                            allocation_brs = []
-                                            user_allocation_percentages = self.get_user_allocation_percentages(year, month, allocation)
-                                            for user_id, allocation_percentage_data in user_allocation_percentages.items():
-                                                try:
-                                                    user = get_user_model().objects.get(id=user_id)
-                                                except get_user_model().DoesNotExist as dne:
-                                                    raise Exception(f'Cannot find user with id {user_id}') from dne
-                                                try:
-                                                    brs = self.generate_billing_records_for_allocation_user(
-                                                        year,
-                                                        month,
-                                                        user,
-                                                        organization,
-                                                        allocation,
-                                                        allocation_percentage_data['fraction'],
-                                                        allocation_tb,
-                                                        recalculate,
-                                                        remaining_tb,
-                                                    )
-                                                    if brs:
-                                                        allocation_brs.extend(brs)
-                                                except Exception as e:
-                                                    logger.error(f'Error generating billing records for the user {user} of allocation {allocation}: {e}')
-                                            if not allocation_brs:
-                                                errors.append(f'No billing records created for {organization} allocation {allocation}')
-                                            successes.extend(allocation_brs)
+                                        user = get_user_model().objects.get(id=user_id)
+                                    except get_user_model().DoesNotExist as dne:
+                                        raise Exception(f'Cannot find user with id {user_id}') from dne
+                                    try:
+                                        brs = self.generate_billing_records_for_allocation_user(
+                                            year,
+                                            month,
+                                            user,
+                                            organization,
+                                            allocation,
+                                            allocation_percentage_data['fraction'],
+                                            allocation_tb,
+                                            recalculate,
+                                            remaining_tb,
+                                        )
+                                        if brs:
+                                            allocation_brs.extend(brs)
                                     except Exception as e:
-                                        errors.append(str(e))
-                                        if self.verbosity == self.CHATTY:
-                                            logger.error(e)
-                                        if self.verbosity == self.LOUD:
-                                            logger.exception(e)
-                                else:
-                                    errors.append(f'Resource {resource} for allocation {allocation} does not require payment.  Skipping.')
-                            else:
-                                logger.info(f'Allocation {allocation} is not a storage allocation.  Skipping.')
-                        else:
-                            logger.info(f'Allocation {allocation} has more than one resource.')
+                                        logger.error(f'Error generating billing records for the user {user} of allocation {allocation}: {e}')
+                                if not allocation_brs:
+                                    errors.append(f'No billing records created for {organization} allocation {allocation}')
+                                successes.extend(allocation_brs)
+                            current_offer_letter_tb = max(current_offer_letter_tb - allocation_tb, Decimal('0'))
+                        except Exception as e:
+                            errors.append(str(e))
+                            if self.verbosity == self.CHATTY:
+                                logger.error(e)
+                            if self.verbosity == self.LOUD:
+                                logger.exception(e)
         else:
             errors.append(f'Organization {organization.slug} is not a Harvard organization.')
         return (successes, errors)
 
-    def process_offer_letter(self, year, month, organization, allocation, allocation_tb, recalculate):
+    def process_offer_letter(self, year, month, organization, allocation, allocation_tb, recalculate, offer_letter_tb=None, offer_letter_acct=None, total_offer_letter_tb=None):
         '''
         Generate a ProductUsage and a BillingRecord for the offer letter, if it exists.
         Return BillingRecord (may be None) and remaining allocation size (Decimal TB).  If
         no BillingRecord is generated, the remaining size is the full allocation size.
+
+        :param year: Year for the BillingRecord
+        :type year: int
+        :param month: Month for the BillingRecord
+        :type month: int
+        :param organization: Organization for the BillingRecord
+        :type organization: `~ifxuser.models.Organization`
+        :param allocation: The Allocation
+        :type allocation: `~coldfront.core.allocation.models.Allocation`
+        :param allocation_tb: Size of the allocation in TB
+        :type allocation_tb: `~decimal.Decimal`
+        :param recalculate: If True, will delete existing BillingRecord if found
+        :type recalculate: bool
+        :param offer_letter_tb: Size of the offer letter in TB.  This may be less than total_offer_letter_tb if multiple allocations are being covered by the offer letter.
+        :type offer_letter_tb: `~decimal.Decimal` or NoneType
+        :param offer_letter_acct: Account for the offer letter charges
+        :type offer_letter_acct: `~ifxbilling.models.Account` or NoneType
+        :param total_offer_letter_tb: Total size of the offer letter in TB
+        :type total_offer_letter_tb: `~decimal.Decimal` or NoneType
+
+        :return: Tuple of (BillingRecord or None, remaining allocation size in TB as Decimal)
+        :rtype: tuple
         '''
         offer_letter_br = None
         offer_letter_product = self.get_offer_letter_product(allocation)
 
-        # Decimal quantity in TB
-        offer_letter_tb = self.get_offer_letter_tb(allocation)
-
-        # Account for offer letter code
-        offer_letter_acct = self.get_offer_letter_account(allocation, organization)
-
+        # Remaining tb is the amount left of the allocation if the offer letter doesn't cover it all
         remaining_tb = allocation_tb
+
+        # usage_tb is the amount that will be used in the offer letter product usage record and will be in the billing record description
+        usage_tb = offer_letter_tb
+        if allocation_tb < offer_letter_tb or offer_letter_tb is None:
+            usage_tb = allocation_tb
 
         if offer_letter_tb:
             if not offer_letter_acct:
@@ -236,8 +263,8 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
                     product_user=product_user,
                     logged_by=product_user,
                     organization=organization,
-                    quantity=offer_letter_tb,
-                    decimal_quantity=offer_letter_tb,
+                    quantity=usage_tb,
+                    decimal_quantity=usage_tb,
                     units='TB'
                 )
             except Exception as e:
@@ -250,11 +277,14 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
             decimal_price = storage_product_rate.decimal_price
             if not decimal_price:
                 raise Exception(f'decimal_price for {storage_product_rate.product.product_name} is not set.')
-            charge = decimal_price * offer_letter_tb
+            charge = decimal_price * usage_tb
 
             # Transaction and rate description
             rate_desc = self.get_rate_description(storage_product_rate)
-            description = f'Faculty commitment of ${charge.quantize(settings.TWO_DIGIT_QUANTIZE)} for {offer_letter_tb} TB of {offer_letter_product.product_name} at ${rate_desc}'
+            offer_letter_size_desc = f'for {usage_tb} TB'
+            if total_offer_letter_tb > usage_tb:
+                offer_letter_size_desc = f'for {usage_tb} TB (from total offer letter {total_offer_letter_tb} TB)'
+            description = f'Faculty commitment of ${charge.quantize(settings.TWO_DIGIT_QUANTIZE)} {offer_letter_size_desc} of {offer_letter_product.product_name} at ${rate_desc}'
 
             transactions_data = [
                 {
@@ -294,19 +324,15 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
         :return: Product for Offer Letters
         :rtype: `~ifxbilling.models.Product`
         '''
-        resources = allocation.resources.all()
-        if not resources:
-            raise Exception(f'Allocation {allocation} has no resources')
-        if len(resources) > 1:
-            raise Exception(f'Allocation {allocation} has more than one resource')
-        resource = resources[0]
-        product_resources = resource.productresource_set.all()
-        if not product_resources:
-            raise Exception(f'Resource {resource} has no product')
-        if len(product_resources) > 1:
-            raise Exception(f'Resource {resource} has multiple products')
+        allocation_products = allocation.productallocation_set.all()
+        if not allocation_products:
+            raise Exception(f'Allocation {allocation} does not have any ProductAllocations')
+        if allocation_products.count() > 1:
+            raise Exception(f'Allocation {allocation} has more than one ProductAllocation')
+        allocation_product = allocation_products.first()
+        offer_letter_product = allocation_product.product
 
-        return product_resources[0].product
+        return offer_letter_product
 
     def get_offer_letter_product_user(self, allocation):
         '''
@@ -324,32 +350,35 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
             raise Exception(f'Allocation of {allocation.get_resources_as_string} for {allocation.project.title} has no PI')
         return pi
 
-    def get_offer_letter_tb(self, allocation):
+    def get_offer_letter_tb(self, project):
         '''
         Returns the relevant offer letter size as a Decimal or None if nothing is found
 
-        :param allocation: The `~coldfront.core.allocation.models.Allocation`
-        :type allocation: `~coldfront.core.allocation.models.Allocation`
+        :param project: The `~coldfront.core.project.models.Project`
+        :type project: `~coldfront.core.project.models.Project`
 
         :return: Decimal representing the offer letter in TB or None
         :rtype: `~decimal.Decimal` or NoneType
         '''
-        offer_letter_tb = allocation.get_attribute(self.OFFER_LETTER_TB_ATTRIBUTE)
+        offer_letter_tb = project.get_attribute(self.OFFER_LETTER_TB_ATTRIBUTE)
         if offer_letter_tb:
             offer_letter_tb = Decimal(offer_letter_tb)
         return offer_letter_tb
 
-    def get_offer_letter_account(self, allocation, organization):
+    def get_offer_letter_account(self, project):
         '''
         Returns the relevant offer letter expense code or None if nothing is found
 
-        :param allocation: The `~coldfront.core.allocation.models.Allocation`
-        :type allocation: `~coldfront.core.allocation.models.Allocation`
+        :param project: The `~coldfront.core.project.models.Project`
+        :type project: `~coldfront.core.project.models.Project`
 
         :return: Account corresponding to the offer letter expense code or None
         :rtype: `~ifxbilling.models.Account` or NoneType
         '''
-        code = allocation.get_attribute(self.OFFER_LETTER_CODE_ATTRIBUTE)
+        code = project.get_attribute(self.OFFER_LETTER_CODE_ATTRIBUTE)
+        if not project.projectorganization_set.exists():
+            raise Exception(f'Project {project.title} does not have a ProjectOrganization mapping.')
+        organization = project.projectorganization_set.first().organization
         if code:
             try:
                 code = Account.objects.get(code=code, organization=organization)
