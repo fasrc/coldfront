@@ -10,11 +10,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout with submodules
+    - name: Checkout
       uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        token: ${{ secrets.GITHUB_TOKEN }}
     - name: Configure HTTPS auth for all GitHub repos (including submodules)
       run: |
         git config --global url."https://${GIT_USER}:${GIT_TOKEN}@github.com/".insteadOf "https://github.com/"
