@@ -623,7 +623,7 @@ def collect_update_project_status_membership():
                 readd_aus = AllocationUser.objects.filter(
                     allocation__in=group_storage_allocations,
                     user__in=[pu.user for pu in present_projectusers]
-                ).exclude(status__name='Active')
+                ).exclude(status__name='Active').distinct()
                 if readd_aus:
                     logger.info(
                         'reactivating %s allocationusers: %s',
@@ -659,7 +659,7 @@ def collect_update_project_status_membership():
         rm_aus = AllocationUser.objects.filter(
             allocation__in=group_storage_allocations,
             user__in=[pu.user for pu in remove_projusers]
-        ).exclude(status__name='Removed')
+        ).exclude(status__name='Removed').distinct()
         if rm_aus:
             logger.info(
                 'slating %s allocationusers for removal: %s',
