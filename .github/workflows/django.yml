@@ -13,8 +13,19 @@ jobs:
     - name: Checkout with submodules
       uses: actions/checkout@v6
       with:
+        repository: fasrc/coldfront
         submodules: recursive
         token: ${{ secrets.GIT_HTTPS_TOKEN }}
+    - name: Set up SSH key
+      run: |
+        mkdir -p ~/.ssh/
+        echo "$SSH_KEY" > ~/.ssh/staging.key
+        chmod 600 ~/.ssh/staging.key
+        ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+        ssh-add ~/.ssh/staging.key
+      env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          SSH_KEY: ${{ secrets.ACTION_SSH }}
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
