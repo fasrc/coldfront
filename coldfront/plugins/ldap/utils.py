@@ -22,6 +22,7 @@ from coldfront.core.utils.fasrc import (
     log_missing,
     sort_by,
 )
+from coldfront.core.allocation.models import AllocationUserStatusChoice, AllocationUser
 from coldfront.core.project.models import (
     Project,
     ProjectStatusChoice,
@@ -496,6 +497,8 @@ def collect_update_project_status_membership():
     projectuser_role_user = ProjectUserRoleChoice.objects.get(name='User')
     projectuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
     project_active_status = ProjectStatusChoice.objects.get(name='Active')
+    allocationuserstatus_active = AllocationUserStatusChoice.objects.get(name='Active')
+    allocationuserstatus_removed = AllocationUserStatusChoice.objects.get(name='Removed')
     projectusers_to_remove = []
 
     active_projects = Project.objects.filter(
@@ -580,6 +583,9 @@ def collect_update_project_status_membership():
     for group in active_pi_groups:
 
         ad_users_not_added, remove_projuser_names = group.compare_members_projectusers()
+        group_storage_allocations = group.project.allocation_set.filter(
+                resources__resource_type__name='Storage', status__name='Active'
+        )
 
         # handle any AD users not in Coldfront
         if ad_users_not_added:
@@ -613,6 +619,20 @@ def collect_update_project_status_membership():
                 present_projectusers.update(
                     role=projectuser_role_user, status=projectuserstatus_active
                 )
+
+                readd_aus = AllocationUser.objects.filter(
+                    allocation__in=group_storage_allocations,
+                    user__in=[pu.user for pu in present_projectusers]
+                ).exclude(status__name='Active')
+                if readd_aus:
+                    logger.info(
+                        'reactivating %s allocationusers: %s',
+                        group.project.title,
+                        [(
+                            au.allocation.pk, au.allocation.resources.all(), au.user.username
+                        ) for au in readd_aus]
+                    )
+                    readd_aus.update(status=allocationuserstatus_active)
             # create new entries for all new ProjectUsers
             missing_projectusers = present_project_ifxusers.exclude(
                 pk__in=[pu.user.pk for pu in present_projectusers]
@@ -636,6 +656,19 @@ def collect_update_project_status_membership():
                 user__username__in=remove_projuser_names).exclude(status__name='Removed')
         logger.debug("remove_projusers - projectusers slated for removal:\n %s", remove_projusers)
         projectusers_to_remove.extend(list(remove_projusers))
+        rm_aus = AllocationUser.objects.filter(
+            allocation__in=group_storage_allocations,
+            user__in=[pu.user for pu in remove_projusers]
+        ).exclude(status__name='Removed')
+        if rm_aus:
+            logger.info(
+                'slating %s allocationusers for removal: %s',
+                group.project.title,
+                [(
+                    au.allocation.pk, au.allocation.resources.all(), au.user.username
+                ) for au in rm_aus]
+            )
+            rm_aus.update(status=allocationuserstatus_removed)
 
     ### update status of projectUsers slated for removal ###
     # change ProjectUser status to Removed
