@@ -134,10 +134,7 @@ def add_user_to_group(sender, **kwargs):
 @receiver(project_preremove_projectuser)
 def remove_member_from_group(sender, **kwargs):
     ldap_conn = LDAPConn()
-    if kwargs.get('primary_group', False):
-        ldap_conn.remove_member_from_group(kwargs['user_name'], kwargs['group_name'])
-    else:
-        ldap_conn.deactivate_user(kwargs['user_name'])
+    ldap_conn.remove_member_from_group(kwargs['user_name'], kwargs['group_name'])
 
 if 'coldfront.plugins.sftocf' in import_from_settings('INSTALLED_APPS', []):
     @receiver(starfish_add_aduser)
