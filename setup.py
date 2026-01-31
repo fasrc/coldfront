@@ -75,6 +75,7 @@ setup(
         'logging_tree==1.9',
         'mysqlclient==2.2.0',
         'pandas==2.2.1',
+        'python-ecsclient==1.1.12',
         'reportlab==4.0.5',
         'xhtml2pdf==0.2.15',
         'XlsxWriter',
