@@ -3,8 +3,10 @@ from coldfront.config.logging import LOGGING
 from coldfront.config.base import INSTALLED_APPS
 
 INSTALLED_APPS += [ 'coldfront.plugins.ecs' ]
-ECS_USER = ENV.str('ECS_USER', '')
-ECS_PASS = ENV.str('ECS_PASS', '')
+
+ECS_USER = ENV.str('ECS_USER', default='')
+ECS_PASS = ENV.str('ECS_PASS', default='')
+ECS_CLIENT_VERSION = ENV.str('ECS_CLIENT_VERSION', default='3')
 
 LOGGING['handlers']['ecs'] = {
     'class': 'logging.handlers.TimedRotatingFileHandler',
