@@ -68,6 +68,9 @@ class LDAPConn:
             'TEST_LDAP_CONNECT_TIMEOUT' if test else 'LDAP_CONNECT_TIMEOUT')
         AUTH_LDAP_USE_SSL = (
             'TEST_AUTH_LDAP_USE_SSL' if test else 'AUTH_LDAP_USE_SSL')
+        CF_LDAP_PROJECT_GROUP_SAM = (
+            'TEST_CF_LDAP_PROJECT_GROUP_SAM' if test else 'CF_LDAP_PROJECT_GROUP_SAM'
+        )
 
         self.LDAP_SERVER_URI = import_from_settings(AUTH_LDAP_SERVER_URI, None)
         self.LDAP_BIND_DN = import_from_settings(AUTH_LDAP_BIND_DN, None)
@@ -76,6 +79,7 @@ class LDAPConn:
         self.LDAP_GROUP_SEARCH_BASE = import_from_settings(AUTH_LDAP_GROUP_SEARCH_BASE, None)
         self.LDAP_CONNECT_TIMEOUT = import_from_settings(LDAP_CONNECT_TIMEOUT, 20)
         self.LDAP_USE_SSL = import_from_settings(AUTH_LDAP_USE_SSL, False)
+        self.CF_LDAP_PROJECT_GROUP_SAM = import_from_settings(CF_LDAP_PROJECT_GROUP_SAM, None)
         self.server = Server(
             self.LDAP_SERVER_URI,
             use_ssl=self.LDAP_USE_SSL, connect_timeout=self.LDAP_CONNECT_TIMEOUT
@@ -182,6 +186,20 @@ class LDAPConn:
         if not group:
             raise ValueError("no groups returned")
         return group[0]
+
+    def return_project_ldap_groups(self, attributes=('sAMAccountName',), groups=None):
+        """Return all LDAP groups that should be in ColdFront as projects."""
+        if self.CF_LDAP_PROJECT_GROUP_SAM:
+            group_entries = self.search_groups(
+                {'sAMAccountName': self.CF_LDAP_PROJECT_GROUP_SAM},
+                attributes=attributes
+            )
+        else:
+            group_entries = self.search_groups({
+                'sAMAccountName': groups,
+                'managedBy': '*',
+            }, attributes=attributes)
+        return group_entries
 
     def add_user_to_group(self, user_name, group_name):
         user = self.return_user_by_name(user_name)
