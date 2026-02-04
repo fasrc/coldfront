@@ -63,6 +63,7 @@ from coldfront.core.allocation.models import (Allocation,
                                               AllocationUserStatusChoice)
 from coldfront.core.allocation.signals import (allocation_activate,
                                                allocation_autocreate,
+                                               allocation_autoupdate,
                                                allocation_activate_user,
                                                allocation_user_add_on_slurm,
                                                allocation_disable,
@@ -86,8 +87,7 @@ if 'ifxbilling' in settings.INSTALLED_APPS:
     from ifxbilling.models import Account, UserProductAccount
 if 'django_q' in settings.INSTALLED_APPS:
     from django_q.tasks import Task
-if 'coldfront.plugins.isilon' in settings.INSTALLED_APPS:
-    from coldfront.plugins.isilon.utils import update_isilon_allocation_quota
+
 
 ALLOCATION_ENABLE_ALLOCATION_RENEWAL = import_from_settings(
     'ALLOCATION_ENABLE_ALLOCATION_RENEWAL', True)
@@ -399,7 +399,10 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                                 'before approving this request.')
                     except Exception as e:
                         error = f"An error was encountered during autocreation: {e} Please contact your administrator."
-                        logger.exception('A350: %s', e)
+                        logger.exception(
+                            'allocation autocreation error. allocation_pk=%s,error=%s',
+                            allocation_obj.pk, e
+                        )
                     if error:
                         messages.error(request, error)
                         return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
@@ -2412,27 +2415,13 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
 
                 autoupdate_choice = autoupdate_form.data.get('auto_update_opts')
                 if autoupdate_choice == '2':
-                    # check resource type, see if appropriate plugin is available
-                    # resource = alloc_change_obj.allocation.resources.first().name
-                    resources_plugins = {
-                        'isilon': 'coldfront.plugins.isilon',
-                        # 'lfs': 'coldfront.plugins.lustre',
-                    }
-                    rtype = next((
-                        k for k in resources_plugins
-                        if k in alloc_change_obj.allocation.get_parent_resource.name
-                    ), None)
-                    if not rtype:
-                        err = ('You cannot auto-update non-isilon resources at this '
-                            'time. Please manually update the resource before '
-                            'approving this change request.')
-                        messages.error(request, err)
-                        return self.redirect_to_detail(pk)
                     # get new quota value
                     quantity_label = alloc_change_obj.allocation.unit_label
                     old_quota = alloc_change_obj.allocation.size
                     new_quota = next((
-                        a for a in attrs_to_change if a['name'] == f'Storage Quota ({quantity_label})'), None)
+                        a for a in attrs_to_change
+                        if a['name'] == f'Storage Quota ({quantity_label})'
+                    ), None)
                     if not new_quota:
                         err = ('You can only auto-update resource quotas at this '
                             'time. Please manually update the resource before '
@@ -2441,29 +2430,30 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                         return self.redirect_to_detail(pk)
 
                     new_quota_value = int(new_quota['new_value'])
-                    plugin = resources_plugins[rtype]
-                    if plugin in settings.INSTALLED_APPS:
-                        try:
-                            update_isilon_allocation_quota(
-                                alloc_change_obj.allocation, new_quota_value
-                            )
-                            logger.info(
-                                "Auto-updated allocation %s quota from %s to %s",
-                                alloc_change_obj.allocation, old_quota, new_quota_value,
-                                extra={'category': 'integration:isilon', 'status': 'success'},
-                            )
-                        except Exception as e:
-                            logger.exception('Auto-update of allocation quota failed: %s ', e,
-                                extra={'category': 'integration:isilon', 'status': 'error'}
-                            )
-                            err = ("An error was encountered while auto-updating"
-                                "the allocation quota. Please contact Coldfront "
-                                "administration and/or manually update the allocation.")
-                            messages.error(request, err)
+                    try:
+                        preupdate_responses = allocation_autoupdate.send(
+                            sender=self.__class__,
+                            allocation=alloc_change_obj.allocation,
+                            new_quota_value=new_quota_value,
+                        )
+                        preupdate_replies = [p[1] for p in preupdate_responses if p[1]]
+                        if not preupdate_replies:
+                            error = ('this allocation\'s resource has no autoupdate options '
+                                'at this time. Please manually create the resource '
+                                'before approving this request.')
+                            messages.error(request, error)
                             return self.redirect_to_detail(pk)
-                    else:
-                        err = ("There is an issue with the configuration of "
-                            "Coldfront's auto-updating capabilities. Please contact Coldfront "
+                        logger.info(
+                            "Auto-updated allocation %s quota from %s to %s",
+                            alloc_change_obj.allocation, old_quota, new_quota_value,
+                            extra={'category': 'integration:isilon', 'status': 'success'},
+                        )
+                    except Exception as e:
+                        logger.exception('Auto-update of allocation quota failed: %s ', e,
+                            extra={'category': 'integration:isilon', 'status': 'error'}
+                        )
+                        err = ("An error was encountered while auto-updating"
+                            "the allocation quota. Please contact Coldfront "
                             "administration and/or manually update the allocation.")
                         messages.error(request, err)
                         return self.redirect_to_detail(pk)
