@@ -29,6 +29,7 @@ idna==3.7
 protobuf==6.30.0
 pyparsing==3.1.2
 python-dateutil==2.9.0.post0
+python-ecsclient==1.1.12
 python-memcached==1.62
 pytz==2024.1
 redis==5.0.0

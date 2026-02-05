@@ -20,6 +20,7 @@ plugin_configs = {
     'PLUGIN_IFX': 'plugins/ifx.py',
     'PLUGIN_SLURM': 'plugins/slurm.py',
     'PLUGIN_IQUOTA': 'plugins/iquota.py',
+    'PLUGIN_ECS': 'plugins/ecs.py',
     'PLUGIN_FREEIPA': 'plugins/freeipa.py',
     'PLUGIN_SYSMON': 'plugins/system_monitor.py',
     'PLUGIN_XDMOD': 'plugins/xdmod.py',
