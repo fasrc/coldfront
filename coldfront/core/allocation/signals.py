@@ -4,6 +4,9 @@ import django.dispatch
 allocation_autocreate = django.dispatch.Signal()
     #providing_args=["approval_form_data", "allocation_obj"]
 
+allocation_autoupdate = django.dispatch.Signal()
+    #providing_args=["allocation", "new_quota_value"]
+
 allocation_activate = django.dispatch.Signal()
     #providing_args=["allocation_pk"]
 allocation_disable = django.dispatch.Signal()
@@ -28,3 +31,5 @@ allocation_raw_share_edit = django.dispatch.Signal()
 
 allocation_user_add_on_slurm = django.dispatch.Signal()
     #providing_args=["username", "cluster", "account"]
+
+xdmod_account_usage = django.dispatch.Signal()
