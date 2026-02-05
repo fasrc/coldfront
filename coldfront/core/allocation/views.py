@@ -401,11 +401,17 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                         error = f"An error was encountered during autocreation: {e} Please contact your administrator."
                         logger.exception(
                             'allocation autocreation error. allocation_pk=%s,error=%s',
-                            allocation_obj.pk, e
+                            allocation_obj.pk, e,
+                            extra={'category': 'integration', 'status': 'error'},
                         )
                     if error:
                         messages.error(request, error)
                         return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
+                    logger.info(
+                        "Auto-created allocation during approval. requesting_user=%s,allocation_pk=%s,project=%s,size=%s",
+                        request.user, allocation_obj.pk, allocation_obj.project.title, allocation_obj.size,
+                        extra={'category': 'integration', 'status': 'success'},
+                    )
                 if check_l3_tag(allocation_obj, resource):
                     AllocationAttribute.objects.get_or_create(
                         allocation=allocation_obj,
@@ -2449,7 +2455,10 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                             extra={'category': 'integration:isilon', 'status': 'success'},
                         )
                     except Exception as e:
-                        logger.exception('Auto-update of allocation quota failed: %s ', e,
+                        logger.exception(
+                            'Auto-update of allocation quota failed. requesting_user=%s,allocation_pk=%s,change_request_pk=%s,error=%s',
+                            request.user, alloc_change_obj.allocation.pk,
+                            alloc_change_obj.pk, str(e),
                             extra={'category': 'integration:isilon', 'status': 'error'}
                         )
                         err = ("An error was encountered while auto-updating"
