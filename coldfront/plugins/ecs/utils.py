@@ -55,7 +55,7 @@ class ECSResourceManager():
                 notification_size=notification_limit_gb,
         )
 
-    def change_bucket_quota(self, bucket_name, namespace_name, new_block_size_tb):
+    def change_bucket_quota(self, bucket_name, new_block_size_tb, namespace_name=None):
         """Change a quota for a tenant."""
         # possibly use this in create_allocation_bucket as well
         new_block_size_gb = new_block_size_tb * 1024
