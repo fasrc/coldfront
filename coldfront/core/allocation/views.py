@@ -2433,7 +2433,7 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                     try:
                         preupdate_responses = allocation_autoupdate.send(
                             sender=self.__class__,
-                            allocation=alloc_change_obj.allocation,
+                            allocation_obj=alloc_change_obj.allocation,
                             new_quota_value=new_quota_value,
                         )
                         preupdate_replies = [p[1] for p in preupdate_responses if p[1]]
