@@ -28,7 +28,7 @@ from coldfront.plugins.slurm.utils import (
     slurm_fixed_width_lines_to_dict,
     SlurmError,
 )
-
+from coldfront.plugins.slurm.integrations import SlurmError, get_cluster_connection
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,7 @@ class SlurmCluster(SlurmBase):
             )
             return new_allocation
 
-        partitions = slurm_list_partitions()
+        partitions = get_cluster_connection(self.name).list_partitions()
         current_cluster_resource = Resource.objects.filter(
             resourceattribute__value=self.name, resource_type__name='Cluster').first()
         if not current_cluster_resource:
@@ -284,7 +284,7 @@ class SlurmCluster(SlurmBase):
             }
 
         if not file:
-            share_info = slurm_collect_shares(cluster=self.name)
+            share_info = get_cluster_connection(self.name).collect_shares()
         else:
             with open(file, 'r') as share_file:
                 share_data = list(share_file)
