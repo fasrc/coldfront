@@ -33,6 +33,7 @@ class Command(BaseCommand):
             ('GPU Count', 'Int'),
             ('Features', 'Text'),
             ('slurm_integration', 'Text'),
+            ('NodeType', 'Text'),
             # UBCCR
             ('Core Count', 'Int'),
             # ('expiry_time', 'Int'),
@@ -63,6 +64,9 @@ class Command(BaseCommand):
             )
 
         for resource_type, description in (
+            # FASRC
+            ('Supergroup', 'Compute Supergroup'),
+            # UBCCR
             ('Storage', 'Network Storage'),
             ('Storage Tier', 'Storage Tier',),
             ('Cloud', 'Cloud Computing'),

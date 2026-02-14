@@ -89,6 +89,25 @@ class LDAPConn:
         group = self.search_groups({'distinguishedName': group_dn, 'member': member_dn})
         return bool(group)
 
+    def check_group_validity(self, group_entry):
+        """Check if group entry is valid.
+
+        A valid group has a valid manager.
+        """
+        # run checks on the groups to ensure they have valid managers and aren't disabled
+        try:
+            _, manager = self.return_group_members_manager(group_entry['sAMAccountName'][0])
+        except LDAPException as e:
+            logger.warning('group %s invalid: %s', group_entry['sAMAccountName'][0], e)
+            return False
+        if not manager:
+            return False
+        if not user_valid(manager):
+            return False
+        return True
+
+
+
     def search(self, attr_search_dict, search_base, attributes=ALL_ATTRIBUTES):
         """Run an LDAP search.
 
@@ -173,14 +192,16 @@ class LDAPConn:
             raise ValueError(f"no users returned for username {username}")
         return user[0]
 
-    def return_group_by_name(self, groupname, return_as='dict', attributes=ALL_ATTRIBUTES):
+    def return_group_by_name(self, samaccountname, return_as='dict', attributes=ALL_ATTRIBUTES):
         group = self.search_groups(
-            {"sAMAccountName": groupname}, return_as=return_as, attributes=attributes
+            {"sAMAccountName": samaccountname}, return_as=return_as, attributes=attributes
         )
         if len(group) > 1:
+            logger.error('multiple groups with same sAMAccountName: %s', samaccountname)
             raise ValueError("too many groups in value returned")
         if not group:
-            raise ValueError("no groups returned")
+            logger.error('no groups found with sAMAccountName: %s', samaccountname)
+            raise ValueError("no matching groups returned")
         return group[0]
 
     def add_user_to_group(self, user_name, group_name):
@@ -325,12 +346,15 @@ class LDAPConn:
         )
         if len(group_entries) > 1:
             logger.error('multiple groups with same sAMAccountName: %s', samaccountname)
-            return 'multiple groups with same sAMAccountName'
+            raise LDAPException('multiple groups with same sAMAccountName')
         if not group_entries:
             logger.error('no groups found with sAMAccountName: %s', samaccountname)
-            return 'no matching groups found'
+            raise LDAPException('no matching groups found')
         group_entry = group_entries[0]
-        return self.manager_members_from_group(group_entry)
+        try:
+            return self.manager_members_from_group(group_entry)
+        except LDAPException as e:
+            raise
 
     def manager_members_from_group(self, group_entry):
         group_dn = group_entry['distinguishedName'][0]
@@ -344,7 +368,7 @@ class LDAPConn:
             group_manager_dn = group_entry['managedBy'][0]
         except Exception as e:
             logger.error('no manager specified for group %s', group_dn)
-            return 'no manager specified'
+            raise LDAPException('no manager specified') from e
         manager_attr_list = user_attr_list + ['memberOf']
         group_manager = self.search_users(
             {'distinguishedName': group_manager_dn}, attributes=manager_attr_list
@@ -352,8 +376,17 @@ class LDAPConn:
         logger.debug('group_manager:\n%s', group_manager)
         if not group_manager:
             logger.error('no ADUser manager found for group %s', group_dn)
-            return 'no ADUser manager found'
+            raise LDAPException('no ADUser manager found')
         return (group_members, group_manager[0])
+
+    def return_group_group_members(self, samaccountname):
+        """return group entries that are members of the specified group."""
+        logger.debug('return_group_group_members for Group %s', samaccountname)
+        group = self.return_group_by_name(samaccountname)
+        group_dn = group['distinguishedName'][0]
+        group_members = self.search_groups({'memberOf': group_dn})
+        logger.debug('group_members:\n%s', group_members)
+        return group_members
 
 
 def user_valid(user):
