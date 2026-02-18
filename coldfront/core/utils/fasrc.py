@@ -76,6 +76,9 @@ def select_one_project_allocation(project_obj, resource_obj, dirpath):
         if len(allocations) == 1:
             return allocations[0]
         elif len(allocations) > 1:
+            allocations2 = [a for a in allocation_query if a.path and dirpath and a.path == dirpath]
+            if len(allocations2) == 1:
+                return allocations2[0]
             print(f'multiple allocations found for project/resource/path pairing: {allocations}, {allocations[0].path}')
             logger.exception('multiple allocations found for project/resource/path pairing: %s %s', allocations, allocations[0].path)
             raise Exception('multiple allocations found for project/resource/path pairing')
