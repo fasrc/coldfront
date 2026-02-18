@@ -148,7 +148,7 @@ class SlurmApiConnection():
 
     def add_assoc(self, account_name, user_name, noop=SLURMREST_NOOP):
         association_dict = {
-            "v0040_openapi_assocs_resp": {
+            "v0042_openapi_assocs_resp": {
                 "associations": [{
                     'account': account_name,
                     'user': user_name,
@@ -157,7 +157,7 @@ class SlurmApiConnection():
             }
         }
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0040_post_associations,
+            self.slurmdb_api.slurmdb_v0042_post_associations,
             noop=noop,
             **association_dict
         )
