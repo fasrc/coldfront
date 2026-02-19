@@ -200,7 +200,7 @@ class AllocationApprovalForm(forms.Form):
     path = forms.CharField(
         label=mark_safe(
             'If you have opted for manual allocation creation, please input the path where the '
-            'allocation will be created. Start it with <code>C/</code> or <code>F/<code> for lfs '
+            'allocation will be created. Start it with <code>C/</code> or <code>F/</code> for lfs '
             '(e.g., <code>C/example_lab</code>) and <code>rc_labs/</code> or '
             '<code>c_fasse_labs/</code> for isilon (e.g., <code>rc_labs/example_lab</code>)',
         ),
