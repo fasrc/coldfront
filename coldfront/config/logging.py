@@ -91,14 +91,14 @@ LOGGING = {
         'django_auth_ldap': {
             'level': 'INFO',
             # 'handlers': ['console', 'file'],
-            'handlers': ['console', 'json'],
+            'handlers': ['console'],
         },
         'django': {
             'handlers': ['console', 'json'],
             'level': 'INFO',
         },
         'django-q': {
-            'handlers': ['django-q', 'key-events', 'json'],
+            'handlers': ['django-q', 'key-events'],
         },
         'ifx': {
             'handlers': ['console', 'key-events', 'console_debug', 'mail_admins', 'json'],
