@@ -41,7 +41,6 @@ class ATTAllocationQuery:
                 'usedgb': 'usedGB',
                 'sizebytes': 'limitBytes',
                 'usedbytes': 'usedBytes',
-                'fs_path': 'Path',
                 'server_replace': '/n/',
                 'path_def': "substring(e.Path, size('/n/') + size(split(e.Path, '/')[2]) + 1)",
                 'unique':'datetime(e.DotsLFSUpdateDate) as begin_date'
@@ -56,7 +55,6 @@ class ATTAllocationQuery:
                     AND (e.Path =~ '.*labs.*')\
                     AND (datetime() - duration('P31D') <= datetime(r.DotsUpdateDate))\
                     AND NOT (e.SizeGB = 0)",
-                'fs_path':'Path',
                 'r_updated': 'DotsUpdateDate',
                 'storage_type': 'Isilon',
                 'usedgb': 'UsedGB',
@@ -74,7 +72,6 @@ class ATTAllocationQuery:
                 'validation_query': 'NOT (e.SizeGB = 0)',
                 'r_updated': 'DotsLVSUpdateDate',
                 'storage_type': 'Volume',
-                'fs_path': 'LogicalVolume',
                 'path_def': "replace(e.LogicalVolume, '/dev/data/', '')",
                 'usedgb': 'UsedGB',
                 'sizebytes': 'SizeGB * 1000000000',
@@ -82,6 +79,21 @@ class ATTAllocationQuery:
                 'server_replace': '.rc.fas.harvard.edu',
                 'unique': 'datetime(e.DotsLVSUpdateDate) as update_date,\
                         datetime(e.DotsLVDisplayUpdateDate) as display_date'
+            },
+            'tapeallocation': {
+                'volumes': 'NESE',
+                'relation': 'Owns',
+                'match': '(e:TapeAllocation)',
+                'server': 'Provider',
+                'validation_query': "e.Pool =~ '.*1'",
+                'r_updated': 'DotsUpdateDate',
+                'storage_type': 'Tape',
+                'path_def': 'e.Pool',
+                'usedgb': 'UsedGB',
+                'sizebytes': 'SizeGB * 1000000000',
+                'usedbytes': 'UsedGB * 1000000000',
+                'server_replace': "''",
+                'unique': 'datetime(e.DotsUpdateDate) as begin_date',
             },
         }
         d = query_dict[vol_type]
