@@ -40,7 +40,7 @@ class ATTAllocationQuery:
                 'usedgb': 'usedGB',
                 'sizebytes': 'limitBytes',
                 'usedbytes': 'usedBytes',
-                'server_replace': '/n/',
+                'server_replace': "'/n/', ''",
                 'path_def': "substring(e.Path, size('/n/') + size(split(e.Path, '/')[2]) + 1)",
                 'unique':'datetime(e.DotsLFSUpdateDate) as begin_date'
             },
@@ -59,7 +59,7 @@ class ATTAllocationQuery:
                 'usedgb': 'UsedGB',
                 'sizebytes': 'SizeBytes',
                 'usedbytes': 'UsedBytes',
-                'server_replace': '01.rc.fas.harvard.edu',
+                'server_replace': "'01.rc.fas.harvard.edu', ''",
                 'path_def': "replace(e.Path, '/ifs/', '')",
                 'unique': 'datetime(e.DotsUpdateDate) as begin_date'
             },
@@ -75,7 +75,7 @@ class ATTAllocationQuery:
                 'usedgb': 'UsedGB',
                 'sizebytes': 'SizeGB * 1000000000',
                 'usedbytes': 'UsedGB * 1000000000',
-                'server_replace': '.rc.fas.harvard.edu',
+                'server_replace': "'.rc.fas.harvard.edu', ''",
                 'unique': 'datetime(e.DotsLVSUpdateDate) as update_date,\
                         datetime(e.DotsLVDisplayUpdateDate) as display_date'
             },
@@ -91,7 +91,7 @@ class ATTAllocationQuery:
                 'usedgb': 'UsedGB',
                 'sizebytes': 'SizeGB * 1000000000',
                 'usedbytes': 'UsedGB * 1000000000',
-                'server_replace': '',
+                'server_replace': "'NESE', 'nesetape'",
                 'unique': 'datetime(e.DotsUpdateDate) as begin_date',
             },
         }
@@ -112,7 +112,7 @@ class ATTAllocationQuery:
             {d['path_def']} as fs_path,\
             '{d['storage_type']}' as storage_type,\
             datetime(r.{d['r_updated']}) as rel_updated,\
-            replace(e.{d['server']}, '{d['server_replace']}', '') as server"
+            replace(e.{d['server']}, {d['server_replace']}) as server"
         }
         self.queries['statements'].append(statement)
 

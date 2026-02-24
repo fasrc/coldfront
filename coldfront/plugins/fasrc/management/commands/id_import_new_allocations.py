@@ -88,7 +88,7 @@ class Command(BaseCommand):
                     i for i in allocation_usages if i['vol_name'] == lab_server
                     and lab_path in i['path'] and i['group_name'] == lab_name
                 ]
-                if entry['server'] != 'NESE' and not lab_usage_entries:
+                if entry['server'] != 'nesetape' and not lab_usage_entries:
                     logger.info("No starfish usage data found for %s %s %s", lab_name, lab_server, lab_path)
                     continue
 
