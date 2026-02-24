@@ -1,7 +1,6 @@
 import json
 import logging
 
-import pandas as pd
 import requests
 
 from coldfront.core.utils.common import import_from_settings
@@ -92,7 +91,7 @@ class ATTAllocationQuery:
                 'usedgb': 'UsedGB',
                 'sizebytes': 'SizeGB * 1000000000',
                 'usedbytes': 'UsedGB * 1000000000',
-                'server_replace': "''",
+                'server_replace': '',
                 'unique': 'datetime(e.DotsUpdateDate) as begin_date',
             },
         }
@@ -131,47 +130,12 @@ class QuotaDataPuller:
     def get_standardizer(self, standard):
         if standard == 'ATTQuery':
             return self._standardize_attquery
-        if standard == 'NESEfile':
-            return self._standardize_nesefile
         raise ValueError(standard)
 
     def _standardize_attquery(self):
         attconn = AllTheThingsConn(volumes=self.volumes)
         resp_json = attconn.pull_quota_data()
         return attconn.format_query_results(resp_json)
-
-    def _standardize_nesefile(self):
-        datafile = 'nese_data/pools'
-        header_file = 'nese_data/pools.header'
-        with open('nese_data/local_groupkey') as groupkey_file:
-            translator = dict((
-                kv.split('=') for kv in (l.strip('\n') for l in groupkey_file)
-            ))
-        headers_df = pd.read_csv(header_file, header=0, sep='\s+')
-        headers = headers_df.columns.values.tolist()
-        data = pd.read_csv(datafile, names=headers, sep='\s+')
-        data = data.loc[data['pool'].str.contains('1')]
-        data['fs_path'] = data['pool']
-        data['lab'] = data['pool'].str.replace('1', '').str.replace('hugl', '').str.replace('hus3', '')
-        data['server'] = 'nesetape'
-        data['storage_type'] = 'tape'
-        data['byte_allocation'] = (data['mib_capacity'] + data['mib_capacity']*0.025) * 1048576
-        data['byte_usage'] = data['mib_used'] * 1048576
-        data['tb_allocation'] = round((
-            (data['mib_capacity'] + data['mib_capacity']*0.025) / 953674.31640625
-        ), -1)
-        data['tb_usage'] = data['mib_used'] / 953674.31640625
-        data = data[[
-            'lab', 'server', 'storage_type', 'byte_allocation',
-            'byte_usage', 'tb_allocation', 'tb_usage', 'fs_path',
-        ]]
-        nesedict = data.to_dict(orient='records')
-        for d in nesedict:
-            if translator.get(d['lab']):
-                d['lab'] = translator[d['lab']]
-            else:
-                d['lab'] = d['lab']+'_lab'
-        return nesedict
 
 
 class AllTheThingsConn:
@@ -240,6 +204,7 @@ class AllTheThingsConn:
         query.produce_query_statement('isilon', volumes=self.volumes)
         query.produce_query_statement('quota', volumes=self.volumes)
         query.produce_query_statement('volume', volumes=self.volumes)
+        query.produce_query_statement('tapeallocation')
         resp_json = self.post_query(query.queries)
         logger.debug(resp_json)
         return resp_json
@@ -356,19 +321,19 @@ def match_entries_with_projects(result_json):
         logger.warning('missing projects: %s', missing_projs)
     # remove them from result_json
     missing_proj_titles = [list(p.values())[0] for p in missing_projs]
-    [result_json.pop(t) for t in missing_proj_titles]
+    for title in missing_proj_titles:
+        result_json.pop(title)
     return result_json, proj_models
 
 
 def pull_push_quota_data(volumes=None):
     logger = logging.getLogger('coldfront.import_quotas')
     att_data = QuotaDataPuller(volumes=volumes).pull('ATTQuery')
-    nese_data = QuotaDataPuller(volumes=volumes).pull('NESEfile')
-    combined_data = att_data + nese_data
-    resp_json_by_lab = {entry['lab']:[] for entry in combined_data}
-    [resp_json_by_lab[e['lab']].append(e) for e in combined_data]
+    resp_json_by_lab = {entry['lab']:[] for entry in att_data}
+    for entry in att_data:
+        resp_json_by_lab[entry['lab']].append(entry)
     logger.debug(resp_json_by_lab)
-    result_file = 'local_data/att_nese_quota_data.json'
+    result_file = 'local_data/att_quota_data.json'
     save_json(result_file, resp_json_by_lab)
     push_quota_data(result_file)
 

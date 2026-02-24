@@ -48,7 +48,8 @@ class Command(BaseCommand):
         result_json = attconn.pull_quota_data()
         result_json = attconn.format_query_results(result_json)
         resp_json_by_lab = {entry['lab']:[] for entry in result_json}
-        [resp_json_by_lab[e['lab']].append(e) for e in result_json]
+        for entry in result_json:
+            resp_json_by_lab[entry['lab']].append(entry)
         result_file = 'local_data/att_quota_data.json'
         save_json(result_file, resp_json_by_lab)
 
@@ -87,7 +88,7 @@ class Command(BaseCommand):
                     i for i in allocation_usages if i['vol_name'] == lab_server
                     and lab_path in i['path'] and i['group_name'] == lab_name
                 ]
-                if not lab_usage_entries:
+                if entry['server'] != 'NESE' and not lab_usage_entries:
                     logger.info("No starfish usage data found for %s %s %s", lab_name, lab_server, lab_path)
                     continue
 
