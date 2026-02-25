@@ -227,7 +227,7 @@ def pair_allocations_data(project, quota_dicts):
     allocs = project.allocation_set.filter(
         status__name__in=['Active','Pending Deactivation'],
         resources__resource_type__name='Storage'
-    )
+    ).exclude(resources__name__icontains='vast')
     paired_allocs = {}
     # first, pair allocations with those that have same
     for allocation in allocs:
