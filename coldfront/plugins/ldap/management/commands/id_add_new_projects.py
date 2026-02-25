@@ -41,9 +41,7 @@ class Command(BaseCommand):
         ldap_conn = LDAPConn()
         project_titles = [project.title for project in Project.objects.all()]
         # get all AD groups that should be in ColdFront
-        ad_groups = ldap_conn.return_project_ldap_groups(groups=groups)
-        # get all AD group names
-        ad_group_names = [group['sAMAccountName'][0] for group in ad_groups]
+        ad_group_names = ldap_conn.return_project_ldap_groups(groups=groups)
         # remove AD groups that already have a corresponding ColdFront project
         ad_only = list(set(ad_group_names) - set(project_titles))
         errortracker = {

@@ -187,19 +187,25 @@ class LDAPConn:
             raise ValueError("no groups returned")
         return group[0]
 
-    def return_project_ldap_groups(self, attributes=('sAMAccountName',), groups=None):
+    def return_project_ldap_groups(self, attributes=('sAMAccountName',), groups=('*_lab','*_l3')):
         """Return all LDAP groups that should be in ColdFront as projects."""
+        lab_entries = self.search_groups({
+            'sAMAccountName': groups,
+            'managedBy': '*',
+        }, attributes=attributes)
+        lab_sams = [lab['sAMAccountName'][0] for lab in lab_entries]
         if self.CF_LDAP_PROJECT_GROUP_SAM:
-            group_entries = self.search_groups(
+            coldfront_group = self.search_groups(
                 {'sAMAccountName': self.CF_LDAP_PROJECT_GROUP_SAM},
                 attributes=attributes
             )
-        else:
-            group_entries = self.search_groups({
-                'sAMAccountName': groups,
-                'managedBy': '*',
-            }, attributes=attributes)
-        return group_entries
+            coldfront_group_members = coldfront_group[0]['member'] if coldfront_group else []
+            member_entries = self.search_groups(
+                {'distinguishedName': coldfront_group_members}, attributes=attributes
+            ) if coldfront_group_members else []
+            member_sams = [m['sAMAccountName'][0] for m in member_entries]
+            lab_sams = list(set(lab_sams + member_sams))
+        return lab_sams
 
     def add_user_to_group(self, user_name, group_name):
         user = self.return_user_by_name(user_name)
