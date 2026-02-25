@@ -197,7 +197,7 @@ class LDAPConn:
         if self.CF_LDAP_PROJECT_GROUP_SAM:
             coldfront_group = self.search_groups(
                 {'sAMAccountName': self.CF_LDAP_PROJECT_GROUP_SAM},
-                attributes=attributes
+                attributes='member'
             )
             coldfront_group_members = coldfront_group[0]['member'] if coldfront_group else []
             member_entries = self.search_groups(
