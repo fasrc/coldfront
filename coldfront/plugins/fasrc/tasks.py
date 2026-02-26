@@ -4,11 +4,10 @@ import logging
 import io
 import traceback
 from contextlib import redirect_stdout, redirect_stderr
-
 from django.core.management import call_command
 from django.core.mail import send_mail
-from django.conf import settings
 
+from coldfront.core.utils.common import import_from_settings
 
 logger = logging.getLogger('coldfront.run_ifx_updates')
 
@@ -21,7 +20,6 @@ def import_quotas(volumes=None):
     ----------
     volumes : string of volume names separated by commas. Optional, default None
     """
-    logger = logging.getLogger('coldfront.import_quotas')
     if volumes:
         volumes = volumes.split(",")
     pull_push_quota_data()
@@ -44,36 +42,48 @@ def run_ifx_updates(emails=None):
     with redirect_stdout(out), redirect_stderr(err):
         print("=== Starting coldfront updates ===")
         try:
-            try:
-                call_command(
-                    "updateOrganizations", "-t", "Harvard,Research Computing Storage Billing"
-                )
-            except SystemExit as e:
-                success = False
-                exception_info.append(f"updateOrganizations exited with code {e.code}")
-            try:
-                call_command("updateApplicationUsers")
-            except SystemExit as e:
-                success = False
-                exception_info.append(f"updateApplicationUsers exited with code {e.code}")
-            try:
-                call_command("updateUserAccounts")
-            except SystemExit as e:
-                success = False
-                exception_info.append(f"updateUserAccounts exited with code {e.code}")
-            print("=== All commands completed (with errors)" if not success
-                  else "=== All commands completed successfully ===")
+            print("=== Starting updateOrganizations ===")
+            call_command(
+                "updateOrganizations", "-t", "Harvard,Research Computing Storage Billing"
+            )
+            print("=== updateOrganizations completed successfully ===")
         except Exception as e:
             success = False
-            exception_info = traceback.format_exc()
-            print("=== EXCEPTION OCCURRED ===")
-            print(exception_info)
+            exception_info.append(("=== updateOrganizations EXCEPTION OCCURRED ==="))
+            exception_info.append(traceback.format_exc())
+        except SystemExit as e:
+            success = False
+            exception_info.append(f"updateOrganizations exited with code {e.code}")
+        try:
+            print("=== Starting updateApplicationUsers ===")
+            call_command("updateApplicationUsers")
+            print("=== updateApplicationUsers completed successfully ===")
+        except Exception as e:
+            success = False
+            exception_info.append(("=== updateApplicationUsers EXCEPTION OCCURRED ==="))
+            exception_info.append(traceback.format_exc())
+        except SystemExit as e:
+            success = False
+            exception_info.append(f"updateApplicationUsers exited with code {e.code}")
+        try:
+            print("=== Starting updateUserAccounts ===")
+            call_command("updateUserAccounts")
+            print("=== updateUserAccounts completed successfully ===")
+        except Exception as e:
+            success = False
+            exception_info.append(("=== updateOrganizations EXCEPTION OCCURRED ==="))
+            exception_info.append(traceback.format_exc())
+        except SystemExit as e:
+            success = False
+            exception_info.append(f"updateUserAccounts exited with code {e.code}")
+        print("=== All commands completed (with errors)" if not success
+              else "=== All commands completed successfully ===")
 
     stdout_content = out.getvalue()
     stderr_content = err.getvalue()
 
     subject_status = "SUCCESS" if success else "FAILURE"
-    subject = f"coldfront updateApplicationUsers [{subject_status}]"
+    subject = f"coldfront ifx update [{subject_status}]"
 
     body_parts = [
         "This is the output from the scheduled coldfront update.\n",
@@ -84,17 +94,15 @@ def run_ifx_updates(emails=None):
     ]
     if exception_info:
         body_parts.append("\n=== EXIT/EXCEPTION INFO ===")
-        body_parts.extend(str(info) for info in exception_info)
+        body_parts.extend(exception_info)
 
     body = "\n".join(body_parts)
     if emails:
-        recipient_list = emails
-
         send_mail(
             subject=subject,
             message=body,
-            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@example.com"),
-            recipient_list=recipient_list,
+            from_email=import_from_settings('EMAIL_SENDER'),
+            recipient_list=emails,
             fail_silently=False,
         )
     else:
