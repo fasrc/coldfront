@@ -199,8 +199,8 @@ class AllocationApprovalForm(forms.Form):
     )
     path = forms.CharField(
         label=mark_safe(
-            'If you have opted for manual allocation creation, please input the path where the '
-            'allocation will be created. Start it with <code>C/</code> or <code>F/</code> for lfs '
+            'If you have opted for manual allocation creation, please enter the path where the '
+            'allocation was created. Start it with <code>C/</code> or <code>F/<code> for lfs '
             '(e.g., <code>C/example_lab</code>) and <code>rc_labs/</code> or '
             '<code>c_fasse_labs/</code> for isilon (e.g., <code>rc_labs/example_lab</code>)',
         ),
@@ -233,18 +233,14 @@ class AllocationApprovalForm(forms.Form):
             if not cleaned_data.get('path'):
                 self.add_error(
                     'path',
-                    'You must provide the path where the allocation will be created if you choose to create the allocation manually.'
+                    'You must provide the path where the allocation will be created '
+                    'if you choose to create the allocation manually.'
                 )
         elif auto_create_opts == '2':
-            if not automation_specifications:
-                self.add_error(
-                    'automation_specifications',
-                    'You must select at least one automation option if you choose to automatically create the allocation.'
-                )
             if not cleaned_data.get('sheetcheck'):
                 self.add_error(
                     'sheetcheck',
-                    'You must confirm that you have checked the space availability on this resource.'
+                    'You must confirm that you have checked space availability on this resource.'
                 )
         return cleaned_data
 

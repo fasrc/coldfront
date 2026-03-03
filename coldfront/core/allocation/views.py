@@ -394,9 +394,10 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                         )
                         preactivation_replies = [p[1] for p in preactivation_responses if p[1]]
                         if not preactivation_replies:
-                            error = ('this allocation\'s resource has no autocreate options '
-                                'at this time. Please manually create the resource '
-                                'before approving this request.')
+                            error = (
+                                "The specified resource has no automated creation options at this "
+                                "time. Please manually create the allocation before approving this request."
+                            )
                     except Exception as e:
                         error = f"An error was encountered during autocreation: {e} Please contact your administrator."
                         logger.exception(
@@ -408,7 +409,8 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                         messages.error(request, error)
                         return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
                     logger.info(
-                        "Auto-created allocation during approval. requesting_user=%s,allocation_pk=%s,project=%s,size=%s",
+                        "Auto-created allocation during approval. "
+                        "requesting_user=%s,allocation_pk=%s,project=%s,size=%s",
                         request.user, allocation_obj.pk, allocation_obj.project.title, allocation_obj.size,
                         extra={'category': 'integration', 'status': 'success'},
                     )
@@ -2444,22 +2446,24 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                         )
                         preupdate_replies = [p[1] for p in preupdate_responses if p[1]]
                         if not preupdate_replies:
-                            error = ('this allocation\'s resource has no autoupdate options '
-                                'at this time. Please manually create the resource '
-                                'before approving this request.')
+                            error = (
+                                'The specified resource has no automated update options at this '
+                                'time. Please manually create the resource before approving this '
+                                'request.'
+                            )
                             messages.error(request, error)
                             return self.redirect_to_detail(pk)
                         logger.info(
                             "Auto-updated allocation %s quota from %s to %s",
                             alloc_change_obj.allocation, old_quota, new_quota_value,
-                            extra={'category': 'integration:isilon', 'status': 'success'},
+                            extra={'category': 'integration', 'status': 'success'},
                         )
                     except Exception as e:
                         logger.exception(
                             'Auto-update of allocation quota failed. requesting_user=%s,allocation_pk=%s,change_request_pk=%s,error=%s',
                             request.user, alloc_change_obj.allocation.pk,
                             alloc_change_obj.pk, str(e),
-                            extra={'category': 'integration:isilon', 'status': 'error'}
+                            extra={'category': 'integration', 'status': 'error'}
                         )
                         err = ("An error was encountered while auto-updating"
                             "the allocation quota. Please contact Coldfront "
