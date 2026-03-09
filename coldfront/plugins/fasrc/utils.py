@@ -38,7 +38,8 @@ class ATTAllocationQuery:
                 'r_updated': 'DotsLFSUpdateDate',
                 'storage_type': 'Quota',
                 'usedgb': 'usedGB',
-                'sizebytes': 'limitBytes',
+                'tb_allocation': 'e.SizeGB / 1024.0',
+                'sizebytes': 'e.limitBytes',
                 'usedbytes': 'usedBytes',
                 'server_replace': "'/n/', ''",
                 'path_def': "substring(e.Path, size('/n/') + size(split(e.Path, '/')[2]) + 1)",
@@ -57,7 +58,8 @@ class ATTAllocationQuery:
                 'r_updated': 'DotsUpdateDate',
                 'storage_type': 'Isilon',
                 'usedgb': 'UsedGB',
-                'sizebytes': 'SizeBytes',
+                'tb_allocation': 'e.SizeGB / 1024.0',
+                'sizebytes': 'e.SizeBytes',
                 'usedbytes': 'UsedBytes',
                 'server_replace': "'01.rc.fas.harvard.edu', ''",
                 'path_def': "replace(e.Path, '/ifs/', '')",
@@ -73,7 +75,8 @@ class ATTAllocationQuery:
                 'storage_type': 'Volume',
                 'path_def': "replace(e.LogicalVolume, '/dev/data/', '')",
                 'usedgb': 'UsedGB',
-                'sizebytes': 'SizeGB * 1000000000',
+                'tb_allocation': 'e.SizeGB / 1024.0',
+                'sizebytes': 'e.SizeGB * 1000000000',
                 'usedbytes': 'UsedGB * 1000000000',
                 'server_replace': "'.rc.fas.harvard.edu', ''",
                 'unique': 'datetime(e.DotsLVSUpdateDate) as update_date,\
@@ -89,8 +92,9 @@ class ATTAllocationQuery:
                 'storage_type': 'Tape',
                 'path_def': 'e.Pool',
                 'usedgb': 'UsedGB',
-                'sizebytes': 'SizeGB * 1000000000',
-                'usedbytes': 'UsedGB * 1000000000',
+                'tb_allocation': "round(e.SizeGB * 0.1285 + e.SizeGB, 0, 'UP') / 1024.0",
+                'sizebytes': 'round((e.SizeGB + e.SizeGB * 0.1285) * 1073741824)',
+                'usedbytes': 'UsedGB * 1073741824',
                 'server_replace': "'NESE', 'nesetape'",
                 'unique': 'datetime(e.DotsUpdateDate) as begin_date',
             },
@@ -105,8 +109,8 @@ class ATTAllocationQuery:
             RETURN\
             {d['unique']},\
             g.ADSamAccountName as lab,\
-            (e.SizeGB / 1024.0) as tb_allocation,\
-            e.{d['sizebytes']} as byte_allocation,\
+            {d['tb_allocation']} as tb_allocation,\
+            {d['sizebytes']} as byte_allocation,\
             e.{d['usedbytes']} as byte_usage,\
             (e.{d['usedgb']} / 1024.0) as tb_usage,\
             {d['path_def']} as fs_path,\
