@@ -319,7 +319,7 @@ def create_isilon_allocation_quota(
     )
 
     logger.info(
-        "Auto-created Isilon allocation quota for project %s resource %s at path %s (id %s). Actions performed: %s Exmceptions: %s",
+        "Auto-created Isilon allocation quota for project %s resource %s at path %s (id %s). Actions performed: %s Exceptions: %s",
         lab_name, resource, path, allocation.pk, actions_performed, option_exceptions,
         extra={'category':'integration:isilon', 'status':'success'}
     )
