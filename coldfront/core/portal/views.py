@@ -3,7 +3,7 @@ from collections import Counter
 
 from django.conf import settings
 from django.utils import timezone
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.shortcuts import render
 from django.views.decorators.cache import cache_page
 
@@ -19,9 +19,6 @@ from coldfront.core.resource.models import Resource, ResourceAttribute
 from coldfront.config.env import ENV
 from coldfront.core.department.models import Department, DepartmentMember
 from coldfront.core.utils.common import import_from_settings
-
-if ENV.bool('PLUGIN_SFTOCF', default=False):
-    from coldfront.plugins.sftocf.utils import StarFishRedash, STARFISH_SERVER
 
 MANAGERS = import_from_settings('MANAGERS', ['Manager'])
 
