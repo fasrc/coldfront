@@ -14,7 +14,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     && apt-get install -y redis redis-server \
     && apt-get install -y libsasl2-dev libldap2-dev libssl-dev \
-    && apt-get install -y sssd sssd-tools supervisor \
+    && apt-get install -y sssd sssd-tools supervisor vim \
     && rm -rf /var/lib/apt/lists/*
 RUN mkdir ~/.ssh && echo "Host git*\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
