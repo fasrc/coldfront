@@ -3,7 +3,7 @@ from collections import Counter
 
 from django.conf import settings
 from django.utils import timezone
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.shortcuts import render
 from django.views.decorators.cache import cache_page
 
@@ -16,12 +16,8 @@ from coldfront.core.portal.utils import (
 from coldfront.core.project.models import Project
 from coldfront.core.publication.models import Publication
 from coldfront.core.resource.models import Resource, ResourceAttribute
-from coldfront.config.env import ENV
 from coldfront.core.department.models import Department, DepartmentMember
 from coldfront.core.utils.common import import_from_settings
-
-if ENV.bool('PLUGIN_SFTOCF', default=False):
-    from coldfront.plugins.sftocf.utils import StarFishRedash, STARFISH_SERVER
 
 MANAGERS = import_from_settings('MANAGERS', ['Manager'])
 
@@ -113,62 +109,72 @@ def home(request):
 def center_summary(request):
     context = {}
 
-    # Publications Card
-    publications = Publication.objects.filter(year__gte=1999).values('unique_id', 'year')
-    publications_by_year = list(publications.distinct().values('year').annotate(
-                                    num_pub=Count('year')).order_by('-year'))
+    # # Publications Card
+    # publications = Publication.objects.filter(year__gte=1999).values('unique_id', 'year')
+    # publications_by_year = list(publications.distinct().values('year').annotate(
+    #                                 num_pub=Count('year')).order_by('-year'))
 
-    publications_by_year = [(ele['year'], ele['num_pub'])
-                            for ele in publications_by_year]
+    # publications_by_year = [(ele['year'], ele['num_pub'])
+    #                         for ele in publications_by_year]
 
-    publication_by_year_bar_chart_data = generate_publication_by_year_chart_data(
-        publications_by_year)
-    context['publication_by_year_bar_chart_data'] = publication_by_year_bar_chart_data
-    context['total_publications_count'] = publications.distinct().count()
+    # publication_by_year_bar_chart_data = generate_publication_by_year_chart_data(
+    #     publications_by_year)
+    # context['publication_by_year_bar_chart_data'] = publication_by_year_bar_chart_data
+    # context['total_publications_count'] = publications.distinct().count()
 
     volumes = []
-    # Storage Card
-    if ENV.bool('PLUGIN_SFTOCF', default=False):
-        starfish_redash = StarFishRedash(STARFISH_SERVER)
-        volumes = starfish_redash.get_vol_stats()
-        volumes = [
-                {
-                    'name': vol['volume_name'],
-                    'quota_TB': vol['capacity_TB'],
-                    'free_TB': vol['free_TB'],
-                    'used_TB': vol['used_physical_TB'],
-                    'regular_files': vol['regular_files'],
-                }
-            for vol in volumes
-            ]
-        # collect user and lab counts, allocation sizes for each volume
+    storage_resources = list(
+        Resource.objects.filter(resource_type__name='Storage', is_available=True, is_public=True)
+    )
+    # Fetch all active allocations for matched resources with prefetched data
+    resource_ids = [res.pk for res in storage_resources]
+    active_allocations = (
+        Allocation.objects
+        .filter(resources__id__in=resource_ids, status__name='Active')
+        .select_related('project')
+        .prefetch_related('resources', 'allocationuser_set')
+    )
 
-        for volume in volumes:
-            resource = Resource.objects.get(name__contains=volume['name'])
+    # Build mapping of resource_id -> list of allocations
+    allocations_by_resource = {}
+    for alloc in active_allocations:
+        for res in alloc.resources.all():
+            if res.id in resource_ids:
+                allocations_by_resource.setdefault(res.id, []).append(alloc)
 
-            resource_allocations = resource.allocation_set.filter(status__name='Active')
-            volume['quantity_label'] = resource.quantity_label
+    for resource in storage_resources:
+        if not resource.capacity:
+            continue
+        volume = {
+            'name': resource.name,
+            'quantity_label': resource.quantity_label,
+            'quota_TB': resource.capacity if resource.capacity else 0,
+            'free_TB': resource.free_capacity if resource.free_capacity else 0,
+            'used_TB': resource.used_tb if resource.used_tb else 0,
+            'regular_files': resource.get_attribute('file_count') or 0,
+        }
 
-            allocation_sizes = [
-                float(alloc.size) for alloc in resource_allocations if alloc.size
-            ]
-            # volume['avgsize'] = allocation_sizes
-            try:
-                volume['avgsize'] = round(sum(allocation_sizes)/len(allocation_sizes), 2)
-            except ZeroDivisionError:
-                volume['avgsize'] = 0
+        resource_allocations = allocations_by_resource.get(resource.id, [])
+        allocation_sizes = [
+            float(alloc.size) for alloc in resource_allocations if alloc.size
+        ]
+        try:
+            volume['avgsize'] = round(sum(allocation_sizes)/len(allocation_sizes), 2)
+        except ZeroDivisionError:
+            volume['avgsize'] = 0
 
-            project_ids = set(resource_allocations.values_list('project'))
-            volume['lab_count'] = len(project_ids)
-            user_ids = {
-                user.pk
-                for alloc in resource_allocations
-                for user in alloc.allocationuser_set.all()
-            }
-            volume['user_count'] = len(user_ids)
+        project_ids = {alloc.project.pk for alloc in resource_allocations}
+        volume['lab_count'] = len(project_ids)
 
+        # Use prefetched allocationuser_set - no additional queries
+        user_ids = {
+            user.user_id
+            for alloc in resource_allocations
+            for user in alloc.allocationuser_set.all()
+        }
+        volume['user_count'] = len(user_ids)
+        volumes.append(volume)
         context['volumes'] = volumes
-
 
     # # Tier Stats
     #
@@ -209,7 +215,6 @@ def center_summary(request):
         }
     }
     context['resource_chart_data'] = resource_chart_data
-
 
     return render(request, 'portal/center_summary.html', context)
 

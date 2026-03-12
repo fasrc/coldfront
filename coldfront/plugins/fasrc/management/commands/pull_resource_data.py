@@ -2,8 +2,7 @@ import logging
 from django.core.management.base import BaseCommand
 
 from coldfront.core.resource.models import Resource, ResourceAttributeType
-from coldfront.plugins.isilon.utils import IsilonConnection
-from coldfront.plugins.lfs.utils import update_lfs_usages
+from coldfront.core.resource.signals import update_volume_information
 from coldfront.plugins.sftocf.utils import (
     StarFishServer, StarFishRedash, STARFISH_SERVER
 )
@@ -28,8 +27,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--source',
             dest='source',
-            default='rest_api',
-            help='Do not make any changes to Starfish, just print what changes would be slated',
+            default='redash',
+            help='source to pull data from: "rest_api" or "redash" (default: "redash")',
         )
 
     def handle(self, *args, **options):
@@ -37,17 +36,23 @@ class Command(BaseCommand):
         if source == 'rest_api':
             sf = StarFishServer(STARFISH_SERVER)
             volumes = sf.get_volume_attributes()
+            for vol in volumes:
+                vol['capacity_tb'] = vol['total_capacity']/(1024**4)
+                vol['free_tb'] = vol['free_space']/(1024**4)
+                vol['used_tb'] = (vol['total_capacity'] - vol['free_space'])/(1024**4)
             volumes = [
                 {
                     'name': vol['vol'],
                     'attrs': {
-                        'capacity_tb': vol['total_capacity']/(1024**4),
-                        'free_tb': vol['free_space']/(1024**4),
+                        'capacity_tb': vol['capacity_tb'],
+                        'free_tb': vol['free_tb'],
                         'file_count': vol['number_of_files'],
+                        'used_tb': vol['used_tb'],
                     }
                 }
                 for vol in volumes
             ]
+
 
         elif source == 'redash':
             sf = StarFishRedash(STARFISH_SERVER)
@@ -73,25 +78,16 @@ class Command(BaseCommand):
         for resource in resources:
             resource_name = resource.name.split('/')[0]
             if 'isilon' in resource.name:
-                isilon_api = IsilonConnection(resource_name)
-                isilon_capacity_tb = isilon_api.to_tb(isilon_api.total_space)
-                isilon_free_tb = isilon_api.to_tb(isilon_api.unused_space)
-                isilon_allocated_tb = isilon_api.to_tb(isilon_api.allocated_space)
-                isilon_used_tb = isilon_api.to_tb(isilon_api.used_space)
-                attr_pairs = {
-                    'capacity_tb': isilon_capacity_tb,
-                    'allocated_tb': isilon_allocated_tb,
-                    'free_tb': isilon_free_tb,
-                    'used_tb': isilon_used_tb,
-                }
-                update_resource_attr_types_from_dict(resource, attr_pairs)
-            elif resource.parent_resource and 'Tier 0' in resource.parent_resource.name and 'vast' not in resource.name:
-                continue
+                update_volume_information.send(sender=self.__class__, resource=resource)
             else:
                 try:
                     volume = [v for v in volumes if v['name'] == resource_name][0]
-                except:
-                    logger.debug('resource not found in starfish: %s', resource)
+                except IndexError:
+                    logger.warning('no data found for resource %s from source %s', resource.name, source)
+                    continue
+                except Exception as e:
+                    logger.warning('problem updating resource %s with data from source %s: %s',
+                        resource.name, source, e
+                   )
                     continue
                 update_resource_attr_types_from_dict(resource, volume['attrs'])
-        update_lfs_usages()
