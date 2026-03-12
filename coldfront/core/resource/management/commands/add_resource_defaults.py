@@ -27,6 +27,8 @@ class Command(BaseCommand):
             ('free_tb', 'Float'),
             ('used_tb', 'Float'),
             ('file_count', 'Int'),
+            ('average_allocation_size_tb', 'Float'),
+            ('project_count', 'Int'),
             ('allocated_tb', 'Float'),
             ('ChangeableAllocations', 'Yes/No'),
             ('CPU Count', 'Int'),
