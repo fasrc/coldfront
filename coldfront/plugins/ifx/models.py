@@ -174,7 +174,7 @@ def update_allocation_product(allocation):
                 attr_val = allocation.get_attribute(name='Storage Quota (TiB)')
                 if attr_val:
                     tb_str = f"{attr_val} TiB"
-            if tb_str:
+            if tb_str is not None:
                 dir_str = allocation.get_attribute(name='Subdirectory')
                 if dir_str:
                     dir_str = f' at {dir_str}'
