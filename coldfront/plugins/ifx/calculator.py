@@ -137,12 +137,16 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
                     # First set "current_offer_letter_tb" to full offer letter size; this will get reduced as we create billing records
                     current_offer_letter_tb = offer_letter_tb if offer_letter_tb else Decimal('0')
 
-                    for allocation in sorted(
-                        project.allocation_set.filter(
+                    active_allocations = [
+                        alloc for alloc in project.allocation_set.filter(
                             status=active,
                             resources__resource_type__name=self.STORAGE_RESOURCE_TYPE,
                             resources__requires_payment=True
-                        ), key=lambda a: self.get_allocation_resource_product_rate(a).decimal_price, reverse=True
+                        ) if alloc.get_attribute(name='RequiresPayment') == 'True'
+                    ]
+
+                    for allocation in sorted(
+                        active_allocations, key=lambda a: self.get_allocation_resource_product_rate(a).decimal_price, reverse=True
                     ):
                         try:
                             allocation_tb = self.get_allocation_tb(allocation)
