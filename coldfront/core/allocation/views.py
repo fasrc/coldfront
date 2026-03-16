@@ -423,7 +423,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                         defaults={'value': 'True'}
                     )
 
-            if 'Tier ' in allocation_obj.get_resources_as_string:
+            if 'Tier' in allocation_obj.get_parent_resource.resource_type.name:
                 # remove current resource from resources
                 allocation_obj.resources.clear()
                 # add form_data.get(resource)
@@ -1690,7 +1690,7 @@ class AllocationRequestListView(LoginRequiredMixin, UserPassesTestMixin, Templat
 
         allocation_obj.status = active_status
         chosen_resource = Resource.objects.get(pk=chosen_resource_id)
-        if 'Tier' in allocation_obj.get_resources_as_string:
+        if 'Tier' in allocation_obj.get_parent_resource.resource_type.name:
             # remove current resource from resources
             allocation_obj.resources.clear()
             # add form_data.get(resource)
