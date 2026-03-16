@@ -43,6 +43,11 @@ RUN printf "deb http://archive.debian.org/debian buster main" > /etc/apt/sources
     apt-get update && apt-get install libreadline7 && \
     rm -rf /var/lib/apt/lists/*
 
+# SSH support to run commands on slurmctld using ssh
+RUN mkdir -p ./ssh-keys
+RUN ssh-keygen -t ed25519 -f ./ssh-keys/id_ed25519 -N "" -y
+RUN echo "Generated SSH KEY"
+
 EXPOSE 80
 EXPOSE 25
 
