@@ -1072,6 +1072,13 @@ def update_allocation(sender, **kwargs):
     logger.debug('allocation_activate signal received')
     allocation = Allocation.objects.get(pk=kwargs['allocation_pk'])
     volume_name = allocation.resources.first().name.split('/')[0]
+    server = StarFishServer()
+    if volume_name not in server.volumes:
+        logger.warning(
+            'allocation %s on volume %s not in Starfish volumes; skipping allocation update',
+            allocation.pk, volume_name
+        )
+        return
     sf_redash_data = RedashDataPipeline(volume=volume_name)
     user_data, allocation_data = sf_redash_data.collect_sf_data_for_lab(
         allocation.project.title, volume_name, allocation.path
