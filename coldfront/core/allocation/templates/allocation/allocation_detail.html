@@ -87,7 +87,7 @@ Allocation Detail
               <td>
               {% if allocation.get_resources_as_list %}
                 {% for resource in allocation.get_resources_as_list %}
-                  {% if request.user.is_superuser and allocation.status.name in "New,In Progress,On Hold" and "Tier" in allocation.get_resources_as_string %}
+                  {% if request.user.is_superuser and allocation.status.name in "New,In Progress,On Hold" and "Tier" in allocation.get_parent_resource.resource_type.name %}
                     {{ form.resource }} <a color="red">Please choose a resource.</a>
                   {% else %}
                     <a href="{% url 'resource-detail' resource.pk %}">{{ resource }}</a>
