@@ -87,7 +87,8 @@ class ATTAllocationQuery:
                 'relation': 'Owns',
                 'match': '(e:TapeAllocation)',
                 'server': 'Provider',
-                'validation_query': "e.Pool =~ '.*1'",
+                'validation_query': "e.Pool =~ '.*1'\
+                    AND (datetime() - duration('P1D') <= datetime(r.DotsUpdateDate))",
                 'r_updated': 'DotsUpdateDate',
                 'storage_type': 'Tape',
                 'path_def': 'e.Pool',
