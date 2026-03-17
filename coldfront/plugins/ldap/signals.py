@@ -12,11 +12,13 @@ from coldfront.core.project.signals import (
     project_reactivate_projectuser,
 )
 from coldfront.core.project.models import (
+    Project,
+    ProjectUser,
     ProjectUserRoleChoice,
     ProjectUserStatusChoice,
-    ProjectUser,
 )
-from coldfront.plugins.ldap.utils import LDAPConn
+from coldfront.core.resource.models import Resource
+from coldfront.plugins.ldap.utils import LDAPConn, LDAPException
 
 if 'coldfront.plugins.sftocf' in import_from_settings('INSTALLED_APPS', []):
     from coldfront.plugins.sftocf.signals import (
@@ -114,6 +116,83 @@ def update_new_project(sender, **kwargs):
                     user_obj.username, project.title, role_name,
                     extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
         )
+
+# @receiver(slurmrest_supergroup_membership_update)
+def update_supergroup_membership(sender, **kwargs):
+    """Update ColdFront Supergroup allocation list based on AD group membership
+    Supergroups are ColdFront Resources that correspond to slurm accounts and to AD groups.
+    They need to be linked to the ColdFront cluster Allocations that belong to the Projects that
+    correspond to the Supergroup's AD group members.
+    """
+    # get supergroup name from kwargs
+    supergroup_name = kwargs['supergroup_name']
+    # get corresponding AD group and supergroup Resource
+    try:
+        ad_conn = LDAPConn()
+        members = ad_conn.return_group_group_members(supergroup_name)
+    except Exception as e:
+        logger.exception(
+            "error encountered retrieving members and manager for Supergroup %s: %s",
+            supergroup_name, e
+        )
+        raise LDAPException(f"ldap error: {e}") from e
+
+    supergroup_obj = Resource.objects.get(name=supergroup_name)
+    # collect Projects corresponding to AD group membership
+    for member in members:
+        if not ad_conn.check_group_validity(member):
+            logger.warning(
+                "skipping invalid Supergroup %s member %s",
+                supergroup_name, member['sAMAccountName'][0]
+            )
+            continue
+        try:
+            project_obj = Project.objects.get(
+                title=member['sAMAccountName'][0],
+            )
+        except Exception as e:
+            logger.warning(
+                "issue retrieving Project for Supergroup %s member %s: %s",
+                supergroup_name, member['sAMAccountName'][0], e
+            )
+            continue
+        # get allocation corresponding to the Project and supergroup's parent resource
+        try:
+            allocation_obj = project_obj.allocation_set.get(
+                resources=supergroup_obj.parent_resource,
+            )
+        except Exception as e:
+            logger.warning(
+                "issue retrieving Allocation for Supergroup %s member Project %s: %s",
+                supergroup_name, project_obj.title, e
+            )
+            continue
+        # link allocation to supergroup if not already linked
+        if supergroup_obj not in allocation_obj.resources.all():
+            allocation_obj.resources.add(supergroup_obj)
+            logger.info(
+                "linked Supergroup %s to Allocation for Project %s",
+                supergroup_name, project_obj.title,
+                extra={ 'category': 'ldap:Supergroup', 'status': 'success' }
+            )
+
+    # remove allocations no longer linked to AD group members
+    for allocation in supergroup_obj.allocation_set.all():
+        project_title = allocation.project.title
+        keep_linked = True
+        if not ad_conn.check_group_validity({'sAMAccountName':[project_title]}):
+            keep_linked = False
+        # check if project_title is in membership
+        member_usernames = [m['sAMAccountName'][0] for m in members]
+        if project_title not in member_usernames:
+            keep_linked = False
+        if not keep_linked:
+            allocation.resources.remove(supergroup_obj)
+            logger.info(
+                "removed Supergroup %s from Allocation for Project %s",
+                supergroup_name, project_title,
+                extra={ 'category': 'ldap:Supergroup', 'status': 'success' }
+            )
 
 @receiver(project_filter_users_to_remove)
 def filter_project_users_to_remove(sender, **kwargs):
