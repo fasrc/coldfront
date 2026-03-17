@@ -779,9 +779,15 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
                 allocation_attribute_type=attr_type, value=True,
             )
 
+        # calculate quota_in_bytes, determining conversion factor from allocation_obj.unit_label
+        conversion_factor = 1000 if allocation_obj.unit_label == 'TB' else 1024
+        conversion_multiplier = 4
+        quota_in_bytes = quantity * (conversion_factor ** conversion_multiplier)
+
         for value, attr_name in (
             (quantity, f'Storage Quota ({allocation_obj.unit_label})'),
             (expense_code, 'Expense Code'),
+            (quota_in_bytes, 'Quota_In_Bytes'),
         ):
             allocation_obj.allocationattribute_set.create(
                 value=value,
@@ -791,6 +797,7 @@ class AllocationCreateView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             )
 
         allocation_obj.set_usage(f'Storage Quota ({allocation_obj.unit_label})', 0)
+        allocation_obj.set_usage('Quota_In_Bytes', 0)
 
         allocation_user_active_status = AllocationUserStatusChoice.objects.get(
             name='Active'
