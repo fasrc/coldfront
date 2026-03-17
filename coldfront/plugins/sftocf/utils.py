@@ -1070,7 +1070,7 @@ class RESTDataPipeline(UsageDataPipelineBase):
 def update_allocation(sender, **kwargs):
     '''update the allocation data when the allocation is activated.'''
     logger.debug('allocation_activate signal received')
-    allocation = Allocation.objects.get(pk=kwargs['allocation_pk'])
+    allocation = kwargs['allocation_obj']
     volume_name = allocation.resources.first().name.split('/')[0]
     server = StarFishServer()
     if volume_name not in server.volumes:

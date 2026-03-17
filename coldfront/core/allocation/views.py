@@ -396,7 +396,8 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                         if not preactivation_replies:
                             error = (
                                 "The specified resource has no automated creation options at this "
-                                "time. Please manually create the allocation before approving this request."
+                                "time. Please manually create the allocation before approving "
+                                "this request."
                             )
                     except Exception as e:
                         error = f"An error was encountered during autocreation: {e} Please contact your administrator."
@@ -468,7 +469,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             allocation_obj.save()
 
             try:
-                allocation_activate.send(sender=self.__class__, allocation_pk=allocation_obj.pk)
+                allocation_activate.send(sender=self.__class__, allocation_obj=allocation_obj)
             except Exception as e:
                 logger.exception(e)
                 messages.error(request, "Allocation activated, but certain parts of the post-creation process were unsuccessful. Please contact the administrator or check the logs for more information.")

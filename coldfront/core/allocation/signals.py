@@ -8,7 +8,7 @@ allocation_autoupdate = django.dispatch.Signal()
     #providing_args=["allocation", "new_quota_value"]
 
 allocation_activate = django.dispatch.Signal()
-    #providing_args=["allocation_pk"]
+    #providing_args=["allocation_obj"]
 allocation_disable = django.dispatch.Signal()
     #providing_args=["allocation_pk"]
 
