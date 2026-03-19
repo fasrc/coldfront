@@ -975,6 +975,7 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 
         formset = formset(request.POST, initial=formset_initial, prefix=prefix)
         users_added_count = 0
+        requester_uname = self.request.user.username
 
         if formset.is_valid():
             user_active_status = AllocationUserStatusChoice.objects.get(name='Active')
@@ -989,8 +990,9 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 account = allocation_obj.project.title
                 cluster = allocation_obj.get_cluster.get_attribute('slurm_cluster')
                 username = form_data.get('username')
-                logger.warning("Triggering addition of SlurmUser %s to account %s on cluster %s",
-                        username, account, cluster
+                logger.warning(
+                    'Triggering addition of user to slurm account. user=%s,account=%s,cluster=%s',
+                    username, account, cluster
                 )
                 try:
                     allocation_user_add_on_slurm.send(
@@ -1000,8 +1002,9 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         cluster=cluster
                     )
                     logger.info(
-                        "addition of user %s to account %s on cluster %s successful",
-                        username, allocation_obj.project.title, cluster,
+                        'added user to slurm account. '
+                        'requesting_user=%s,user=%s,account=%s,cluster=%s',
+                        requester_uname, username, allocation_obj.project.title, cluster,
                         extra={
                             'username': username,
                             'allocation': allocation_obj.pk,
@@ -1009,7 +1012,7 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     )
                 except Exception as e:
                     logger.exception(
-                        "addition of user %s to account %s on cluster %s failed: %s",
+                        "slurm account user addition failed. user=%s,account=%s,cluster=%s,error=%s",
                         username, allocation_obj.project.title, cluster, e,
                         extra={'category': 'integration:slurmrest', 'status': 'error'}
                     )
@@ -1029,7 +1032,7 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     )
                 except Exception as e:
                     logger.exception(
-                        "signal processes for activation of allocationuser %s (%s %s) failed: %s",
+                        "signal processes for allocationuser activation failed. allocationuser_pk=%s,project_title=%s,resource_name=%s,error=%s",
                         allocation_user_obj.pk, allocation_obj.project.title,
                         allocation_obj.get_parent_resource.name, e
                     )
@@ -1214,6 +1217,7 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
         pk = self.kwargs.get('pk')
         allocation_obj = get_object_or_404(Allocation, pk=pk)
         users_to_remove = self.get_users_to_remove(allocation_obj)
+        requester_uname = self.request.user.username
 
         formset = formset_factory(
             AllocationRemoveUserForm, max_num=len(users_to_remove)
@@ -1246,9 +1250,11 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
                     allocation_user_remove_on_slurm.send(
                         self.__class__, account=account, username=user_obj.username, cluster=cluster
                     )
-                    logger.info("Removed AllocationUser %s from allocation %s on cluster %s",
-                            user_obj.username, account, cluster,
-                            extra={'category': 'integration:slurmrest'}
+                    logger.info(
+                        'Removed user from slurm account. '
+                        'requesting_user=%s,removed_user=%s,account=%s,cluster=%s',
+                        requester_uname, user_obj.username, account, cluster,
+                        extra={'category': 'integration:slurmrest'}
                     )
                     allocation_user_obj.status = removed_allocuser_status
                     allocation_user_obj.save()
@@ -1259,15 +1265,17 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
                 except SlurmError as e:
                     error_message = f"You can't remove this AllocationUser ({user_form_data.get('username')}) while they are running a job using this account. Try again after the job has been completed or cancelled."
                     logger.exception(
-                        'could not remove AllocationUser %s: %s',
-                        user_form_data.get('username'), e,
+                        'could not remove user from slurm account. '
+                        'requesting_user=%s,username=%s,error=%s',
+                        requester_uname, user_form_data.get('username'), e,
                         extra={'category': 'integration:slurmrest', 'status': 'failure'})
                     messages.error(request, error_message)
                 except Exception as e:
                     error_message = f"An error occurred while trying to remove AllocationUser ({user_form_data.get('username')}): {e}"
                     logger.exception(
-                        'could not remove AllocationUser %s: %s',
-                        user_form_data.get('username'), e,
+                        'could not remove user from slurm account. '
+                        'requesting_user=%s,username=%s,error=%s',
+                        requester_uname, user_form_data.get('username'), e,
                         extra={'category': 'integration:slurmrest', 'status': 'failure'}
                     )
                     messages.error(request, error_message)
@@ -2462,13 +2470,15 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                             messages.error(request, error)
                             return self.redirect_to_detail(pk)
                         logger.info(
-                            "Auto-updated allocation %s quota from %s to %s",
+                            'Auto-updated allocation quota. '
+                            'allocation_id=%s,old_quota=%s,new_quota=%s',
                             alloc_change_obj.allocation, old_quota, new_quota_value,
                             extra={'category': 'integration', 'status': 'success'},
                         )
                     except Exception as e:
                         logger.exception(
-                            'Auto-update of allocation quota failed. requesting_user=%s,allocation_pk=%s,change_request_pk=%s,error=%s',
+                            'Auto-update of allocation quota failed. '
+                            'requesting_user=%s,allocation_pk=%s,change_request_pk=%s,error=%s',
                             request.user, alloc_change_obj.allocation.pk,
                             alloc_change_obj.pk, str(e),
                             extra={'category': 'integration', 'status': 'error'}
