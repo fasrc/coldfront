@@ -233,7 +233,7 @@ class LDAPConn:
         if not self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserAdditionError("Member not successfully added to group.")
         logger.info(
-            'Member %s (sid %s) added to AD group %s (sid %s)',
+            'AD User made MemberOf AD Group. username=%s,user_sid=%s,groupname=%s,group_sid=%s',
             member_name, member_sid, group_name, group_sid,
             extra={ 'category': 'integration:AD' }
         )
@@ -251,7 +251,8 @@ class LDAPConn:
         member_sid = user['objectSid']
         group_sid = group['objectSid']
         if user['gidNumber'] == group['gidNumber']:
-            logger.warning("Deactivating member %s (sid %s) from primary group %s (sid %s)",
+            logger.warning(
+                "Preparing to deactivate ADUser. username=%s,user_sid=%s,primary_group_name=%s,primary_group_sid=%s",
                 member_name, member_sid, group_name, group_sid,
                 extra={ 'category': 'integration:AD' }
             )
@@ -267,7 +268,7 @@ class LDAPConn:
         if self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserRemovalError("Member not successfully removed from group.")
         logger.info(
-            'Member %s (sid %s) removed from AD group %s (sid %s)',
+            'ADUser removed from ADGroup. username=%s,user_sid=%s,groupname=%s,group_sid=%s',
             member_name, member_sid, group_name, group_sid,
             extra={ 'category': 'integration:AD' }
         )
@@ -286,10 +287,10 @@ class LDAPConn:
         )
         if not result:
             reason = self.conn.last_error
-            logger.error('Failed to deactivate user %s: %s', username, reason)
+            logger.error('Failed to deactivate user. username=%s,error=%s', username, reason)
             raise LDAPException(f'Failed to deactivate user {username}: {reason}')
         logger.info(
-            'Deactivated user %s (dn: %s)', username, user_dn,
+            'Deactivated user. username=%s,user_dn=%s', username, user_dn,
             extra={ 'category': 'integration:AD' }
         )
 

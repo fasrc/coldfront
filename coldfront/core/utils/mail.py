@@ -51,7 +51,7 @@ def send_email(subject, body, sender, receiver_list, cc=None, attachments=None):
         email = EmailMessage(subject, body, sender, receiver_list, cc=cc, attachments=attachments)
         email.send(fail_silently=False)
     except SMTPException as e:
-        logger.exception('Failed to send email to %s from %s with subject %s: %s',
+        logger.exception('email send failure. receiver_list=%s,sender=%s,subject=%s,error=%s',
                      ','.join(receiver_list), sender, subject, e)
 
 
@@ -62,7 +62,7 @@ def send_email_template(
     """
     body = render_to_string(template_name, template_context)
     logger.info(
-        "sending email with subject %s to receivers %s and ccs %s from sender %s",
+        "sending email. subject=%s,receivers=%s,ccs=%s,sender=%s",
         subject, receiver_list, cc, sender
     )
     return send_email(subject, body, sender, receiver_list, cc=cc, attachments=attachments)
