@@ -29,7 +29,6 @@ plugin_configs = {
     'PLUGIN_API': 'plugins/api.py',
     'PLUGIN_LDAP': 'plugins/ldap_fasrc.py',
     'PLUGIN_LFS': 'plugins/lfs.py',
-    'PLUGIN_SFTOCF': 'plugins/sftocf.py',
     'PLUGIN_FASRC': 'plugins/fasrc.py',
     'PLUGIN_FASRC_MONITORING': 'plugins/fasrc_monitoring.py',
     'PLUGIN_ISILON': 'plugins/isilon.py',

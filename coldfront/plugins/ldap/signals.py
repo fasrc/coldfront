@@ -18,8 +18,8 @@ from coldfront.core.project.models import (
 )
 from coldfront.plugins.ldap.utils import LDAPConn
 
-if 'coldfront.plugins.sftocf' in import_from_settings('INSTALLED_APPS', []):
-    from coldfront.plugins.sftocf.signals import (
+if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
+    from sftocf.signals import (
         starfish_add_aduser,
         starfish_remove_aduser,
         starfish_add_adgroup,
@@ -136,7 +136,7 @@ def remove_member_from_group(sender, **kwargs):
     ldap_conn = LDAPConn()
     ldap_conn.remove_member_from_group(kwargs['user_name'], kwargs['group_name'])
 
-if 'coldfront.plugins.sftocf' in import_from_settings('INSTALLED_APPS', []):
+if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
     @receiver(starfish_add_aduser)
     def starfish_add_user(sender, **kwargs):
         ldap_conn = LDAPConn()
