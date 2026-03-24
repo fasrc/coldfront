@@ -20,7 +20,7 @@ PENDING_ACTIVE_ALLOCATION_STATUSES = import_from_settings(
     'PENDING_ACTIVE_ALLOCATION_STATUSES', ['Active', 'New', 'Updated', 'Ready for Review'])
 
 if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
-    from sftocf.utils import STARFISH_SERVER, StarFishServer
+    from sftocf.utils import StarFishServer
 
 
 
@@ -40,7 +40,7 @@ class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         scan_data_processed = None
         if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
             try:
-                sf = StarFishServer(STARFISH_SERVER)
+                sf = StarFishServer()
                 scan_data = sf.get_most_recent_scans()
                 scan_data_processed = [
                             {'volume': s['volume'],
