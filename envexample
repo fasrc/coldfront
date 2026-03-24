@@ -261,12 +261,3 @@ PLUGIN_IFX=True
 
 # If using the FASRC LDAP plugin, uncomment the line below
 # PLUGIN_LDAP=True
-
-
-#------------------------------------------------------------------------------
-# Starfish Plugin
-#------------------------------------------------------------------------------
-# If using SFtoCF, uncomment the lines below and add starfish account details.
-# PLUGIN_SFTOCF=True
-# SFUSER=$SFUSER
-# SFPASS=$SFPASS

@@ -12,7 +12,6 @@ from django.db.models import Count
 from django.views.generic.base import TemplateView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 
-from coldfront.config.base import INSTALLED_APPS
 from coldfront.core.project.models import Project
 from coldfront.core.allocation.models import Allocation
 from coldfront.core.utils.common import import_from_settings
@@ -20,7 +19,7 @@ from coldfront.core.utils.common import import_from_settings
 PENDING_ACTIVE_ALLOCATION_STATUSES = import_from_settings(
     'PENDING_ACTIVE_ALLOCATION_STATUSES', ['Active', 'New', 'Updated', 'Ready for Review'])
 
-if ['sftocf'] in INSTALLED_APPS:
+if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
     from sftocf.utils import STARFISH_SERVER, StarFishServer
 
 
@@ -39,7 +38,7 @@ class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         scan_data_processed = None
-        if ['sftocf'] in INSTALLED_APPS:
+        if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
             try:
                 sf = StarFishServer(STARFISH_SERVER)
                 scan_data = sf.get_most_recent_scans()
