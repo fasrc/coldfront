@@ -28,7 +28,7 @@ class Command(BaseCommand):
             'fasrc': [
                 'id_import_allocations', 'import_quotas', 'pull_resource_data', 'run_ifx_updates'
             ],
-            'sftocf': ['import_allocation_filepaths', 'pull_sf_push_cf', 'update_zones'],
+            # 'sftocf': ['import_allocation_filepaths', 'pull_sf_push_cf', 'update_zones'],
             # 'lfs': ['pull_lfs_filesystem_stats'],
             'ldap': ['update_group_membership_ldap', 'id_add_projects'],
             'slurm': ['slurm_sync', 'slurm_manage_resources'],

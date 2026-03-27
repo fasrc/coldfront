@@ -3,9 +3,7 @@ from django.core.management.base import BaseCommand
 
 from coldfront.core.resource.models import Resource, ResourceAttributeType
 from coldfront.core.resource.signals import update_volume_information
-from coldfront.plugins.sftocf.utils import (
-    StarFishServer, StarFishRedash, STARFISH_SERVER
-)
+from sftocf.utils import StarFishServer, StarFishRedash
 
 
 logger = logging.getLogger(__name__)
@@ -34,7 +32,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         source = options['source']
         if source == 'rest_api':
-            sf = StarFishServer(STARFISH_SERVER)
+            sf = StarFishServer()
             volumes = sf.get_volume_attributes()
             for vol in volumes:
                 vol['capacity_tb'] = vol['total_capacity']/(1024**4)
@@ -55,7 +53,7 @@ class Command(BaseCommand):
 
 
         elif source == 'redash':
-            sf = StarFishRedash(STARFISH_SERVER)
+            sf = StarFishRedash()
             volumes = sf.get_vol_stats()
             volumes = [
                 {
