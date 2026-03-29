@@ -49,9 +49,12 @@ class ClusterResourceManager:
 
         self.owner_attribute_type = ResourceAttributeType.objects.get(name='Owner')
         self.features_attribute_type = ResourceAttributeType.objects.get(name='Features')
+        self.nodetype_attribute_type = ResourceAttributeType.objects.get(name='NodeType')
         self.gpu_count_attribute_type = ResourceAttributeType.objects.get(name='GPU Count')
         self.core_count_attribute_type = ResourceAttributeType.objects.get(name='Core Count')
+        self.cpu_count_attribute_type = ResourceAttributeType.objects.get(name='CPU Count')
         self.service_end_attribute_type = ResourceAttributeType.objects.get(name='ServiceEnd')
+        self.rawshare_attribute_type = ResourceAttributeType.objects.get(name='Rawshare')
         self.slurm_specs_resourceattribute_type = ResourceAttributeType.objects.get(
             name=SLURMREST_SPECS_ATTRIBUTE_NAME)
         self.account_attribute_type = AllocationAttributeType.objects.get(
@@ -170,6 +173,80 @@ class ClusterResourceManager:
         return partition_account_names
 
 
+
+    ### Supergroup methods ###
+    def update_supergroups(self):
+        supergroup_resources = Resource.objects.filter(
+            parent_resource=self.cluster_resource,
+            resource_type__name='Supergroup'
+        )
+        for supergroup in supergroup_resources:
+            fairshare = self.calculate_supergroup_fairshare(supergroup.name)
+            logger.info(
+                "Updated supergroup %s fairshare to %s", supergroup.name, fairshare
+            )
+
+    def calculate_supergroup_fairshare(self, supergroup_name):
+        """Calculate fairshare for a given supergroup based on its node cores and types.
+        equation is:
+            """
+        supergroup_resource = Resource.objects.get(
+            resource_type__name='Supergroup',
+            name=supergroup_name
+        )
+        supergroup_nodes = Resource.objects.filter(
+            resource_type__name='Compute Node',
+            linked_resources=supergroup_resource,
+            is_available=True,
+        )
+        node_multiplier_dict = {
+            'h200': 546.9,
+            'h100': 546.9,
+            'a100': 209.1,
+            'a100-mig': 209.1,
+            'v100': 75,
+            'a40': 10,
+            'rtxa6000': 10,
+            'icelake': 1.15,
+            'cascadelake': 1,
+            'sapphirerapids': 0.6,
+            'genoa': 0.6,
+            'milan': 0.5,
+            'skylake': 0.5,
+            'haswell': 0.4,
+            'broadwell': 0.4,
+        }
+        total_fairshare = 0
+        for node in supergroup_nodes:
+            nodetype_attr = node.resourceattribute_set.get(
+                resource_attribute_type__name='NodeType'
+            )
+            nodetype_dict = dict(
+                [item.split(':') for item in nodetype_attr.value.split(',')]
+            )
+
+            cpu_count_attr = node.resourceattribute_set.get(
+                resource_attribute_type__name='CPU Count')
+            cpu_type = nodetype_dict['cpu_type']
+            multiplier = node_multiplier_dict[cpu_type]
+            cpu_value = int(cpu_count_attr.value) * multiplier
+            total_fairshare += cpu_value
+
+            if 'gpu_type' in nodetype_dict:
+                gpu_count_attr = node.resourceattribute_set.get(
+                    resource_attribute_type__name='GPU Count')
+                gpu_type = nodetype_dict['gpu_type']
+                gpu_multiplier = node_multiplier_dict[gpu_type]
+                gpu_value = int(gpu_count_attr.value) * gpu_multiplier
+                total_fairshare += gpu_value
+        # create or update the supergroup's Rawshare attribute
+        supergroup_resource.resourceattribute_set.update_or_create(
+            resource_attribute_type=self.rawshare_attribute_type,
+            defaults={'value': str(int(total_fairshare))}
+        )
+        return str(int(total_fairshare))
+
+
     ### Node import methods ###
     def import_node_data(self):
         """Import Slurm nodes as Coldfront Resources.
@@ -182,7 +259,8 @@ class ClusterResourceManager:
             resource_type=self.node_resource_type,
             is_available=True,
         ).exclude(name__in=[n['name'] for n in self.nodes]):
-            logger.info("Node resource %s no longer exists in Slurm cluster %s; marking unavailable.",
+            logger.info(
+                "Node resource %s no longer exists in Slurm cluster %s; marking unavailable.",
                 resource_to_delete.name, self.cluster_name
             )
             resource_to_delete.is_available = False
@@ -192,6 +270,84 @@ class ClusterResourceManager:
                 resource_attribute_type=self.service_end_attribute_type,
                 defaults={'value':timezone.now()}
             )
+
+    def determine_node_owner(self, node_data):
+        features = node_data.get('features', [])
+        joined = ','.join(features)
+        if 'o_s_' in joined or 'o_g_' in joined:
+            for feature in features:
+                if feature.startswith('o_s_') or feature.startswith('o_g_'):
+                    return feature[4:]
+        node_partitions = node_data.get('partitions', [])
+        for partition_name in ['serial_requeue', 'gpu_requeue']:
+            if partition_name in node_partitions:
+                node_partitions.remove(partition_name)
+        group_list = []
+        for partition_name in node_partitions:
+            partition = next(
+                (p for p in self.partitions if p['name'] == partition_name), None
+            )
+            partition_groups = partition['groups'].get('allowed', '').split(',')
+            if 'seas' in partition_groups:
+                return 'seas'
+            # add all groups that aren't slurm_admin to group_list
+            group_list.extend(
+                [g for g in partition_groups if '-admin' not in g]
+            )
+        group_list = list(set(group_list))
+        if group_list in (['cluster_users_2', 'cluster_users'], ['fasse_users']):
+            return 'fasrc'
+        if len(group_list) == 1:
+            return group_list[0]
+        for group in group_list:
+            if 'kempner' in group:
+                return 'kempner_partition'
+            if 'iaifi' in group:
+                return 'iaifi_partition'
+            try:
+                Project.objects.get(title=group)
+            except Project.DoesNotExist:
+                group_list = [g for g in group_list if g != group]
+        if len(group_list) == 1:
+            return group_list[0]
+        logger.warning(
+            "can't determine owner of node_name %s. Partitions: %s Group list: %s",
+            node_data['name'], node_partitions, set(group_list)
+        )
+        return ''
+
+    def determine_node_type(self, node_data):
+        result = {}
+        features = node_data.get('features', [])
+        if 'gpu' in features:
+            for node_type in ['h200', 'h100', 'a100', 'a100-mig', 'v100', 'a40', 'rtxa6000']:
+                if node_type in features:
+                    result['gpu_type'] = node_type
+                    continue
+        for node_type in ['icelake', 'cascadelake', 'sapphirerapids', 'genoa', 'milan', 'skylake']:
+            if node_type in features:
+                result['cpu_type'] = node_type
+                continue
+        return result
+
+    def process_tres(self, node_data):
+        tres = node_data.get('tres', 0)
+        tres_dict = {}
+        if tres != 0:
+            tres_dict = dict([i.split('=') for i in tres.split(',')])
+        return tres_dict
+
+    def update_node_supergroups(self, node_resource, node_owner):
+        """If a supergroup exists for the node owner, link it to the node resource."""
+        try:
+            supergroup_resource = Resource.objects.get(
+                resource_type__name='Supergroup',
+                name=node_owner
+            )
+            if supergroup_resource not in node_resource.linked_resources.all():
+                node_resource.linked_resources.add(supergroup_resource)
+        except Resource.DoesNotExist:
+            pass
 
     def create_update_node_resource(self, node_data):
         """Create or update a Coldfront Resource for a Slurm node."""
@@ -209,19 +365,38 @@ class ClusterResourceManager:
             resource_attribute_type=self.features_attribute_type,
             defaults={'value': ','.join(node_data['features'])}
         )
+        tres_dict = self.process_tres(node_data)
+        if tres_dict:
+            gpu_count = tres_dict.get('gres/gpu', 0)
+            node_resource.resourceattribute_set.update_or_create(
+                resource_attribute_type=self.gpu_count_attribute_type,
+                defaults={'value': str(gpu_count)}
+            )
+
         node_resource.resourceattribute_set.update_or_create(
-            resource_attribute_type=self.gpu_count_attribute_type,
-            defaults={'value': str(node_data.get('gpus', 0))}
+            resource_attribute_type=self.cpu_count_attribute_type,
+            defaults={'value': str(node_data.get('cpus', 0))}
         )
         node_resource.resourceattribute_set.update_or_create(
             resource_attribute_type=self.core_count_attribute_type,
             defaults={'value': str(node_data.get('cores', 0))}
         )
-        # owner sometimes needs to be set manually, so we don't update it if it exists
-        node_resource.resourceattribute_set.get_or_create(
+
+        owner = self.determine_node_owner(node_data)
+        node_resource.resourceattribute_set.update_or_create(
             resource_attribute_type=self.owner_attribute_type,
-            defaults={'value': node_data.get('owner', 'unknown')}
+            defaults={'value': owner}
         )
+
+        node_type = self.determine_node_type(node_data)
+        node_type_string = ','.join([f"{k}:{v}" for k,v in node_type.items()])
+        node_resource.resourceattribute_set.update_or_create(
+            resource_attribute_type=self.nodetype_attribute_type,
+            defaults={'value': node_type_string}
+        )
+
+        self.update_node_supergroups(node_resource, owner)
+
         if created:
             logger.info("Created new node resource: %s", node_resource.name)
         else:
