@@ -319,7 +319,8 @@ def create_isilon_allocation_quota(
     )
 
     logger.info(
-        "Auto-created Isilon allocation quota for project %s resource %s at path %s (id %s). Actions performed: %s Exceptions: %s",
+        'Auto-created Isilon allocation quota. '
+        'project=%s,resource=%s,path=%s,allocation_id=%s,actions_performed=%s,exceptions=%s',
         lab_name, resource, path, allocation.pk, actions_performed, option_exceptions,
         extra={'category':'integration:isilon', 'status':'success'}
     )
@@ -345,34 +346,38 @@ def update_isilon_allocation_quota(allocation, new_quota):
     unallocated_space = isilon_conn.unallocated_space
     current_quota_obj = isilon_conn.get_quota_from_path(path)
     current_quota = current_quota_obj.thresholds.hard
-    logger.warning("changing allocation %s %s from %s (%s TiB) to %s (%s TiB)",
-       allocation.path, allocation, current_quota, allocation.size, new_quota_bytes, new_quota
+    logger.warning(
+        'preparing to change allocation quota. path=%s,allocation_pk=%s,'
+        'current_quota=%s,current_quota_tib=%s,new_quota=%s,new_quota_tib=%s',
+        allocation.path, allocation, current_quota, allocation.size, new_quota_bytes, new_quota
     )
     if unallocated_space < (new_quota_bytes-current_quota):
         raise ValueError(
-            'not enough space on volume to set quota to %s TiB for %s'
-            % (new_quota, allocation)
+            f'insufficient space for new quota. resource={isilon_resource},'
+            f'allocation_pk={allocation.pk},new_quota_tib={new_quota}'
         )
     if current_quota > new_quota_bytes:
         current_quota_usage = current_quota_obj.usage.physical
         space_needed = new_quota_bytes * .8
         if current_quota_usage > space_needed:
             raise ValueError(
-                'Cannot automatically shrink the size of allocations to a quota smaller than 80 percent of the space in use. Current size: %s Desired size: %s Space used: %s Allocation: %s'
-                % (allocation.size, new_quota, allocation.usage, allocation)
+                'Cannot automatically reduce allocation quota to less than 80% of space in use. '
+                f'current_quota={allocation.size},new_quota={new_quota},'
+                f'space_used={allocation.usage},allocation_pk={allocation.pk}'
             )
     try:
         new_quota_obj = {'thresholds': {'hard': new_quota_bytes}}
         isilon_conn.quota_client.update_quota_quota(new_quota_obj, current_quota_obj.id)
         print(f'SUCCESS: updated quota for {allocation} to {new_quota}')
         logger.info(
-            'updated quota for %s (resource %s path %s) to %s',
-            allocation, isilon_resource, allocation.path, new_quota,
+            'updated quota. allocation_pk=%s,resource=%s,path=%s,new_quota=%s',
+            allocation.pk, isilon_resource, allocation.path, new_quota,
             extra={'category':'integration:isilon', 'status':'success'}
         )
     except ApiException as e:
-        logger.exception('could not update quota for %s to %s', allocation, new_quota,
-                         extra={'category':'integration:isilon', 'status':'failure'})
+        logger.exception(
+            'quota update failed. allocation_pk=%s,new_quota=%s', allocation, new_quota,
+            extra={'category':'integration:isilon', 'status':'failure'})
         err = f'ERROR: could not update quota for {allocation} to {new_quota} - {e}'
         print_log_error(e, err)
         raise
