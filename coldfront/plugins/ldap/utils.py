@@ -256,7 +256,7 @@ class LDAPConn:
                 member_name, member_sid, group_name, group_sid,
                 extra={ 'category': 'integration:AD' }
             )
-            result = self.deactivate_user(user['distinguishedName'])
+            result = self.deactivate_user(member_name)
             return result
         try:
             result = ad_remove_members_from_groups(
@@ -264,7 +264,7 @@ class LDAPConn:
             )
         except Exception as e:
             logger.exception("Error encountered while removing user from group: %s", e)
-            raise LDAPUserRemovalError("Error removing user from group.")
+            raise LDAPUserRemovalError("Error removing user from group.") from e
         if self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserRemovalError("Member not successfully removed from group.")
         logger.info(
