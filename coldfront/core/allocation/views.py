@@ -201,6 +201,21 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
         attributes = list(alloc_attr_set)
 
         allocation_changes = allocation_obj.allocationchangerequest_set.all().order_by('-pk')
+        allocation_changes = list(allocation_changes)
+        approved_status = AllocationChangeStatusChoice.objects.get(name='Approved')
+        approved_by_lookup = {}
+        if allocation_changes:
+            change_request_ids = [change.pk for change in allocation_changes]
+            history_model = AllocationChangeRequest.history.model
+            approved_histories = history_model.objects.filter(
+                id__in=change_request_ids,
+                status=approved_status,
+            ).exclude(history_user__isnull=True).order_by('id', '-history_date')
+            for history_entry in approved_histories:
+                if history_entry.id not in approved_by_lookup:
+                    approved_by_lookup[history_entry.id] = history_entry.history_user
+        for allocation_change in allocation_changes:
+            allocation_change.approved_by = approved_by_lookup.get(allocation_change.pk)
 
         guage_data = []
         invalid_attributes = []

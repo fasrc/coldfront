@@ -420,6 +420,7 @@ Allocation Detail
             <tr>
               <th scope="col">Date Requested</th>
               <th scope="col">Status</th>
+              <th scope="col">Approved By</th>
               <th scope="col">Justification</th>
               <th scope="col">Actions</th>
             </tr>
@@ -434,6 +435,11 @@ Allocation Detail
                   <td class="text-danger">{{ change_request.status.name }}</td>
                 {% else %}
                   <td class="text-info">{{ change_request.status.name }}</td>
+                {% endif %}
+                {% if change_request.approved_by %}
+                  <td>{{ change_request.approved_by.get_full_name|default:change_request.approved_by.username }}</td>
+                {% else %}
+                  <td>-</td>
                 {% endif %}
                 {% if change_request.justification %}
                   <td>{{change_request.justification}}</td>
