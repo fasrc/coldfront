@@ -33,7 +33,7 @@ class Command(BaseCommand):
         quota_tib_aa_type = AllocationAttributeType.objects.get(name='Storage Quota (TiB)')
         path_aa_type = AllocationAttributeType.objects.get(name='Subdirectory')
         group_names = []
-        for quota_dict in quotas['results']:
+        for quota_dict in quotas:
             if VASTAUTHORIZER == 'AD':
                 if quota_dict['entity']['identifier_type'] == 'gid':
                     gid = quota_dict['entity']['identifier']
