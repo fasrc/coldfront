@@ -336,7 +336,7 @@ class LDAPConn:
         )
         if not result:
             reason = self.conn.last_error
-            logger.error('Failed to deactivate user %s: %s', username, reason)
+            logger.error('Failed to reactivate user. username=%s error=%s', username, reason)
             raise LDAPException(f'Failed to reactivate user {username}: {reason}')
         return result
 
@@ -402,7 +402,7 @@ class LDAPConn:
         group_manager = self.search_users(
             {'distinguishedName': group_manager_dn}, attributes=manager_attr_list
         )
-        logger.debug('group_manager:\n%s', group_manager)
+        logger.debug('group_manager: %s', group_manager)
         if not group_manager:
             logger.error('no ADUser manager found for group %s', group_dn)
             return 'no ADUser manager found'
@@ -603,7 +603,7 @@ def collect_update_project_status_membership():
         project.pi = get_user_model().objects.get(username=matching_group.pi['sAMAccountName'][0])
         project.save()
         logger.info(
-            "changed pi for %s from %s to %s",
+            "changed Project PI. project_title=%s pi_username=%s pi_adsamaccountname=%s",
             project.title, project.pi.username, matching_group.pi['sAMAccountName'][0],
             extra={ 'category': 'database_change:Project', 'status': 'success' }
         )

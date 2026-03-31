@@ -901,6 +901,12 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
 class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     template_name = 'project/project_remove_users.html'
 
+    def can_remove_primary_group_users(self, project_obj):
+        return (
+            self.request.user.is_superuser
+            or project_obj.has_perm(self.request.user, ProjectPermission.GENERAL_MANAGER)
+        )
+
     def test_func(self):
         """UserPassesTestMixin Tests"""
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
@@ -957,6 +963,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             formset = formset(initial=users_to_remove, prefix='userform')
             context['formset'] = formset
         context['project'] = get_object_or_404(Project, pk=pk)
+        context['can_remove_primary_group_users'] = self.can_remove_primary_group_users(project_obj)
         context['EMAIL_TICKET_SYSTEM_ADDRESS'] = EMAIL_TICKET_SYSTEM_ADDRESS
         return render(request, self.template_name, context)
 
@@ -991,7 +998,10 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             if user_form_data['selected']:
                 user_obj = get_user_model().objects.get(username=user_form_data.get('username'))
 
-                if user_form_data['primary_group'] and not request.user.is_superuser:
+                if (
+                    user_form_data['primary_group']
+                    and not self.can_remove_primary_group_users(project_obj)
+                ):
                     failed_user_removals += [
                         f"{project_obj.title} is user {user_obj.username}'s primary group"
                     ]
