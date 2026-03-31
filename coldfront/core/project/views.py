@@ -806,7 +806,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                     except Exception as e:
                         logger.exception(
                             'AD User addition to AD Group failed. '
-                            'requesting_user=%s,user=%s,project=%s,error=%s',
+                            'requesting_user=%s user=%s project=%s error=%s',
                             request.user, user_obj, project_obj.title, e,
                             extra={'category': 'integration:AD', 'status': 'failure'}
                         )
@@ -815,7 +815,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         )
                         continue
                     logger.info(
-                        "AD User made MemberOf AD Group. user=%s,requesting_user=%s,project=%s",
+                        "AD User made MemberOf AD Group. user=%s requesting_user=%s project=%s",
                         user_obj.username, request.user, project_obj.title,
                         extra={'category': 'integration:AD', 'status': 'success'}
                     )
@@ -830,8 +830,9 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         }
                     )
                     logger.info(
-                        "User added to project. added_user=%s,project=%s,requesting_user=%s",
-                        user_obj.username, project_obj.title, request.user,
+                        "User added to project. "
+                        "added_user=%s role=%s project=%s requesting_user=%s",
+                        user_obj.username, role_choice, project_obj.title, request.user,
                         extra={'category': 'database_change:ProjectUser', 'status': 'success'}
                     )
                     added_users_count += 1
@@ -858,7 +859,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         except Exception as e:
                             logger.exception(
                                 'user added to project but not allocation. '
-                                'user=%s,project=%s,allocation_resource=%s,error=%s',
+                                'user=%s project=%s allocation_resource=%s error=%s',
                                 user_obj.username, project_obj.title,
                                 allocation.get_parent_resource.name, e
                             )
@@ -981,7 +982,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     ]
                     logger.warning(
                         'non-admin attempted removal of primary group user. '
-                        'request_user=%s,member=%s,project=%s',
+                        'request_user=%s member=%s project=%s',
                         request.user, user_form_data['username'], project_obj.title,
                         extra={'category': 'integration:AD', 'status': 'failure'}
                     )
@@ -992,7 +993,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     ]
                     logger.warning(
                         'attempted PI removal via ProjectUserRemovalForm. '
-                        'request_user=%s,member=%s,project=%s',
+                        'request_user=%s member=%s project=%s',
                         request.user, user_form_data['username'], project_obj.title,
                         extra={'category': 'integration:AD', 'status': 'failure'}
                     )
@@ -1175,7 +1176,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             project_user_obj.save()
             logger.info(
                 'ProjectUser role changed. '
-                'requesting_user=%s,project=%s,changed_user=%s,old_role=%s,new_role=%s',
+                'requesting_user=%s project=%s changed_user=%s old_role=%s new_role=%s',
                 requester_uname, project_obj.title, username, old_role, new_role,
                 extra={'category': 'database_change:ProjectUser', 'status': 'success'}
             )
