@@ -749,13 +749,9 @@ def add_new_projects(groupusercollections, errortracker):
         g for g in active_pi_groups
         if any(any(string in m for string in pi_groups) for m in g.pi['memberOf'])
     ]
-    logger.debug(
-        'active_invalid_pi_groups: %s',
-        set(active_valid_pi_groups) - set(active_pi_groups)
-    )
+    active_invalid_pi_groups = set(active_valid_pi_groups) - set(active_pi_groups)
+    errortracker['pi_active_invalid'] = [group.name for group in active_invalid_pi_groups]
 
-    errortracker['pi_active_invalid'] = [group.name for group in active_pi_groups
-        if group not in active_valid_pi_groups]
     # identify all users not in ifx
     user_entries = flatten([g.members + [g.pi] for g in active_valid_pi_groups])
     user_names = {u['sAMAccountName'][0] for u in user_entries}
@@ -835,10 +831,10 @@ def add_new_projects(groupusercollections, errortracker):
                 for user in users_to_add
         ])
         logger.info('added projectusers: %s', added_projectusers,
-                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+                extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
         )
         # add permissions to PI/manager-status ProjectUsers
-        logger.info('adding manager status to ProjectUser %s for Project %s',
+        logger.info('Granting PI role to ProjectUser. target_user=%s project=%s',
                     group.pi['sAMAccountName'][0], group.name,
                     extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
         )
@@ -848,7 +844,8 @@ def add_new_projects(groupusercollections, errortracker):
             )
         except ProjectUser.DoesNotExist:
             logger.warning(
-                'Could not change ProjectUser role for PI ProjectUser %s in Project %s: ProjectUser not found in AD Group Members',
+                'Could not change PI ProjectUser role: ProjectUser not found in AD Group Members. '
+                'target_user=%s project=%s',
                 group.pi['sAMAccountName'][0], group.name,
                 extra={'category': 'database_change:ProjectUser', 'status': 'failure'}
             )
@@ -864,5 +861,6 @@ def add_new_projects(groupusercollections, errortracker):
         added_projects.append([group.name, group.project])
 
     for errortype in errortracker:
-        logger.warning('AD groups with %s: %s', errortype, errortracker[errortype])
+        if errortracker[errortype]:
+            logger.warning('AD groups with %s: %s', errortype, errortracker[errortype])
     return added_projects, errortracker
