@@ -28,7 +28,6 @@ plugin_configs = {
     'PLUGIN_LDAP_USER_SEARCH': 'plugins/ldap_user_search.py',
     'PLUGIN_API': 'plugins/api.py',
     'PLUGIN_LDAP': 'plugins/ldap_fasrc.py',
-    'PLUGIN_LFS': 'plugins/lfs.py',
     'PLUGIN_FASRC': 'plugins/fasrc.py',
     'PLUGIN_FASRC_MONITORING': 'plugins/fasrc_monitoring.py',
     'PLUGIN_ISILON': 'plugins/isilon.py',
