@@ -35,40 +35,27 @@ class Command(BaseCommand):
             sf = StarFishServer()
             volumes = sf.get_volume_attributes()
             for vol in volumes:
-                vol['capacity_tb'] = vol['total_capacity']/(1024**4)
-                vol['free_tb'] = vol['free_space']/(1024**4)
-                vol['used_tb'] = (vol['total_capacity'] - vol['free_space'])/(1024**4)
-            volumes = [
-                {
-                    'name': vol['vol'],
-                    'attrs': {
-                        'capacity_tb': vol['capacity_tb'],
-                        'free_tb': vol['free_tb'],
-                        'file_count': vol['number_of_files'],
-                        'used_tb': vol['used_tb'],
-                    }
-                }
-                for vol in volumes
-            ]
-
-
+                vol['capacity_TB'] = vol['total_capacity']/(1024**4)
+                vol['free_TB'] = vol['free_space']/(1024**4)
+                vol['used_physical_TB'] = (vol['total_capacity'] - vol['free_space'])/(1024**4)
         elif source == 'redash':
             sf = StarFishRedash()
             volumes = sf.get_vol_stats()
-            volumes = [
-                {
-                    'name': vol['volume_name'],
-                    'attrs': {
-                        'capacity_tb': vol['capacity_TB'],
-                        'free_tb': vol['free_TB'],
-                        'used_tb': vol['used_physical_TB'],
-                        'file_count': vol['regular_files'],
-                    }
-                }
-                for vol in volumes
-            ]
         else:
             raise ValueError('source must be "rest_api" or "redash"')
+
+        volumes = [
+            {
+                'name': vol['vol'],
+                'attrs': {
+                    'capacity_tb': vol['capacity_TB'],
+                    'free_tb': vol['free_TB'],
+                    'used_tb': vol['used_physical_TB'],
+                    'file_count': vol['number_of_files'],
+                }
+            }
+            for vol in volumes
+        ]
 
         # collect user and lab counts, allocation sizes for each volume
         resources = Resource.objects.filter(resource_type__name='Storage')
