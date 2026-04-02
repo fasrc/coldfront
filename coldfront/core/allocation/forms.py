@@ -201,7 +201,7 @@ class AllocationApprovalForm(forms.Form):
         label=mark_safe(
             'If you have opted for manual allocation creation, please enter the path where the '
             'allocation was created. Start it with <code>C/</code> or <code>F/</code> for lfs '
-            '(e.g., <code>C/example_lab</code>) and <code>rc_labs/</code> or '
+            '(e.g., <code>C/LABS/example_lab</code>) and <code>rc_labs/</code> or '
             '<code>c_fasse_labs/</code> for isilon (e.g., <code>rc_labs/example_lab</code>)',
         ),
         max_length=255,

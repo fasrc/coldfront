@@ -37,7 +37,7 @@ def send_storagereport_pdf(project, context=None):
     context = email_template_context(extra_context={
         'EMAIL_TICKET_SYSTEM_ADDRESS': EMAIL_TICKET_SYSTEM_ADDRESS,
         'project_title': title,
-        'project_detail_url': build_link(f'project/{project.pk}/')
+        'project_detail_url': build_link(f'/project/{project.pk}/')
     })
     # 1) build a fake GET request, set any necessary attributes
     factory = RequestFactory()
