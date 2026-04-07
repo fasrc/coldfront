@@ -98,7 +98,7 @@ LOGGING = {
             'level': 'INFO',
         },
         'django-q': {
-            'handlers': ['django-q', 'key-events'],
+            'handlers': ['console', 'django-q', 'key-events'],
         },
         'ifx': {
             'handlers': ['console', 'key-events', 'console_debug', 'mail_admins', 'json'],
@@ -109,11 +109,11 @@ LOGGING = {
             'level': 'INFO',
         },
         'coldfront': {
-            'handlers': ['key-events', 'json'],
+            'handlers': ['console', 'key-events'],
             'level': 'INFO',
         },
         'request': {
-            'handlers': ['json'],
+            'handlers': ['console', 'json'],
             'level': 'INFO',
         }
     },
