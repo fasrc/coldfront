@@ -26,7 +26,6 @@ COPY etc/ipython_init.py ${IPYTHON_STARTUP}
 
 
 RUN pip install --upgrade pip && \
-    pip install vastpy && \
     pip install -r requirements.txt
 
 COPY . .

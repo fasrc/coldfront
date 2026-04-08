@@ -70,3 +70,4 @@ xhtml2pdf==0.2.15
 XlsxWriter
 git+https://github.com/fasrc/slurmrest_python_sdk.git
 git+https://github.com/fasrc/sftocf.git
+git+https://github.com/fasrc/vast_coldfront_plugin.git
