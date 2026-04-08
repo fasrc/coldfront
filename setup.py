@@ -80,7 +80,8 @@ setup(
         'XlsxWriter',
         'django-extensions==3.2.3',
         'git+https://github.com/fasrc/slurmrest_python_sdk.git',
-        'git+https://github.com/fasrc/sftocf.git'
+        'git+https://github.com/fasrc/sftocf.git',
+        'git+https://github.com/fasrc/coldfront_ecs_plugin.git'
     ],
     entry_points={
         'console_scripts': [
