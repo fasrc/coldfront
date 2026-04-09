@@ -47,6 +47,7 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'json',
             'level': 'INFO',
+            'filters': ['request'],
         },
         'console_debug': {
             'class': 'logging.StreamHandler',
@@ -90,28 +91,28 @@ LOGGING = {
         # },
     },
     'loggers': {
-        'django_auth_ldap': {
+        'coldfront': {
+            'handlers': ['console', 'json'],
             'level': 'INFO',
-            # 'handlers': ['console', 'file'],
-            'handlers': ['console'],
         },
         'django': {
             'handlers': ['console', 'json'],
             'level': 'INFO',
         },
+        'django_auth_ldap': {
+            'level': 'INFO',
+            # 'handlers': ['console', 'file'],
+            'handlers': ['console'],
+        },
         'django-q': {
-            'handlers': ['console', 'django-q', 'key-events'],
+            'handlers': ['console', 'django-q', 'json', 'key-events'],
         },
         'ifx': {
-            'handlers': ['console', 'key-events', 'console_debug', 'mail_admins', 'json'],
+            'handlers': ['console', 'console_debug', 'json', 'key-events', 'mail_admins'],
             'level': 'INFO',
         },
         'ifxbilling': {
-            'handlers': ['console', 'key-events', 'console_debug', 'mail_admins'],
-            'level': 'INFO',
-        },
-        'coldfront': {
-            'handlers': ['console', 'key-events'],
+            'handlers': ['console', 'console_debug', 'json', 'mail_admins'],
             'level': 'INFO',
         },
         'request': {
