@@ -401,9 +401,9 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
         :rtype: `~decimal.Decimal`
         '''
         allocation_size_tb = allocation.get_attribute(self.STORAGE_QUOTA_ATTRIBUTE)
-        if not allocation_size_tb:
+        if allocation_size_tb is None:
             allocation_size_tb = allocation.get_attribute(self.OTHER_STORAGE_QUOTA_ATTRIBUTE)
-        if not allocation_size_tb:
+        if allocation_size_tb is None:
             raise Exception(f'Allocation {allocation.id} ({allocation.get_resources_as_string} for {allocation.project.title}) does not have the {self.STORAGE_QUOTA_ATTRIBUTE} attribute or the {self.OTHER_STORAGE_QUOTA_ATTRIBUTE} attribute set.')
         return Decimal(allocation_size_tb)
 
