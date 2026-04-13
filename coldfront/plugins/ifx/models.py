@@ -141,7 +141,7 @@ def allocation_user_to_allocation_product_usage(allocation_user, product, overwr
     tb_quantity = Decimal(product_usage_data['quantity'] / 1024**4).quantize(Decimal("100.0000"))
     product_usage_data['decimal_quantity'] = tb_quantity
     allocation_size = allocation_user.allocation.get_attribute('Storage Quota (TiB)')
-    if not allocation_size:
+    if allocation_size is None:
         allocation_size = allocation_user.allocation.get_attribute('Storage Quota (TB)')
     product_usage_data['description'] = f"{tb_quantity.quantize(Decimal('0.00'))} TB of {allocation_size} TB allocation of {product_usage_data['product']} for {product_usage_data['product_user']} on {product_usage_data['start_date']}"
     # pylint: disable=unused-variable
@@ -168,11 +168,11 @@ def update_allocation_product(allocation):
             tb_str = None
             attr_val = allocation.get_attribute(name='Storage Quota (TB)')
             is_active = allocation.status.name == 'Active'
-            if attr_val:
+            if attr_val is not None:
                 tb_str = f"{attr_val} TB"
             else:
                 attr_val = allocation.get_attribute(name='Storage Quota (TiB)')
-                if attr_val:
+                if attr_val is not None:
                     tb_str = f"{attr_val} TiB"
             if tb_str:
                 dir_str = allocation.get_attribute(name='Subdirectory')
