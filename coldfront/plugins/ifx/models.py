@@ -201,7 +201,7 @@ def update_allocation_product(allocation):
                     pa = ProductAllocation.objects.get(allocation=allocation)
                     product = pa.product
                     if not hasattr(settings, 'FIINELESS') or not settings.FIINELESS:
-                        if tb_str not in product.product_name:
+                        if tb_str not in product.product_name and is_active:
                             # Need to migrate product in Fiine because the size has changed
                             mods = {
                                 'product_name': product_name,
@@ -214,7 +214,11 @@ def update_allocation_product(allocation):
                             product = new_product
                         else:
                             fiine_product = FiineAPI.readProduct(product_number=product.product_number)
-                            fiine_product.product_name = product_name
+
+                            # Only update the product name in Fiine if the allocation is still active.
+                            if is_active:
+                                fiine_product.product_name = product_name
+
                             fiine_product.product_description = product_description
                             fiine_product.facility = facility.name
                             fiine_product.parent = {
