@@ -5,7 +5,7 @@ Custom billing calculator class for Coldfront
 import logging
 import re
 import json
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict
 from decimal import Decimal
 import requests
 from django.core.exceptions import MultipleObjectsReturned
@@ -16,9 +16,9 @@ from django.conf import settings
 from ifxbilling.calculator import BasicBillingCalculator, NewBillingCalculator, Rebalance
 from ifxbilling.models import Account, Product, ProductUsage, Rate, BillingRecord, ProductUsageProcessing
 from ifxuser.models import Organization
-from coldfront.core.allocation.models import Allocation, AllocationStatusChoice
+from coldfront.core.allocation.models import AllocationStatusChoice, AllocationUser, AllocationUserStatusChoice
 from coldfront.plugins.ifx import adjust
-from .models import AllocationUserProductUsage
+from .models import AllocationUserProductUsage, allocation_user_to_allocation_product_usage
 
 
 logger = logging.getLogger(__name__)
@@ -590,6 +590,15 @@ class NewColdfrontBillingCalculator(NewBillingCalculator):
                 'quantity': 1,
                 'fraction': 1,
             }
+            # Need to make sure there is an AllocationUser record and an AllocationUserProductUsage record for the PI so that the billing record will link properly to the user and allocation
+            allocation_user, created = AllocationUser.objects.get_or_create(allocation=allocation, user=pi, defaults={'status': AllocationUserStatusChoice.objects.get(name='Active')})
+            try:
+                allocation_product = allocation.productallocation_set.first().product
+            except Exception as e:
+                logger.error(f'Error getting allocation product for {allocation}: {e}')
+                raise e
+            overwrite = True
+            allocation_user_to_allocation_product_usage(allocation_user, allocation_product, overwrite, month=month, year=year)
             if self.verbosity > 0:
                 logger.info(f'Allocation {allocation} has no users at all. Setting PI {pi} as user.')
 
