@@ -319,10 +319,17 @@ def create_isilon_allocation_quota(
     )
 
     logger.info(
-        'Auto-created Isilon allocation quota. '
-        'project=%s,resource=%s,path=%s,allocation_id=%s,actions_performed=%s,exceptions=%s',
-        lab_name, resource, path, allocation.pk, actions_performed, option_exceptions,
-        extra={'category':'integration:isilon', 'status':'success'}
+        'Auto-created Isilon allocation quota.',
+        extra={
+            'category': 'integration:isilon',
+            'status': 'success',
+            'project': lab_name,
+            'resource': resource,
+            'path': path,
+            'allocation_id': allocation.pk,
+            'actions_performed': actions_performed,
+            'exceptions': option_exceptions,
+        }
     )
     return option_exceptions
 
@@ -347,9 +354,15 @@ def update_isilon_allocation_quota(allocation, new_quota):
     current_quota_obj = isilon_conn.get_quota_from_path(path)
     current_quota = current_quota_obj.thresholds.hard
     logger.warning(
-        'preparing to change allocation quota. path=%s,allocation_pk=%s,'
-        'current_quota=%s,current_quota_tib=%s,new_quota=%s,new_quota_tib=%s',
-        allocation.path, allocation, current_quota, allocation.size, new_quota_bytes, new_quota
+        'Preparing to change allocation quota.',
+        extra={
+            'path': allocation.path,
+            'allocation_pk': allocation.pk,
+            'current_quota': current_quota,
+            'current_quota_tib': allocation.size,
+            'new_quota': new_quota_bytes,
+            'new_quota_tib': new_quota,
+        }
     )
     if unallocated_space < (new_quota_bytes-current_quota):
         raise ValueError(
@@ -370,14 +383,26 @@ def update_isilon_allocation_quota(allocation, new_quota):
         isilon_conn.quota_client.update_quota_quota(new_quota_obj, current_quota_obj.id)
         print(f'SUCCESS: updated quota for {allocation} to {new_quota}')
         logger.info(
-            'updated quota. allocation_pk=%s,resource=%s,path=%s,new_quota=%s',
-            allocation.pk, isilon_resource, allocation.path, new_quota,
-            extra={'category':'integration:isilon', 'status':'success'}
+            'Updated quota.',
+            extra={
+                'category': 'integration:isilon',
+                'status': 'success',
+                'allocation_pk': allocation.pk,
+                'resource': isilon_resource,
+                'path': allocation.path,
+                'new_quota': new_quota,
+            }
         )
     except ApiException as e:
         logger.exception(
-            'quota update failed. allocation_pk=%s,new_quota=%s', allocation, new_quota,
-            extra={'category':'integration:isilon', 'status':'failure'})
+            'Quota update failed.',
+            extra={
+                'category': 'integration:isilon',
+                'status': 'failure',
+                'allocation_pk': allocation.pk,
+                'new_quota': new_quota,
+                'error': str(e),
+            })
         err = f'ERROR: could not update quota for {allocation} to {new_quota} - {e}'
         print_log_error(e, err)
         raise

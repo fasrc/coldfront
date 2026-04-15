@@ -805,19 +805,27 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         )
                     except Exception as e:
                         logger.exception(
-                            'AD User addition to AD Group failed. '
-                            'requesting_user=%s user=%s project=%s error=%s',
-                            request.user, user_obj, project_obj.title, e,
-                            extra={'category': 'integration:AD', 'status': 'failure'}
+                            'AD user addition to group failed.',
+                            extra={
+                                'category': 'integration:AD',
+                                'status': 'failure',
+                                'user': user_obj,
+                                'project': project_obj.title,
+                                'error': str(e),
+                            }
                         )
                         errors.append(
                             f"Could not add user {user_obj} to AD Group for {project_obj.title}\nPlease contact a Coldfront admin for further assistance."
                         )
                         continue
                     logger.info(
-                        "AD User made MemberOf AD Group. user=%s requesting_user=%s project=%s",
-                        user_obj.username, request.user, project_obj.title,
-                        extra={'category': 'integration:AD', 'status': 'success'}
+                        "AD user added to group.",
+                        extra={
+                            'category': 'integration:AD',
+                            'status': 'success',
+                            'user': user_obj.username,
+                            'project': project_obj.title,
+                        }
                     )
                     successes.append(f"User {user_obj} added to AD Group for {project_obj.title}")
 
@@ -830,10 +838,14 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         }
                     )
                     logger.info(
-                        "User added to project. "
-                        "added_user=%s role=%s project=%s requesting_user=%s",
-                        user_obj.username, role_choice, project_obj.title, request.user,
-                        extra={'category': 'database_change:ProjectUser', 'status': 'success'}
+                        "User added to project.",
+                        extra={
+                            'category': 'database_change:ProjectUser',
+                            'status': 'success',
+                            'added_user': user_obj.username,
+                            'role': role_choice,
+                            'project': project_obj.title,
+                        }
                     )
                     added_users_count += 1
                     for allocation in Allocation.objects.filter(
@@ -858,10 +870,13 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             )
                         except Exception as e:
                             logger.exception(
-                                'user added to project but not allocation. '
-                                'user=%s project=%s allocation_resource=%s error=%s',
-                                user_obj.username, project_obj.title,
-                                allocation.get_parent_resource.name, e
+                                'User added to project but allocation activation failed.',
+                                extra={
+                                    'user': user_obj.username,
+                                    'project': project_obj.title,
+                                    'allocation_resource': allocation.get_parent_resource.name,
+                                    'error': str(e),
+                                }
                             )
                             errors.append(
                                 f"User {user_obj.username} was added to the project but an error occurred when activating them in allocation for {allocation.get_parent_resource.name}: {e}"
@@ -981,10 +996,13 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         f"{project_obj.title} is user {user_obj.username}'s primary group"
                     ]
                     logger.warning(
-                        'non-admin attempted removal of primary group user. '
-                        'request_user=%s member=%s project=%s',
-                        request.user, user_form_data['username'], project_obj.title,
-                        extra={'category': 'integration:AD', 'status': 'failure'}
+                        'Non-admin attempted removal of primary group user.',
+                        extra={
+                            'category': 'integration:AD',
+                            'status': 'failure',
+                            'member': user_form_data['username'],
+                            'project': project_obj.title,
+                        }
                     )
                     continue
                 if project_obj.pi == user_obj:
@@ -992,10 +1010,13 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         f"{user_obj.username} is the PI of {project_obj.title}"
                     ]
                     logger.warning(
-                        'attempted PI removal via ProjectUserRemovalForm. '
-                        'request_user=%s member=%s project=%s',
-                        request.user, user_form_data['username'], project_obj.title,
-                        extra={'category': 'integration:AD', 'status': 'failure'}
+                        'Attempted PI removal via ProjectUserRemovalForm.',
+                        extra={
+                            'category': 'integration:AD',
+                            'status': 'failure',
+                            'member': user_form_data['username'],
+                            'project': project_obj.title,
+                        }
                     )
                     continue
 
@@ -1007,23 +1028,27 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         user_name=user_obj.username, group_name=project_obj.title
                     )
                     logger.info(
-                        'AD Group member removed/deactivated. '
-                        'request_user=%s,member=%s,group=%s,primary_group=%s',
-                        self.request.user, user_obj.username, project_obj.title,
-                        user_form_data['primary_group'],
-                        extra={'category': 'integration:AD', 'status': 'success'}
+                        'AD group member removed or deactivated.',
+                        extra={
+                            'category': 'integration:AD',
+                            'status': 'success',
+                            'member': user_obj.username,
+                            'group': project_obj.title,
+                            'primary_group': user_form_data['primary_group'],
+                        }
                     )
                 except Exception as e:
                     failed_user_removals += [f"could not remove user {user_obj}: {e}"]
                     logger.exception(
-                        'Failed AD Group member removal. '
-                        'request_user=%s,member=%s,group=%s,primary_group=%s,error=%s',
-                        self.request.user,
-                        user_obj.username,
-                        project_obj.title,
-                        user_form_data['primary_group'],
-                        e,
-                        extra={'category': 'integration:AD', 'status': 'failure'}
+                        'Failed AD group member removal.',
+                        extra={
+                            'category': 'integration:AD',
+                            'status': 'failure',
+                            'member': user_obj.username,
+                            'group': project_obj.title,
+                            'primary_group': user_form_data['primary_group'],
+                            'error': str(e),
+                        }
                     )
                     continue
 
@@ -1048,7 +1073,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     secondary_projects = ','.join(
                         [sp.project.title for sp in secondary_projectusers]
                     )
-                    extra_log = f',secondary_projects="{secondary_projects}"'
+                    log_extra = {'secondary_projects': secondary_projects}
                 else:
                     project_user_obj.status = projectuser_status_removed
                     action = 'removed'
@@ -1057,12 +1082,18 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         status__name__in=['Active', 'Renewal Requested'],
                         resources__resource_type__name='Storage'
                     )
-                    extra_log = ''
+                    log_extra = {}
                 project_user_obj.save()
                 logger.info(
-                    "User %s from project. requesting_user=%s,project_user=%s,project=%s%s",
-                    action, request.user, user_obj.username, project_obj.title, extra_log,
-                    extra={'category': 'database_change:ProjectUser', 'status': 'success'}
+                    "User %s from project.",
+                    action,
+                    extra={
+                        'category': 'database_change:ProjectUser',
+                        'status': 'success',
+                        'project_user': user_obj.username,
+                        'project': project_obj.title,
+                        **log_extra,
+                    }
                 )
 
                 for allocation in allocations_to_remove_user_from:
@@ -1175,10 +1206,15 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             project_user_obj.role = ProjectUserRoleChoice.objects.get(name=new_role)
             project_user_obj.save()
             logger.info(
-                'ProjectUser role changed. '
-                'requesting_user=%s project=%s changed_user=%s old_role=%s new_role=%s',
-                requester_uname, project_obj.title, username, old_role, new_role,
-                extra={'category': 'database_change:ProjectUser', 'status': 'success'}
+                'ProjectUser role changed.',
+                extra={
+                    'category': 'database_change:ProjectUser',
+                    'status': 'success',
+                    'project': project_obj.title,
+                    'changed_user': username,
+                    'old_role': old_role,
+                    'new_role': new_role,
+                }
             )
 
             project_role_change_email_context = email_template_context(

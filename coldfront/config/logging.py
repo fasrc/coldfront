@@ -28,12 +28,12 @@ LOGGING = {
     },
     'formatters': {
         'key-events': {
-            "()": "django.utils.log.ServerFormatter",
+            "()": "coldfront.config.log_formatters.LogfmtServerFormatter",
             "format": "[{server_time}] {name} {levelname} {message}",
             "style": "{",
         },
         'default': {
-            "()": "django.utils.log.ServerFormatter",
+            "()": "coldfront.config.log_formatters.LogfmtServerFormatter",
             "format": "[{server_time}] {name} {levelname} {message}",
             "style": "{",
         },

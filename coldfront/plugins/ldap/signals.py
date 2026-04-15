@@ -67,9 +67,13 @@ def reactivate_user(sender, **kwargs):
         status=ProjectUserStatusChoice.objects.get(name='Active')
     )
     logger.info(
-        'Reactivated AD user and related ProjectUsers. user=%s, projects=%s',
-        user.username, projects,
-        extra={ 'category': 'ldap:User', 'status': 'success' }
+        'Reactivated AD user and related ProjectUsers.',
+        extra={
+            'category': 'ldap:User',
+            'status': 'success',
+            'user': user.username,
+            'projects': projects,
+        }
     )
 
 @receiver(project_post_create)

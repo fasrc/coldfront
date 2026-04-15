@@ -27,17 +27,30 @@ class RequestFilter(logging.Filter):
         request = get_current_request()
         if request is not None:
             ip, _ = get_client_ip(request)
-            record.ip_addr = ip or ''
-            user = getattr(request, "user", None)
-            if user and user.is_authenticated:
-                record.user = getattr(user, "get_username", lambda: str(user))()
+            if not hasattr(record, 'ip_addr'):
+                record.ip_addr = ip or ''
+
+            request_user = getattr(request, "user", None)
+            if request_user and request_user.is_authenticated:
+                request_username = getattr(
+                    request_user, "get_username", lambda: str(request_user)
+                )()
             else:
-                record.user = 'anonymous'
-            record.auth_backend = request.session._session_cache.get('_auth_user_backend', 'unknown')
+                request_username = 'anonymous'
+            if not hasattr(record, 'requesting_user'):
+                record.requesting_user = request_username
+
+            if not hasattr(record, 'auth_backend'):
+                record.auth_backend = request.session._session_cache.get(
+                    '_auth_user_backend', 'unknown'
+                )
         else:
-            record.ip_addr = ''
-            record.user = ''
-            record.auth_backend = ''
+            if not hasattr(record, 'ip_addr'):
+                record.ip_addr = ''
+            if not hasattr(record, 'requesting_user'):
+                record.requesting_user = ''
+            if not hasattr(record, 'auth_backend'):
+                record.auth_backend = ''
         if not hasattr(record, 'category'):
             record.category = ''
         return True

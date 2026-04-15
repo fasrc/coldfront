@@ -417,18 +417,26 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                     except Exception as e:
                         error = f"An error was encountered during autocreation: {e} Please contact your administrator."
                         logger.exception(
-                            'allocation autocreation error. allocation_pk=%s,error=%s',
-                            allocation_obj.pk, e,
-                            extra={'category': 'integration', 'status': 'error'},
+                            'Allocation autocreation error.',
+                            extra={
+                                'category': 'integration',
+                                'status': 'error',
+                                'allocation_pk': allocation_obj.pk,
+                                'error': str(e),
+                            },
                         )
                     if error:
                         messages.error(request, error)
                         return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
                     logger.info(
-                        "Auto-created allocation during approval. "
-                        "requesting_user=%s allocation_pk=%s project=%s size=%s",
-                        request.user, allocation_obj.pk, allocation_obj.project.title, allocation_obj.size,
-                        extra={'category': 'integration', 'status': 'success'},
+                        "Auto-created allocation during approval.",
+                        extra={
+                            'category': 'integration',
+                            'status': 'success',
+                            'allocation_pk': allocation_obj.pk,
+                            'project': allocation_obj.project.title,
+                            'size': allocation_obj.size,
+                        },
                     )
                 if check_l3_tag(allocation_obj, resource):
                     AllocationAttribute.objects.get_or_create(
@@ -990,7 +998,6 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 
         formset = formset(request.POST, initial=formset_initial, prefix=prefix)
         users_added_count = 0
-        requester_uname = self.request.user.username
 
         if formset.is_valid():
             user_active_status = AllocationUserStatusChoice.objects.get(name='Active')
@@ -1006,8 +1013,12 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 cluster = allocation_obj.get_cluster.get_attribute('slurm_cluster')
                 username = form_data.get('username')
                 logger.warning(
-                    'Triggering addition of user to slurm account. user=%s,account=%s,cluster=%s',
-                    username, account, cluster
+                    'Triggering addition of user to slurm account.',
+                    extra={
+                        'user': username,
+                        'account': account,
+                        'cluster': cluster,
+                    }
                 )
                 try:
                     allocation_user_add_on_slurm.send(
@@ -1017,19 +1028,27 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         cluster=cluster
                     )
                     logger.info(
-                        'added user to slurm account. '
-                        'requesting_user=%s user=%s account=%s cluster=%s',
-                        requester_uname, username, allocation_obj.project.title, cluster,
+                        'Added user to slurm account.',
                         extra={
                             'username': username,
+                            'account': allocation_obj.project.title,
+                            'cluster': cluster,
                             'allocation': allocation_obj.pk,
-                            'category': 'integration:slurmrest', 'status': 'success'}
+                            'category': 'integration:slurmrest',
+                            'status': 'success',
+                        }
                     )
                 except Exception as e:
                     logger.exception(
-                        "slurm account user addition failed. user=%s,account=%s,cluster=%s,error=%s",
-                        username, allocation_obj.project.title, cluster, e,
-                        extra={'category': 'integration:slurmrest', 'status': 'error'}
+                        "Slurm account user addition failed.",
+                        extra={
+                            'category': 'integration:slurmrest',
+                            'status': 'error',
+                            'user': username,
+                            'account': allocation_obj.project.title,
+                            'cluster': cluster,
+                            'error': str(e),
+                        }
                     )
                     err = f"addition of user {username} to allocation {allocation_obj.pk} ({allocation_obj.project.title} {cluster}) failed: {e}"
                     messages.error(request, err)
@@ -1047,10 +1066,13 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     )
                 except Exception as e:
                     logger.exception(
-                        "signal processes for allocationuser activation failed. "
-                        "allocationuser_pk=%s project_title=%s resource_name=%s error=%s",
-                        allocation_user_obj.pk, allocation_obj.project.title,
-                        allocation_obj.get_parent_resource.name, e
+                        "Signal processes for allocationuser activation failed.",
+                        extra={
+                            'allocationuser_pk': allocation_user_obj.pk,
+                            'project_title': allocation_obj.project.title,
+                            'resource_name': allocation_obj.get_parent_resource.name,
+                            'error': str(e),
+                        }
                     )
                     err = f"activation of allocationuser {allocation_user_obj.pk} ({allocation_obj.project.title} {allocation_obj.get_parent_resource.name}) failed: {e} Please contact your administrator."
                     messages.error(request, err)
@@ -1159,8 +1181,12 @@ class AllocationEditUserView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 )
             except Exception as e:
                 logger.exception(
-                    'allocationuser rawshare update failed. user=%s allocation_pk=%s error=%s',
-                    allocationuser_obj.user.username, allocation_obj.pk, e
+                    'Allocationuser rawshare update failed.',
+                    extra={
+                        'user': allocationuser_obj.user.username,
+                        'allocation_pk': allocation_obj.pk,
+                        'error': str(e),
+                    }
                 )
                 messages.error(request, f'error encountered while trying to update allocationuser {allocation_obj}:{allocationuser_obj} rawshare: {e}')
                 return HttpResponseRedirect(
@@ -1236,7 +1262,6 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
         pk = self.kwargs.get('pk')
         allocation_obj = get_object_or_404(Allocation, pk=pk)
         users_to_remove = self.get_users_to_remove(allocation_obj)
-        requester_uname = self.request.user.username
 
         formset = formset_factory(
             AllocationRemoveUserForm, max_num=len(users_to_remove)
@@ -1270,10 +1295,13 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
                         self.__class__, account=account, username=user_obj.username, cluster=cluster
                     )
                     logger.info(
-                        'Removed user from slurm account. '
-                        'requesting_user=%s,removed_user=%s,account=%s,cluster=%s',
-                        requester_uname, user_obj.username, account, cluster,
-                        extra={'category': 'integration:slurmrest'}
+                        'Removed user from slurm account.',
+                        extra={
+                            'category': 'integration:slurmrest',
+                            'removed_user': user_obj.username,
+                            'account': account,
+                            'cluster': cluster,
+                        }
                     )
                     allocation_user_obj.status = removed_allocuser_status
                     allocation_user_obj.save()
@@ -1284,18 +1312,24 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
                 except SlurmError as e:
                     error_message = f"You can't remove this AllocationUser ({user_form_data.get('username')}) while they are running a job using this account. Try again after the job has been completed or cancelled."
                     logger.exception(
-                        'could not remove user from slurm account. '
-                        'requesting_user=%s username=%s error=%s',
-                        requester_uname, user_form_data.get('username'), e,
-                        extra={'category': 'integration:slurmrest', 'status': 'failure'})
+                        'Could not remove user from slurm account.',
+                        extra={
+                            'category': 'integration:slurmrest',
+                            'status': 'failure',
+                            'username': user_form_data.get('username'),
+                            'error': str(e),
+                        })
                     messages.error(request, error_message)
                 except Exception as e:
                     error_message = f"An error occurred while trying to remove AllocationUser ({user_form_data.get('username')}): {e}"
                     logger.exception(
-                        'could not remove user from slurm account. '
-                        'requesting_user=%s username=%s error=%s',
-                        requester_uname, user_form_data.get('username'), e,
-                        extra={'category': 'integration:slurmrest', 'status': 'failure'}
+                        'Could not remove user from slurm account.',
+                        extra={
+                            'category': 'integration:slurmrest',
+                            'status': 'failure',
+                            'username': user_form_data.get('username'),
+                            'error': str(e),
+                        }
                     )
                     messages.error(request, error_message)
 
@@ -1303,9 +1337,13 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
             msg = f'Removed {remove_users_count} {user_plural} from allocation.'
             messages.success(request, msg)
             logger.info(
-                "Removed allocationusers. user_count=%s allocation_pk=%s project=%s resource=%s",
-                remove_users_count, allocation_obj.pk, allocation_obj.project.title,
-                allocation_obj.get_parent_resource.name
+                "Removed allocationusers.",
+                extra={
+                    'user_count': remove_users_count,
+                    'allocation_pk': allocation_obj.pk,
+                    'project': allocation_obj.project.title,
+                    'resource': allocation_obj.get_parent_resource.name,
+                }
             )
         else:
             for error in formset.errors:
@@ -1605,10 +1643,14 @@ class AllocationUserAttributesEditView(LoginRequiredMixin, UserPassesTestMixin, 
                         cluster = allocation.get_parent_resource.get_attribute('slurm_cluster')
                         try:
                             logger.info(
-                                "Triggered update of Slurm user rawshare. target_user=%s "
-                                "old_rawshare=%s new_rawshare=%s account=%s cluster=%s",
-                                username, allocuser_current_rawshare_val,
-                                allocuser_new_rawshare_val, account, cluster
+                                "Triggered update of Slurm user rawshare.",
+                                extra={
+                                    'target_user': username,
+                                    'old_rawshare': allocuser_current_rawshare_val,
+                                    'new_rawshare': allocuser_new_rawshare_val,
+                                    'account': account,
+                                    'cluster': cluster,
+                                }
                             )
                             allocation_user_attribute_edit.send(
                                 sender=self.__class__,
@@ -2491,18 +2533,25 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                             messages.error(request, error)
                             return self.redirect_to_detail(pk)
                         logger.info(
-                            'Auto-updated allocation quota. '
-                            'allocation_id=%s,old_quota=%s,new_quota=%s',
-                            alloc_change_obj.allocation, old_quota, new_quota_value,
-                            extra={'category': 'integration', 'status': 'success'},
+                            'Auto-updated allocation quota.',
+                            extra={
+                                'category': 'integration',
+                                'status': 'success',
+                                'allocation_id': alloc_change_obj.allocation.pk,
+                                'old_quota': old_quota,
+                                'new_quota': new_quota_value,
+                            },
                         )
                     except Exception as e:
                         logger.exception(
-                            'Auto-update of allocation quota failed. '
-                            'requesting_user=%s allocation_pk=%s change_request_pk=%s error=%s',
-                            request.user, alloc_change_obj.allocation.pk,
-                            alloc_change_obj.pk, str(e),
-                            extra={'category': 'integration', 'status': 'error'}
+                            'Auto-update of allocation quota failed.',
+                            extra={
+                                'category': 'integration',
+                                'status': 'error',
+                                'allocation_pk': alloc_change_obj.allocation.pk,
+                                'change_request_pk': alloc_change_obj.pk,
+                                'error': str(e),
+                            }
                         )
                         err = ("An error was encountered while auto-updating"
                             "the allocation quota. Please contact Coldfront "
