@@ -233,9 +233,14 @@ class LDAPConn:
         if not self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserAdditionError("Member not successfully added to group.")
         logger.info(
-            'AD User made MemberOf AD Group. username=%s,user_sid=%s,groupname=%s,group_sid=%s',
-            member_name, member_sid, group_name, group_sid,
-            extra={ 'category': 'integration:AD' }
+            'AD user made member of AD group.',
+            extra={
+                'category': 'integration:AD',
+                'username': member_name,
+                'user_sid': member_sid,
+                'groupname': group_name,
+                'group_sid': group_sid,
+            }
         )
         return result
 
@@ -252,9 +257,14 @@ class LDAPConn:
         group_sid = group['objectSid']
         if user['gidNumber'] == group['gidNumber']:
             logger.warning(
-                "Preparing to deactivate ADUser. username=%s,user_sid=%s,primary_group_name=%s,primary_group_sid=%s",
-                member_name, member_sid, group_name, group_sid,
-                extra={ 'category': 'integration:AD' }
+                "Preparing to deactivate AD user.",
+                extra={
+                    'category': 'integration:AD',
+                    'username': member_name,
+                    'user_sid': member_sid,
+                    'primary_group_name': group_name,
+                    'primary_group_sid': group_sid,
+                }
             )
             result = self.deactivate_user(member_name)
             return result
@@ -268,9 +278,14 @@ class LDAPConn:
         if self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserRemovalError("Member not successfully removed from group.")
         logger.info(
-            'ADUser removed from ADGroup. username=%s,user_sid=%s,groupname=%s,group_sid=%s',
-            member_name, member_sid, group_name, group_sid,
-            extra={ 'category': 'integration:AD' }
+            'AD user removed from AD group.',
+            extra={
+                'category': 'integration:AD',
+                'username': member_name,
+                'user_sid': member_sid,
+                'groupname': group_name,
+                'group_sid': group_sid,
+            }
         )
         return result
 
@@ -287,11 +302,24 @@ class LDAPConn:
         )
         if not result:
             reason = self.conn.last_error
-            logger.error('Failed to deactivate user. username=%s,error=%s', username, reason)
+            logger.error(
+                'Failed to deactivate user.',
+                extra={
+                    'category': 'integration:AD',
+                    'status': 'failure',
+                    'username': username,
+                    'error': reason,
+                }
+            )
             raise LDAPException(f'Failed to deactivate user {username}: {reason}')
         logger.info(
-            'Deactivated user. username=%s,user_dn=%s', username, user_dn,
-            extra={ 'category': 'integration:AD' }
+            'Deactivated user.',
+            extra={
+                'category': 'integration:AD',
+                'status': 'success',
+                'username': username,
+                'user_dn': user_dn,
+            }
         )
 
         return result
@@ -834,9 +862,14 @@ def add_new_projects(groupusercollections, errortracker):
                 extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
         )
         # add permissions to PI/manager-status ProjectUsers
-        logger.info('Granting PI role to ProjectUser. target_user=%s project=%s',
-                    group.pi['sAMAccountName'][0], group.name,
-                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+        logger.info(
+            'Granting PI role to ProjectUser.',
+            extra={
+                'category': 'database_change:ProjectUser',
+                'status': 'success',
+                'target_user': group.pi['sAMAccountName'][0],
+                'project': group.name,
+            }
         )
         try:
             pi_projuser = group.project.projectuser_set.get(
@@ -845,9 +878,13 @@ def add_new_projects(groupusercollections, errortracker):
         except ProjectUser.DoesNotExist:
             logger.warning(
                 'Could not change PI ProjectUser role: ProjectUser not found in AD Group Members. '
-                'target_user=%s project=%s',
-                group.pi['sAMAccountName'][0], group.name,
-                extra={'category': 'database_change:ProjectUser', 'status': 'failure'}
+                'Target user missing from project users.',
+                extra={
+                    'category': 'database_change:ProjectUser',
+                    'status': 'failure',
+                    'target_user': group.pi['sAMAccountName'][0],
+                    'project': group.name,
+                }
             )
             errortracker['pi_not_projectuser'].append(group.name)
             continue

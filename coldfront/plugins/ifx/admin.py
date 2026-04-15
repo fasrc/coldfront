@@ -23,10 +23,13 @@ class SuUserAdmin(UserAdmin):
         if "_su" in request.POST:
             actor = request.user.get_username() if request.user.is_authenticated else "anonymous"
             logger.info(
-                "admin_su_login actor=%s target=%s target_pk=%s source=admin",
-                actor,
-                obj.get_username(),
-                obj.pk,
+                "Admin user switched account via su.",
+                extra={
+                    'actor': actor,
+                    'target': obj.get_username(),
+                    'target_pk': obj.pk,
+                    'source': 'admin',
+                }
             )
         return super().response_change(request, obj)
 
