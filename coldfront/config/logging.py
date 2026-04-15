@@ -56,18 +56,18 @@ LOGGING = {
             'filters': ['require_debug_true'],
         },
         'django-q': {
-            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'class': 'logging.handlers.RotatingFileHandler',
             'filename': 'logs/django-q.log',
-            'when': 'midnight',
-            'backupCount': 10,
+            'backupCount': 7,
+            'maxBytes': 10 * 1024 * 1024,  # 10 MB
             'formatter': 'key-events',
             'level': 'DEBUG',
         },
         'key-events': {
-            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'class': 'logging.handlers.RotatingFileHandler',
             'filename': 'logs/key-events.log',
-            'when': 'midnight',
-            'backupCount': 10,
+            'backupCount': 7,
+            'maxBytes': 10 * 1024 * 1024,  # 10 MB
             'formatter': 'key-events',
             'level': 'INFO',
         },
@@ -77,10 +77,10 @@ LOGGING = {
             'class': 'django.utils.log.AdminEmailHandler',
         },
         'json': {
-            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'class': 'logging.handlers.RotatingFileHandler',
             'filename': 'logs/coldfront.json.log',
-            'when': 'midnight',
-            'backupCount': 10,
+            'backupCount': 7,
+            'maxBytes': 10 * 1024 * 1024,  # 10 MB
             'formatter': 'json',
             'level': 'INFO',
             'filters': ['request'],
