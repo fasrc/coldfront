@@ -42,6 +42,24 @@ def uniques_and_intersection(list1, list2):
     list2_unique = list(set(list2) - set(list1))
     return (list1_unique, intersection, list2_unique)
 
+
+def log_su_impersonation(actor_user, target_user, *, source):
+    """Emit one INFO line for django-su impersonation (actor and target)."""
+    if actor_user.is_authenticated:
+        actor_name = actor_user.get_username()
+    else:
+        actor_name = 'anonymous'
+    logger.info(
+        'Admin user switched account via su.',
+        extra={
+            'actor': actor_name,
+            'target': target_user.get_username(),
+            'target_pk': target_user.pk,
+            'source': source,
+        },
+    )
+
+
 def su_login_callback(user):
     """Only superusers are allowed to login as other users
     """
