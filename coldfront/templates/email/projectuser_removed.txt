@@ -1,0 +1,8 @@
+Dear {{user_full_name}},
+
+Your membership in {{project_title}} has been removed. You will no longer have access to that lab's cluster account or storage resources. Any of your data on storage owned by the lab is still present, but the lab PI or other lab personnel may alter or delete it in your absence. You may continue to use the FASRC resources of the other labs to which you belong.
+
+If you believe your membership has been revoked in error, please contact the lab's PI.
+
+Thank you,
+{{signature}}

@@ -776,17 +776,6 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             for form in formset:
                 user_form_data = form.cleaned_data
                 if user_form_data['selected']:
-
-                    # Will create local copy of user if not already present in local database
-                    # user_obj, _ = get_user_model().objects.update_or_create(
-                    #     username=user_form_data.get('username'),
-                    #     defaults={
-                    #         'first_name': user_form_data.get('first_name'),
-                    #         'last_name': user_form_data.get('last_name'),
-                    #         'email': user_form_data.get('email'),
-                    #     }
-                    # )
-                    # FASRC Coldfront doesn't add user entries due to internal syncing
                     user_username = user_form_data.get('username')
                     try:
                         user_obj = get_user_model().objects.get(username=user_username)
@@ -1062,8 +1051,18 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     )
                     continue
 
+                removal_email_context = email_template_context(
+                    extra_context={
+                        'project_title': project_obj.title,
+                        'pi_email': project_obj.pi.email,
+                        'user_full_name': f"{user_obj.first_name} {user_obj.last_name}",
+                        'user_username': user_obj.username,
+                    }
+                )
+
                 if user_form_data['primary_group']:
                     project_user_obj.status = projectuser_status_deactivated
+                    project_user_obj.save()
                     action = 'deactivated'
                     # change status to "removed" for all other projectusers with this user
                     secondary_projectusers = ProjectUser.objects.filter(
@@ -1075,7 +1074,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     # get allocations to remove user from in projects where they have been removed
                     allocations_to_remove_user_from = Allocation.objects.filter(
                         allocationuser__user=user_obj,
-                        project__projectuser__status__name='Removed',
+                        project__projectuser__status__name__in=['Removed', 'Deactivated'],
                         project__projectuser__user=user_obj,
                         status__name__in=['Active', 'Renewal Requested'],
                         resources__resource_type__name='Storage'
@@ -1084,8 +1083,18 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         [sp.project.title for sp in secondary_projectusers]
                     )
                     log_extra = {'secondary_projects': secondary_projects}
+
+                    send_email_template(
+                        subject=f'FASRC account for {user_obj.username} Deactivated',
+                        template_name='email/projectuser_deactivated.txt',
+                        template_context=removal_email_context,
+                        sender=EMAIL_SENDER,
+                        receiver_list=[project_user_obj.user.email],
+                        cc=[project_obj.pi.email]
+                    )
                 else:
                     project_user_obj.status = projectuser_status_removed
+                    project_user_obj.save()
                     action = 'removed'
                     # get allocation to remove users from
                     allocations_to_remove_user_from = project_obj.allocation_set.filter(
@@ -1093,7 +1102,14 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         resources__resource_type__name='Storage'
                     )
                     log_extra = {}
-                project_user_obj.save()
+                    send_email_template(
+                        subject=f'Revoked {user_obj.username} membership to {project_obj.title}',
+                        template_name='email/projectuser_removed.txt',
+                        template_context=removal_email_context,
+                        sender=EMAIL_SENDER,
+                        receiver_list=[project_user_obj.user.email],
+                        cc=[project_obj.pi.email]
+                    )
                 logger.info(
                     "User %s from project.",
                     action,
