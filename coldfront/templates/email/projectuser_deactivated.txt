@@ -1,0 +1,10 @@
+Dear {{user_full_name}},
+
+Your FASRC user account with username {{user_username}} has been disabled by your sponsoring lab, {{project_title}}. You will be unable to access FASRC services and infrastructure. Any of your data on storage owned by the lab is still present, but the lab PI or other lab personnel may alter or delete it in your absence.
+
+If your account has been disabled in error, please contact your lab's PI. Their email is {{pi_email}}.
+
+If you belong to another lab that uses FASRC resources, you may consider requesting that lab become the sponsor of your FASRC account. More information is available at https://docs.rc.fas.harvard.edu/kb/change-lab-group/#Changing_Your_Primary_Lab_Group.
+
+Thank you,
+{{signature}}

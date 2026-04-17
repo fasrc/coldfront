@@ -17,13 +17,17 @@
         remove that user's data from the allocations.
       </p>
       <p>
-        {% if request.user.is_superuser %}
-          As a superuser, you can remove any user from the project. Please be aware that
-          removing a user from their primary group will cause their account to be deactivated and
-          prevent access to computational resources. If you are unsure, please
-          contact FASRC support or the ColdFront system administrator.
+        {% if can_remove_primary_group_users %}
+          <span class="text-danger font-weight-bold">Important:</span>
+          <span class="font-weight-bold">
+            Removing a user from their primary group starts the account deactivation process and
+            will ultimately prevent access to FASRC computational resources.
+          </span>
+          There is a one-week grace period during which the user can be reactivated easily before
+          FASRC user deactivation routines are completed. If you are unsure, please contact FASRC
+          support or the ColdFront system administrator before proceeding.
         {% else %}
-          To be removed from a lab, the user must not have the lab as their primary
+          You don't have the necessary permission to remove users who have this lab as their primary
           group. If you would like to remove a user that has your lab as their primary
           group, please <a href="mailto:{{ EMAIL_TICKET_SYSTEM_ADDRESS }}?subject=User removal request for Project {{ project.title }}">
           contact FASRC support</a>.
@@ -50,7 +54,7 @@
             <tbody>
               {% for form in formset %}
                 {% if form.primary_group.value %}
-                  {% if request.user.is_superuser %}
+                  {% if can_remove_primary_group_users %}
                     <tr class="font-weight-bold">
                       <td>{{ form.selected }}</td>
                       <td>{{ forloop.counter }}</td>

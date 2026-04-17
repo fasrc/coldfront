@@ -351,6 +351,78 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         users_to_remove = context['formset'].initial
         self.assertNotIn(self.pi_user.username, [u['username'] for u in users_to_remove])
 
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_primary_group_checkbox_visible_to_pi_and_general_manager(
+        self, mock_filter_users_to_remove
+    ):
+        primary_user = self.project_user
+        mock_filter_users_to_remove.return_value = [(
+            None,
+            [{
+                'username': primary_user.username,
+                'first_name': primary_user.first_name,
+                'last_name': primary_user.last_name,
+                'email': primary_user.email,
+                'role': 'User',
+                'primary_group': True,
+            }]
+        )]
+
+        self.client.force_login(self.pi_user)
+        response = self.client.get(self.url)
+        self.assertContains(response, 'name="userform-0-selected"')
+
+        self.client.force_login(self.proj_generalmanager)
+        response = self.client.get(self.url)
+        self.assertContains(response, 'name="userform-0-selected"')
+
+    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_primary_group_removal_permissions(
+        self, mock_filter_users_to_remove, mock_project_preremove
+    ):
+        primary_user = self.project_user
+        project_user_obj = self.project.projectuser_set.get(user=primary_user)
+        project_user_obj.status = ProjectUserStatusChoice.objects.get(name='Active')
+        project_user_obj.save()
+
+        mock_filter_users_to_remove.return_value = [(
+            None,
+            [{
+                'username': primary_user.username,
+                'first_name': primary_user.first_name,
+                'last_name': primary_user.last_name,
+                'email': primary_user.email,
+                'role': 'User',
+                'primary_group': True,
+            }]
+        )]
+        mock_project_preremove.return_value = None
+
+        post_data = {
+            'userform-TOTAL_FORMS': '1',
+            'userform-INITIAL_FORMS': '1',
+            'userform-MIN_NUM_FORMS': '0',
+            'userform-MAX_NUM_FORMS': '1',
+            'userform-0-selected': 'on',
+            'userform-0-username': primary_user.username,
+            'userform-0-first_name': primary_user.first_name,
+            'userform-0-last_name': primary_user.last_name,
+            'userform-0-email': primary_user.email,
+            'userform-0-role': 'User',
+            'userform-0-primary_group': 'on',
+        }
+
+        self.client.force_login(self.proj_accessmanager)
+        self.client.post(self.url, data=post_data, follow=True)
+        project_user_obj.refresh_from_db()
+        self.assertEqual(project_user_obj.status.name, 'Active')
+
+        self.client.force_login(self.proj_generalmanager)
+        self.client.post(self.url, data=post_data, follow=True)
+        project_user_obj.refresh_from_db()
+        self.assertEqual(project_user_obj.status.name, 'Deactivated')
+
 
 class ProjectUpdateViewTest(ProjectViewTestBase):
     """Tests for ProjectUpdateView"""

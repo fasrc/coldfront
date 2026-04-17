@@ -380,6 +380,8 @@ def setup_models(test_case):
 
     for status in ['Active', 'New', 'Inactive', 'Paid', 'Expired', 'Ready for Review']:
         AllocationStatusChoiceFactory(name=status)
+    for status in ['Active', 'Removed', 'Deactivated']:
+        ProjectUserStatusChoiceFactory(name=status)
     for status in ['Active', 'New', 'Archived']:
         ProjectStatusChoiceFactory(name=status)
     for attribute_type in ['Date', 'Int', 'Float', 'Text', 'Yes/No']:
