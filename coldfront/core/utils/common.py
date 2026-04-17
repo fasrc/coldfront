@@ -46,6 +46,7 @@ def su_login_callback(user):
     """Only superusers are allowed to login as other users
     """
     if user.is_active and user.is_superuser:
+        logger.info('User logged in as another user', extra={'user': user})
         return True
 
     logger.warning(
