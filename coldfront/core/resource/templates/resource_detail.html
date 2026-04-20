@@ -205,7 +205,7 @@ Resource Detail
       {# {% if user_sync_dt %}#}
       {# <span class="float-right">Last Sync: {{user_sync_dt}}</span>#}
       {# {% endif %}#}
-      {% if 'Cluster' in resource.resource_type.name %}
+      {% if 'Cluster' in resource.resource_type.name or 'Supergroup' in resource.resource_type.name %}
         <div class="float-right">
           <a class="btn btn-danger" href="{% url 'resource-allocations-edit' resource.pk %}" role="button">
             <i class="fas fa-edit" aria-hidden="true"></i> Edit Resource Allocations
@@ -222,7 +222,7 @@ Resource Detail
               <tr>
                 <th scope="col">Project</th>
                 <th scope="col">Users</th>
-                {% if 'Cluster' in resource.resource_type.name %}
+                {% if 'Cluster' in resource.resource_type.name or 'Supergroup' in resource.resource_type.name %}
                   <th scope="col">CPU Hours</th>
                   <th scope="col">Percent Usage</th>
                   <th scope="col">RawShare</th>
@@ -256,7 +256,7 @@ Resource Detail
                     </a>
                   </td>
                   <td>{{ allocation.user_count }}</td>
-                  {% if 'Cluster' in resource.resource_type.name %}
+                  {% if 'Cluster' in resource.resource_type.name or 'Supergroup' in resource.resource_type.name %}
                     <td data-sort="{{allocation.usage}}" name="usage">
                       {{ allocation.usage}}
                     </td>
