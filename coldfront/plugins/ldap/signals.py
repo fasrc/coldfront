@@ -153,51 +153,54 @@ def add_manager_ldap_groups(sender, **kwargs):
     """Add project manager to approver and optional project fsadm AD groups."""
     user_name = kwargs['user_name']
     project_title = kwargs['project_title']
+    role = kwargs['role']
     ldap_conn = LDAPConn()
-    try:
-        ldap_conn.add_user_to_group(user_name, 'cf_non_faculty_approvers')
-        logger.info('Added user to cf_non_faculty_approvers',
-            extra={
-                'category': 'ldap:GroupMembership',
-                'status': 'success',
-                'user': user_name,
-                'project': project_title,
-            }
-        )
-    except Exception:
-        logger.exception(
-            'Could not add user to cf_non_faculty_approvers',
-            extra={
-                'category': 'ldap:GroupMembership',
-                'status': 'error',
-                'user': user_name,
-                'project': project_title,
-            }
-        )
-    fsadm = _fsadm_group_name(project_title)
-    if ldap_conn.search_groups({'sAMAccountName': fsadm}):
+    if role in ('General Manager', 'Access Manager'):
         try:
-            ldap_conn.add_user_to_group(user_name, fsadm)
-            logger.info('Added user to project AD fsadm group',
+            ldap_conn.add_user_to_group(user_name, 'cf_non_faculty_approvers')
+            logger.info('Added user to cf_non_faculty_approvers',
                 extra={
                     'category': 'ldap:GroupMembership',
                     'status': 'success',
                     'user': user_name,
                     'project': project_title,
-                    'group': fsadm,
                 }
             )
         except Exception:
             logger.exception(
-                'Could not add user to fsadm group',
+                'Could not add user to cf_non_faculty_approvers',
                 extra={
                     'category': 'ldap:GroupMembership',
                     'status': 'error',
                     'user': user_name,
                     'project': project_title,
-                    'group': fsadm,
                 }
             )
+    if role in ('General Manager', 'Storage Manager'):
+        fsadm = _fsadm_group_name(project_title)
+        if ldap_conn.search_groups({'sAMAccountName': fsadm}):
+            try:
+                ldap_conn.add_user_to_group(user_name, fsadm)
+                logger.info('Added user to project AD fsadm group',
+                    extra={
+                        'category': 'ldap:GroupMembership',
+                        'status': 'success',
+                        'user': user_name,
+                        'project': project_title,
+                        'group': fsadm,
+                    }
+                )
+            except Exception:
+                logger.exception(
+                    'Could not add user to fsadm group',
+                    extra={
+                        'category': 'ldap:GroupMembership',
+                        'status': 'error',
+                        'user': user_name,
+                        'project': project_title,
+                        'group': fsadm,
+                    }
+                )
 
 
 @receiver(project_user_manager_ldap_groups_revoke)
@@ -212,29 +215,38 @@ def remove_manager_ldap_groups(sender, **kwargs):
         project__status__name__in=['Active', 'New'],
         role__name__in=MANAGER_ROLES,
     ).exists()
+
+    ad_user = ldap_conn.return_user_by_name(user_name)
+    user_dn = ad_user['distinguishedName'][0]
+
     if not still_manager_elsewhere:
-        try:
-            ldap_conn.remove_member_from_group(user_name, 'cf_non_faculty_approvers')
-            logger.info('Removed user from cf_non_faculty_approvers',
-                extra={
-                    'category': 'ldap:GroupMembership',
-                    'status': 'success',
-                    'user': user_name,
-                    'project': project_title,
-                }
-            )
-        except Exception:
-            logger.exception(
-                'Could not remove user from cf_non_faculty_approvers',
-                extra={
-                    'category': 'ldap:GroupMembership',
-                    'status': 'error',
-                    'user': user_name,
-                    'project': project_title,
-                }
-            )
+        # check if user is a member of cf_non_faculty_approvers before trying to remove, to avoid unnecessary exceptions and logs
+        cf_nfa_group = ldap_conn.return_group_by_name('cf_non_faculty_approvers')
+        cf_nfa_dn = cf_nfa_group['distinguishedName'][0]
+        if ldap_conn.member_in_group(user_dn, cf_nfa_dn):
+            try:
+                ldap_conn.remove_member_from_group(user_name, 'cf_non_faculty_approvers')
+                logger.info('Removed user from cf_non_faculty_approvers',
+                    extra={
+                        'category': 'ldap:GroupMembership',
+                        'status': 'success',
+                        'user': user_name,
+                        'project': project_title,
+                    }
+                )
+            except Exception:
+                logger.exception(
+                    'Could not remove user from cf_non_faculty_approvers',
+                    extra={
+                        'category': 'ldap:GroupMembership',
+                        'status': 'error',
+                        'user': user_name,
+                        'project': project_title,
+                    }
+                )
     fsadm = _fsadm_group_name(project_title)
-    if ldap_conn.search_groups({'sAMAccountName': fsadm}):
+    fsadm_group = ldap_conn.search_groups({'sAMAccountName': fsadm})
+    if fsadm_group:
         try:
             ldap_conn.remove_member_from_group(user_name, fsadm)
             logger.info('Removed user from project AD fsadm group',

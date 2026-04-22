@@ -84,6 +84,8 @@ def notify_manager_role_transition(
         'sender': notify_manager_role_transition,
         'user_name': username,
         'project_title': project_title,
+        'role': new_role,
+
     }
 
     if not old_mgr and new_mgr:
