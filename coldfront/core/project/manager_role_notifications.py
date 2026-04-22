@@ -43,8 +43,7 @@ def build_project_role_change_context(
     new_role,
     requester_username,
 ):
-    """Context for ``email/project_role_change.txt`` and ``email/project_role_change_ticket.txt``
-    """
+    """Context for ``email/project_role_change.txt``"""
     flags = _role_change_flags(old_role, new_role)
     show_manager_powers = (
         (flags['gained_manager'] or flags['manager_role_reassigned']) and flags['new_mgr']

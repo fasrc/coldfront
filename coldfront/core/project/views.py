@@ -1244,7 +1244,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             new_role = form_data.get('role')
             username = project_user_obj.user.username
             requester_uname = self.request.user.username
-            project_user_obj.role = ProjectUserRoleChoice.objects.get(name=new_role)
+            project_user_obj.role = new_role
             project_user_obj.save()
             if old_role != new_role:
                 logger.info(
@@ -1255,13 +1255,13 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                         'project': project_obj.title,
                         'changed_user': username,
                         'old_role': old_role,
-                        'new_role': new_role,
+                        'new_role': new_role.name,
                     }
                 )
                 notify_manager_role_transition(
                     project_user=project_user_obj,
                     old_role=old_role,
-                    new_role=new_role,
+                    new_role=new_role.name,
                     requester_username=requester_uname,
                     project=project_obj,
                 )

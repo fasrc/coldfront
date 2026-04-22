@@ -145,7 +145,7 @@ def remove_member_from_group(sender, **kwargs):
 
 
 def _fsadm_group_name(project_title):
-    return f'{project_title}_fsadm'
+    return f'{project_title}_fs*'
 
 
 @receiver(project_user_manager_ldap_groups_grant)
@@ -156,21 +156,47 @@ def add_manager_ldap_groups(sender, **kwargs):
     ldap_conn = LDAPConn()
     try:
         ldap_conn.add_user_to_group(user_name, 'cf_non_faculty_approvers')
+        logger.info('Added user to cf_non_faculty_approvers',
+            extra={
+                'category': 'ldap:GroupMembership',
+                'status': 'success',
+                'user': user_name,
+                'project': project_title,
+            }
+        )
     except Exception:
         logger.exception(
-            'Could not add user %s to cf_non_faculty_approvers for project %s',
-            user_name,
-            project_title,
+            'Could not add user to cf_non_faculty_approvers',
+            extra={
+                'category': 'ldap:GroupMembership',
+                'status': 'error',
+                'user': user_name,
+                'project': project_title,
+            }
         )
     fsadm = _fsadm_group_name(project_title)
     if ldap_conn.search_groups({'sAMAccountName': fsadm}):
         try:
             ldap_conn.add_user_to_group(user_name, fsadm)
+            logger.info('Added user to project AD fsadm group',
+                extra={
+                    'category': 'ldap:GroupMembership',
+                    'status': 'success',
+                    'user': user_name,
+                    'project': project_title,
+                    'group': fsadm,
+                }
+            )
         except Exception:
             logger.exception(
-                'Could not add user %s to %s',
-                user_name,
-                fsadm,
+                'Could not add user to fsadm group',
+                extra={
+                    'category': 'ldap:GroupMembership',
+                    'status': 'error',
+                    'user': user_name,
+                    'project': project_title,
+                    'group': fsadm,
+                }
             )
 
 
@@ -189,21 +215,47 @@ def remove_manager_ldap_groups(sender, **kwargs):
     if not still_manager_elsewhere:
         try:
             ldap_conn.remove_member_from_group(user_name, 'cf_non_faculty_approvers')
+            logger.info('Removed user from cf_non_faculty_approvers',
+                extra={
+                    'category': 'ldap:GroupMembership',
+                    'status': 'success',
+                    'user': user_name,
+                    'project': project_title,
+                }
+            )
         except Exception:
             logger.exception(
-                'Could not remove user %s from cf_non_faculty_approvers for project %s',
-                user_name,
-                project_title,
+                'Could not remove user from cf_non_faculty_approvers',
+                extra={
+                    'category': 'ldap:GroupMembership',
+                    'status': 'error',
+                    'user': user_name,
+                    'project': project_title,
+                }
             )
     fsadm = _fsadm_group_name(project_title)
     if ldap_conn.search_groups({'sAMAccountName': fsadm}):
         try:
             ldap_conn.remove_member_from_group(user_name, fsadm)
+            logger.info('Removed user from project AD fsadm group',
+                extra={
+                    'category': 'ldap:GroupMembership',
+                    'status': 'success',
+                    'user': user_name,
+                    'project': project_title,
+                    'group': fsadm,
+                }
+            )
         except Exception:
             logger.exception(
-                'Could not remove user %s from %s',
-                user_name,
-                fsadm,
+                'Could not remove user from fsadm group',
+                extra={
+                    'category': 'ldap:GroupMembership',
+                    'status': 'error',
+                    'user': user_name,
+                    'project': project_title,
+                    'group': fsadm,
+                }
             )
 
 
