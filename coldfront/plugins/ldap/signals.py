@@ -10,7 +10,10 @@ from coldfront.core.project.signals import (
     project_create,
     project_post_create,
     project_reactivate_projectuser,
+    project_user_manager_ldap_groups_grant,
+    project_user_manager_ldap_groups_revoke,
 )
+from coldfront.core.project.manager_role_notifications import MANAGER_ROLES
 from coldfront.core.project.models import (
     ProjectUserRoleChoice,
     ProjectUserStatusChoice,
@@ -139,6 +142,70 @@ def add_user_to_group(sender, **kwargs):
 def remove_member_from_group(sender, **kwargs):
     ldap_conn = LDAPConn()
     ldap_conn.remove_member_from_group(kwargs['user_name'], kwargs['group_name'])
+
+
+def _fsadm_group_name(project_title):
+    return f'{project_title}_fsadm'
+
+
+@receiver(project_user_manager_ldap_groups_grant)
+def add_manager_ldap_groups(sender, **kwargs):
+    """Add project manager to approver and optional project fsadm AD groups."""
+    user_name = kwargs['user_name']
+    project_title = kwargs['project_title']
+    ldap_conn = LDAPConn()
+    try:
+        ldap_conn.add_user_to_group(user_name, 'cf_non_faculty_approvers')
+    except Exception:
+        logger.exception(
+            'Could not add user %s to cf_non_faculty_approvers for project %s',
+            user_name,
+            project_title,
+        )
+    fsadm = _fsadm_group_name(project_title)
+    if ldap_conn.search_groups({'sAMAccountName': fsadm}):
+        try:
+            ldap_conn.add_user_to_group(user_name, fsadm)
+        except Exception:
+            logger.exception(
+                'Could not add user %s to %s',
+                user_name,
+                fsadm,
+            )
+
+
+@receiver(project_user_manager_ldap_groups_revoke)
+def remove_manager_ldap_groups(sender, **kwargs):
+    """Remove project manager from approver and optional project fsadm AD groups."""
+    user_name = kwargs['user_name']
+    project_title = kwargs['project_title']
+    ldap_conn = LDAPConn()
+    still_manager_elsewhere = ProjectUser.objects.filter(
+        user__username=user_name,
+        status__name='Active',
+        project__status__name__in=['Active', 'New'],
+        role__name__in=MANAGER_ROLES,
+    ).exists()
+    if not still_manager_elsewhere:
+        try:
+            ldap_conn.remove_member_from_group(user_name, 'cf_non_faculty_approvers')
+        except Exception:
+            logger.exception(
+                'Could not remove user %s from cf_non_faculty_approvers for project %s',
+                user_name,
+                project_title,
+            )
+    fsadm = _fsadm_group_name(project_title)
+    if ldap_conn.search_groups({'sAMAccountName': fsadm}):
+        try:
+            ldap_conn.remove_member_from_group(user_name, fsadm)
+        except Exception:
+            logger.exception(
+                'Could not remove user %s from %s',
+                user_name,
+                fsadm,
+            )
+
 
 if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
     @receiver(starfish_add_aduser)
