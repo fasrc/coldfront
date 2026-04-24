@@ -31,7 +31,6 @@ plugin_configs = {
     'PLUGIN_FASRC': 'plugins/fasrc.py',
     'PLUGIN_FASRC_MONITORING': 'plugins/fasrc_monitoring.py',
     'PLUGIN_ISILON': 'plugins/isilon.py',
-    'PLUGIN_VAST': 'plugins/vast.py',
     'PLUGIN_SLURMREST': 'plugins/slurmrest.py',
 }
 
