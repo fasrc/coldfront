@@ -504,8 +504,9 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         """Test the messages displayed when the add user signal fails"""
         self.client.force_login(self.pi_user)
 
+    @patch('coldfront.core.project.views.notify_manager_role_transition')
     @patch('coldfront.core.project.signals.project_make_projectuser.send')
-    def test_projectaddusers_form_validation(self, mock_signal):
+    def test_projectaddusers_form_validation(self, mock_signal, mock_notify_transition):
         """Test that the formset and allocation form are validated correctly"""
         self.client.force_login(self.proj_accessmanager)
         mock_signal.return_value = None

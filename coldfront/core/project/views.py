@@ -64,6 +64,7 @@ from coldfront.core.project.models import (
     ProjectUserStatusChoice,
     ProjectReviewStatusChoice,
 )
+from coldfront.core.project.manager_role_notifications import notify_manager_role_transition
 from coldfront.core.project.utils import generate_usage_history_graph
 from coldfront.core.publication.models import Publication
 from coldfront.core.research_output.models import ResearchOutput
@@ -76,7 +77,6 @@ from coldfront.core.utils.mail import (
     send_email,
     send_email_template,
     email_template_context,
-    build_link
 )
 
 if 'django_q' in settings.INSTALLED_APPS:
@@ -787,6 +787,11 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
 
                     role_choice = user_form_data.get('role')
 
+                    existing_pu = project_obj.projectuser_set.filter(
+                        user=user_obj
+                    ).first()
+                    old_role = existing_pu.role.name if existing_pu else 'None (added user)'
+
                     try:
                         project_make_projectuser.send(
                             sender=self.__class__,
@@ -804,7 +809,8 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             }
                         )
                         errors.append(
-                            f"Could not add user {user_obj} to AD Group for {project_obj.title}\nPlease contact a Coldfront admin for further assistance."
+                            f"Could not add user {user_obj} to AD Group for {project_obj.title}.\n"
+                            "Please contact a Coldfront admin for further assistance."
                         )
                         continue
                     logger.info(
@@ -819,23 +825,32 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                     successes.append(f"User {user_obj} added to AD Group for {project_obj.title}")
 
                     # Is the user already in the project?
-                    project_obj.projectuser_set.update_or_create(
+                    project_user_obj, _ = project_obj.projectuser_set.update_or_create(
                         user=user_obj,
                         defaults={
                             'role': role_choice,
                             'status': projuserstatus_active,
                         }
                     )
+                    new_role = project_user_obj.role.name
                     logger.info(
                         "User added to project.",
                         extra={
                             'category': 'database_change:ProjectUser',
                             'status': 'success',
                             'added_user': user_obj.username,
-                            'role': role_choice,
+                            'role': new_role,
                             'project': project_obj.title,
                         }
                     )
+                    if old_role != new_role:
+                        notify_manager_role_transition(
+                            project_user=project_user_obj,
+                            old_role=old_role,
+                            new_role=new_role,
+                            requester_username=request.user.username,
+                            project=project_obj,
+                        )
                     added_users_count += 1
                     for allocation in Allocation.objects.filter(
                         pk__in=allocation_form_data
@@ -1229,39 +1244,38 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             new_role = form_data.get('role')
             username = project_user_obj.user.username
             requester_uname = self.request.user.username
-            project_user_obj.role = ProjectUserRoleChoice.objects.get(name=new_role)
+            project_user_obj.role = new_role
             project_user_obj.save()
-            logger.info(
-                'ProjectUser role changed.',
-                extra={
-                    'category': 'database_change:ProjectUser',
-                    'status': 'success',
-                    'project': project_obj.title,
-                    'changed_user': username,
-                    'old_role': old_role,
-                    'new_role': new_role,
-                }
-            )
-
-            project_role_change_email_context = email_template_context(
-                extra_context={
-                    'project_title': project_obj.title,
-                    'username': username,
-                    'old_role': old_role,
-                    'new_role': new_role,
-                    'role_changer': requester_uname,
-                    'project_url': build_link(f'project/{project_obj.pk}/')
-                }
-            )
-
-            send_email_template(
-                subject=f'Role Change for User {username} in Project {project_obj.title}',
-                template_name='email/project_role_change.txt',
-                template_context=project_role_change_email_context,
-                sender=EMAIL_SENDER,
-                receiver_list=[project_user_obj.user.email],
-                cc=[project_obj.pi.email]
-            )
+            if old_role != new_role:
+                logger.info(
+                    'ProjectUser role changed.',
+                    extra={
+                        'category': 'database_change:ProjectUser',
+                        'status': 'success',
+                        'project': project_obj.title,
+                        'changed_user': username,
+                        'old_role': old_role,
+                        'new_role': new_role.name,
+                    }
+                )
+                notify_manager_role_transition(
+                    project_user=project_user_obj,
+                    old_role=old_role,
+                    new_role=new_role.name,
+                    requester_username=requester_uname,
+                    project=project_obj,
+                )
+            else:
+                logger.info(
+                    'ProjectUser updated without role change.',
+                    extra={
+                        'category': 'database_change:ProjectUser',
+                        'status': 'success',
+                        'project': project_obj.title,
+                        'changed_user': username,
+                        'role': old_role,
+                    }
+                )
             messages.success(request, 'User details updated.')
             return HttpResponseRedirect(
                 reverse(

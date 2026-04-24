@@ -20,3 +20,9 @@ project_reactivate_projectuser = django.dispatch.Signal()
 project_filter_users_to_remove = django.dispatch.Signal()
     #providing_args=["project_user_list"]
     # return tuple of (no_removal, can_remove)
+
+project_user_manager_ldap_groups_grant = django.dispatch.Signal()
+    # providing_args=["user_name", "project_title"]
+
+project_user_manager_ldap_groups_revoke = django.dispatch.Signal()
+    # providing_args=["user_name", "project_title"]
