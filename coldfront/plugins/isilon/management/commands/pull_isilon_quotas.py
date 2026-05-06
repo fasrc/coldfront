@@ -6,6 +6,7 @@ from coldfront.core.allocation.models import Allocation, AllocationAttributeType
 from coldfront.core.resource.models import Resource
 from coldfront.plugins.isilon.utils import (
     IsilonConnection,
+    get_isilon_url,
     print_log_error,
     update_coldfront_quota_and_usage,
 )
@@ -29,7 +30,7 @@ class Command(BaseCommand):
         isilon_resources = Resource.objects.filter(name__contains='tier1')
         for resource in isilon_resources:
             report = {"complete": 0, "no entry": [], "empty quota": []}
-            resource_name = resource.name.split('/')[0]
+            resource_name = get_isilon_url(resource)
             # try connecting to the cluster. If it fails, display an error and
             # replace the resource with a dummy resource
             try:

@@ -3,7 +3,11 @@
 from coldfront.core.allocation.models import Allocation, AllocationStatusChoice
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
-from coldfront.plugins.isilon.utils import IsilonConnection, create_isilon_allocation_quota
+from coldfront.plugins.isilon.utils import (
+    IsilonConnection,
+    create_isilon_allocation_quota,
+    get_isilon_url,
+)
 
 
 def test_create_isilon_allocation_quota():
@@ -20,7 +24,7 @@ def test_create_isilon_allocation_quota():
     # for each isilon cluster:
     for resource in Resource.objects.filter(name__contains='tier1'):
         # create isilon IsilonConnection
-        isilon_connection = IsilonConnection(resource.name)
+        isilon_connection = IsilonConnection(get_isilon_url(resource))
         # run create_isilon_allocation_quota on the allocation with the isilon cluster
         create_isilon_allocation_quota(allocation, resource)
 

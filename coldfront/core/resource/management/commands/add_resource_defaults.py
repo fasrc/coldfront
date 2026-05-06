@@ -1,5 +1,4 @@
 from django.core.management.base import BaseCommand
-from django.db.utils import IntegrityError
 from coldfront.core.resource.models import (
     Resource,
     ResourceType,
@@ -35,6 +34,7 @@ class Command(BaseCommand):
             ('GPU Count', 'Int'),
             ('Features', 'Text'),
             ('slurm_integration', 'Text'),
+            ('url', 'Text'),
             # UBCCR
             ('Core Count', 'Int'),
             # ('expiry_time', 'Int'),

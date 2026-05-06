@@ -33,14 +33,28 @@ class IsilonConnection:
         self._total_space = None
         self._used_space = None
 
-    def connect(self, cluster_name):
+    def connect(self, url):
         configuration = isilon_api.Configuration()
-        configuration.host = f'http://{cluster_name}01.rc.fas.harvard.edu:8080'
+        configuration.host = url
         configuration.username = import_from_settings('ISILON_USER')
         configuration.password = import_from_settings('ISILON_PASS')
         configuration.verify_ssl = False
         api_client = isilon_api.ApiClient(configuration)
         return api_client
+
+
+def get_isilon_url(resource):
+    """Return the Isilon API URL from the `url` resource attribute."""
+    if isinstance(resource, str):
+        return resource
+
+    value = resource.get_attribute('url', expand=False, typed=False)
+    if value:
+        return str(value).strip()
+
+    raise ValueError(
+        f"Missing required ResourceAttributeType 'url' for resource {resource.name}"
+    )
 
     @property
     def quota_client(self):
@@ -188,7 +202,7 @@ def create_isilon_allocation_quota(
     """Create a new isilon allocation quota
     """
     lab_name = allocation.project.title
-    isilon_resource = resource.name.split('/')[0]
+    isilon_resource = get_isilon_url(resource)
     isilon_conn = IsilonConnection(isilon_resource)
     actions_performed = []
     # determine whether rc_labs or rc_fasse_labs path
@@ -344,7 +358,8 @@ def update_isilon_allocation_quota(allocation, new_quota):
     quota : int
     """
     # make isilon connection to the allocation's resource
-    isilon_resource = allocation.resources.first().name.split('/')[0]
+    resource = allocation.resources.first()
+    isilon_resource = get_isilon_url(resource)
     isilon_conn = IsilonConnection(isilon_resource)
     path = f'/ifs/{allocation.path}'
 
