@@ -26,7 +26,7 @@ class Command(BaseCommand):
         quota_tbs_attributetype = AllocationAttributeType.objects.get(
             name='Storage Quota (TiB)')
         # create isilon connections to all isilon clusters in coldfront
-        isilon_resources = Resource.objects.filter(resource_type__value__in=('isilon', 'powerscale'))
+        isilon_resources = Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale'))
         for resource in isilon_resources:
             report = {"complete": 0, "no entry": [], "empty quota": []}
             resource_name = get_isilon_url(resource)
