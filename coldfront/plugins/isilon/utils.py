@@ -15,6 +15,19 @@ if ISILON_AUTH_MODEL == 'ldap':
     except:
         logger.warning("no ldap plugin; isilon auth model will have issues")
 
+def get_isilon_url(resource):
+    """Return the Isilon API URL from the `url` resource attribute."""
+    if isinstance(resource, str):
+        return resource
+
+    value = resource.get_attribute('url', expand=False, typed=False)
+    if value:
+        return str(value).strip()
+
+    raise ValueError(
+        f"Missing required ResourceAttributeType 'url' for resource {resource.name}"
+    )
+
 class IsilonConnection:
     """Convenience class containing methods for collecting data from an isilon cluster
     """
@@ -41,20 +54,6 @@ class IsilonConnection:
         configuration.verify_ssl = False
         api_client = isilon_api.ApiClient(configuration)
         return api_client
-
-
-def get_isilon_url(resource):
-    """Return the Isilon API URL from the `url` resource attribute."""
-    if isinstance(resource, str):
-        return resource
-
-    value = resource.get_attribute('url', expand=False, typed=False)
-    if value:
-        return str(value).strip()
-
-    raise ValueError(
-        f"Missing required ResourceAttributeType 'url' for resource {resource.name}"
-    )
 
     @property
     def quota_client(self):
