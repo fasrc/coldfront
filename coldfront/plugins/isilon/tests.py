@@ -35,8 +35,6 @@ def test_create_isilon_allocation_quota():
         )
         # confirm that acl mode is 2770
         assert acl.mode == '2770'
-        # confirm that 
-        print(acl)
         # check that the directory quota is properly created
         quota_list = isilon_connection.quota_client.list_quota_quotas()
         quota = next(q for q in quota_list.quotas if q.path == f'/{path}')
