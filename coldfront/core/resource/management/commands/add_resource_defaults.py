@@ -34,6 +34,7 @@ class Command(BaseCommand):
             ('GPU Count', 'Int'),
             ('Features', 'Text'),
             ('slurm_integration', 'Text'),
+            ('storage_type', 'Text'),
             ('url', 'Text'),
             # UBCCR
             ('Core Count', 'Int'),

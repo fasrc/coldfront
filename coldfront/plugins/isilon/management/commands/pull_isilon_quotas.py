@@ -19,15 +19,14 @@ class Command(BaseCommand):
     help = 'Pull Isilon quotas'
 
     def handle(self, *args, **kwargs):
-        """For all active tier1 allocations, update quota and usage
-        1. run a query that collects all active tier1 allocations
+        """For all active isilon and powerscale allocations, update quota and usage
         """
         quota_bytes_attributetype = AllocationAttributeType.objects.get(
             name='Quota_In_Bytes')
         quota_tbs_attributetype = AllocationAttributeType.objects.get(
             name='Storage Quota (TiB)')
         # create isilon connections to all isilon clusters in coldfront
-        isilon_resources = Resource.objects.filter(name__contains='tier1')
+        isilon_resources = Resource.objects.filter(resource_type__value__in=('isilon', 'powerscale'))
         for resource in isilon_resources:
             report = {"complete": 0, "no entry": [], "empty quota": []}
             resource_name = get_isilon_url(resource)
