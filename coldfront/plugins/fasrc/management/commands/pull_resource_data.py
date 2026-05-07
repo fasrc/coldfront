@@ -61,10 +61,10 @@ class Command(BaseCommand):
         resources = Resource.objects.filter(resource_type__name='Storage')
         # update all tier 0 resources
         for resource in resources.filter(
-                resource_attribute__value__in=('isilon', 'powerscale')):
+                resourceattribute__value__in=('isilon', 'powerscale')):
             update_volume_information.send(sender=self.__class__, resource=resource)
         for resource in resources.exclude(
-                resource_attribute__value__in=('isilon', 'powerscale')):
+                resourceattribute__value__in=('isilon', 'powerscale')):
             resource_name = resource.name.split('/')[0]
             try:
                 volume = [v for v in volumes if v['name'] == resource_name][0]
