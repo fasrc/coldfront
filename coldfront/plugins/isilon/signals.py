@@ -5,7 +5,7 @@ from coldfront.core.allocation.signals import (
         allocation_autocreate,
         allocation_autoupdate,
 )
-from coldfront.core.resource.models import ResourceAttributeType
+from coldfront.core.resource.models import Resource, ResourceAttributeType
 from coldfront.core.resource.signals import update_volume_information
 from coldfront.plugins.isilon.utils import (
     IsilonConnection,
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def update_isilon_volume_information(sender, **kwargs):
 
     resource = kwargs['resource']
-    if 'isilon' in resource.name:
+    if resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
         resource_name = get_isilon_url(resource)
         isilon_api = IsilonConnection(resource_name)
         isilon_capacity_tb = isilon_api.to_tb(isilon_api.total_space)
@@ -51,7 +51,7 @@ def activate_allocation(sender, **kwargs):
     automation_specifications = approval_form_data.get('automation_specifications')
     automation_kwargs = {k:True for k in automation_specifications}
 
-    if 'isilon' in resource.name:
+    if resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
         try:
             option_exceptions = create_isilon_allocation_quota(
                 allocation_obj, resource, **automation_kwargs
@@ -70,7 +70,7 @@ def update_allocation_quota(sender, **kwargs):
     allocation_obj = kwargs['allocation_obj']
     new_quota_value = kwargs['new_quota_value']
     resource = allocation_obj.resources.first()
-    if 'isilon' in resource.name:
+    if resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
         try:
             update_isilon_allocation_quota(allocation_obj, new_quota_value)
             logger.info(
