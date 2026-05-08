@@ -1,6 +1,6 @@
-from coldfront.plugins.isilon.utils import update_quotas_usages
+from django.core import management
 
 def pull_isilon_quotas():
     """Pull Isilon quotas
     """
-    update_quotas_usages()
+    management.call_command('pull_isilon_quotas')

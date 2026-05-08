@@ -15,6 +15,19 @@ if ISILON_AUTH_MODEL == 'ldap':
     except:
         logger.warning("no ldap plugin; isilon auth model will have issues")
 
+def get_isilon_url(resource):
+    """Return the Isilon API URL from the `url` resource attribute."""
+    if isinstance(resource, str):
+        return resource
+
+    value = resource.get_attribute('url', expand=False, typed=False)
+    if value:
+        return str(value).strip()
+
+    raise ValueError(
+        f"Missing required ResourceAttributeType 'url' for resource {resource.name}"
+    )
+
 class IsilonConnection:
     """Convenience class containing methods for collecting data from an isilon cluster
     """
@@ -33,9 +46,9 @@ class IsilonConnection:
         self._total_space = None
         self._used_space = None
 
-    def connect(self, cluster_name):
+    def connect(self, url):
         configuration = isilon_api.Configuration()
-        configuration.host = f'http://{cluster_name}01.rc.fas.harvard.edu:8080'
+        configuration.host = url
         configuration.username = import_from_settings('ISILON_USER')
         configuration.password = import_from_settings('ISILON_PASS')
         configuration.verify_ssl = False
@@ -183,12 +196,12 @@ class IsilonGroup:
 
 
 def create_isilon_allocation_quota(
-        allocation, resource, snapshots=False, nfs_share=False, cifs_share=False
+        allocation, resource, nfs_share=True, cifs_share=True
     ):
     """Create a new isilon allocation quota
     """
     lab_name = allocation.project.title
-    isilon_resource = resource.name.split('/')[0]
+    isilon_resource = get_isilon_url(resource)
     isilon_conn = IsilonConnection(isilon_resource)
     actions_performed = []
     # determine whether rc_labs or rc_fasse_labs path
@@ -263,20 +276,19 @@ def create_isilon_allocation_quota(
     actions_performed.append('quota set')
 
     option_exceptions = {}
-    if snapshots:
-        ### set up snapshots for the created quota ###
-        snapshot_schedule = isilon_api.SnapshotScheduleCreateParams(
-            name=lab_name,
-            path=f'/{path}',
-            pattern=f"{lab_name}_daily_%Y-%m-%d-_%H-%M",
-            schedule="Every 1 days",
-            duration=7*24*60*60,
-        )
-        try:
-            isilon_conn.snapshot_client.create_snapshot_schedule(snapshot_schedule)
-            actions_performed.append('snapshots scheduled')
-        except Exception as e:
-            option_exceptions['snapshots'] = e
+    ### set up snapshots for the created quota ###
+    snapshot_schedule = isilon_api.SnapshotScheduleCreateParams(
+        name=lab_name,
+        path=f'/{path}',
+        pattern=f"{lab_name}_daily_%Y-%m-%d-_%H-%M",
+        schedule="Every 1 days",
+        duration=7*24*60*60,
+    )
+    try:
+        isilon_conn.snapshot_client.create_snapshot_schedule(snapshot_schedule)
+        actions_performed.append('snapshots scheduled')
+    except Exception as e:
+        option_exceptions['snapshots'] = e
 
     if nfs_share:
         ### set up NFS export ###
@@ -344,7 +356,8 @@ def update_isilon_allocation_quota(allocation, new_quota):
     quota : int
     """
     # make isilon connection to the allocation's resource
-    isilon_resource = allocation.resources.first().name.split('/')[0]
+    resource = allocation.resources.first()
+    isilon_resource = get_isilon_url(resource)
     isilon_conn = IsilonConnection(isilon_resource)
     path = f'/ifs/{allocation.path}'
 

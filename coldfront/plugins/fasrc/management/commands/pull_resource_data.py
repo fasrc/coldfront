@@ -60,19 +60,20 @@ class Command(BaseCommand):
         # collect user and lab counts, allocation sizes for each volume
         resources = Resource.objects.filter(resource_type__name='Storage')
         # update all tier 0 resources
-        for resource in resources:
+        for resource in resources.filter(
+                resourceattribute__value__in=('isilon', 'powerscale')):
+            update_volume_information.send(sender=self.__class__, resource=resource)
+        for resource in resources.exclude(
+                resourceattribute__value__in=('isilon', 'powerscale')):
             resource_name = resource.name.split('/')[0]
-            if 'isilon' in resource.name:
-                update_volume_information.send(sender=self.__class__, resource=resource)
-            else:
-                try:
-                    volume = [v for v in volumes if v['name'] == resource_name][0]
-                except IndexError:
-                    logger.warning('no data found for resource %s from source %s', resource.name, source)
-                    continue
-                except Exception as e:
-                    logger.warning('problem updating resource %s with data from source %s: %s',
-                        resource.name, source, e
-                   )
-                    continue
-                update_resource_attr_types_from_dict(resource, volume['attrs'])
+            try:
+                volume = [v for v in volumes if v['name'] == resource_name][0]
+            except IndexError:
+                logger.warning('no data found for resource %s from source %s', resource.name, source)
+                continue
+            except Exception as e:
+                logger.warning('problem updating resource %s with data from source %s: %s',
+                    resource.name, source, e
+               )
+                continue
+            update_resource_attr_types_from_dict(resource, volume['attrs'])

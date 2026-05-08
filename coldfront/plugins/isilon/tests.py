@@ -3,7 +3,11 @@
 from coldfront.core.allocation.models import Allocation, AllocationStatusChoice
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
-from coldfront.plugins.isilon.utils import IsilonConnection, create_isilon_allocation_quota
+from coldfront.plugins.isilon.utils import (
+    IsilonConnection,
+    create_isilon_allocation_quota,
+    get_isilon_url,
+)
 
 
 def test_create_isilon_allocation_quota():
@@ -18,9 +22,9 @@ def test_create_isilon_allocation_quota():
 
     path = f'ifs/rc_labs/{allocation.project.title}'
     # for each isilon cluster:
-    for resource in Resource.objects.filter(name__contains='tier1'):
+    for resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
         # create isilon IsilonConnection
-        isilon_connection = IsilonConnection(resource.name)
+        isilon_connection = IsilonConnection(get_isilon_url(resource))
         # run create_isilon_allocation_quota on the allocation with the isilon cluster
         create_isilon_allocation_quota(allocation, resource)
 
@@ -31,8 +35,6 @@ def test_create_isilon_allocation_quota():
         )
         # confirm that acl mode is 2770
         assert acl.mode == '2770'
-        # confirm that 
-        print(acl)
         # check that the directory quota is properly created
         quota_list = isilon_connection.quota_client.list_quota_quotas()
         quota = next(q for q in quota_list.quotas if q.path == f'/{path}')
