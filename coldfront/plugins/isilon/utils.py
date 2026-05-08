@@ -275,6 +275,7 @@ def create_isilon_allocation_quota(
         raise
     actions_performed.append('quota set')
 
+    option_exceptions = {}
     ### set up snapshots for the created quota ###
     snapshot_schedule = isilon_api.SnapshotScheduleCreateParams(
         name=lab_name,
@@ -289,7 +290,6 @@ def create_isilon_allocation_quota(
     except Exception as e:
         option_exceptions['snapshots'] = e
 
-    option_exceptions = {}
     if nfs_share:
         ### set up NFS export ###
         root_clients = import_from_settings('ISILON_NFS_ROOT_CLIENTS').split(',')
