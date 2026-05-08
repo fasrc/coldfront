@@ -48,13 +48,13 @@ def activate_allocation(sender, **kwargs):
     allocation_obj = kwargs['allocation_obj']
     resource = kwargs['resource']
 
-    automation_specifications = approval_form_data.get('automation_specifications')
-    automation_kwargs = {k:True for k in automation_specifications}
+    # automation_specifications = approval_form_data.get('automation_specifications')
+    # automation_kwargs = {k:True for k in automation_specifications}
 
     if resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
         try:
             option_exceptions = create_isilon_allocation_quota(
-                allocation_obj, resource, **automation_kwargs
+                allocation_obj, resource # , **automation_kwargs
             )
             if option_exceptions:
                 err = f'some options failed to be created for new allocation {allocation_obj} ({allocation_obj.pk}): {option_exceptions}'

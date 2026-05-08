@@ -196,7 +196,7 @@ class IsilonGroup:
 
 
 def create_isilon_allocation_quota(
-        allocation, resource, snapshots=False, nfs_share=False, cifs_share=False
+        allocation, resource, nfs_share=True, cifs_share=True
     ):
     """Create a new isilon allocation quota
     """
@@ -275,22 +275,21 @@ def create_isilon_allocation_quota(
         raise
     actions_performed.append('quota set')
 
-    option_exceptions = {}
-    if snapshots:
-        ### set up snapshots for the created quota ###
-        snapshot_schedule = isilon_api.SnapshotScheduleCreateParams(
-            name=lab_name,
-            path=f'/{path}',
-            pattern=f"{lab_name}_daily_%Y-%m-%d-_%H-%M",
-            schedule="Every 1 days",
-            duration=7*24*60*60,
-        )
-        try:
-            isilon_conn.snapshot_client.create_snapshot_schedule(snapshot_schedule)
-            actions_performed.append('snapshots scheduled')
-        except Exception as e:
-            option_exceptions['snapshots'] = e
+    ### set up snapshots for the created quota ###
+    snapshot_schedule = isilon_api.SnapshotScheduleCreateParams(
+        name=lab_name,
+        path=f'/{path}',
+        pattern=f"{lab_name}_daily_%Y-%m-%d-_%H-%M",
+        schedule="Every 1 days",
+        duration=7*24*60*60,
+    )
+    try:
+        isilon_conn.snapshot_client.create_snapshot_schedule(snapshot_schedule)
+        actions_performed.append('snapshots scheduled')
+    except Exception as e:
+        option_exceptions['snapshots'] = e
 
+    option_exceptions = {}
     if nfs_share:
         ### set up NFS export ###
         root_clients = import_from_settings('ISILON_NFS_ROOT_CLIENTS').split(',')
