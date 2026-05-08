@@ -44,7 +44,7 @@ def update_isilon_volume_information(sender, **kwargs):
 @receiver(allocation_autocreate)
 def activate_allocation(sender, **kwargs):
 
-    approval_form_data = kwargs['approval_form_data']
+    # approval_form_data = kwargs['approval_form_data']
     allocation_obj = kwargs['allocation_obj']
     resource = kwargs['resource']
 
