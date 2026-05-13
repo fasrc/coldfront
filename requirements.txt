@@ -76,3 +76,4 @@ gunicorn
 cryptography==45.0.7
 pydantic==2.9.2
 svglib==1.5.1
+git+https://github.com/theam/coldfront_notifications.git
