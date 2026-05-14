@@ -41,9 +41,12 @@ class RequestFilter(logging.Filter):
                 record.requesting_user = request_username
 
             if not hasattr(record, 'auth_backend'):
-                record.auth_backend = request.session._session_cache.get(
-                    '_auth_user_backend', 'unknown'
-                )
+                try:
+                    record.auth_backend = request.session._session_cache.get(
+                        '_auth_user_backend', 'unknown'
+                    )
+                except Exception:
+                    record.auth_backend = 'unknown-1'
         else:
             if not hasattr(record, 'ip_addr'):
                 record.ip_addr = ''
