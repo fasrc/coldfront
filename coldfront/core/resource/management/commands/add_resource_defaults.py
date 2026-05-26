@@ -1,5 +1,4 @@
 from django.core.management.base import BaseCommand
-from django.db.utils import IntegrityError
 from coldfront.core.resource.models import (
     Resource,
     ResourceType,
@@ -35,6 +34,8 @@ class Command(BaseCommand):
             ('GPU Count', 'Int'),
             ('Features', 'Text'),
             ('slurm_integration', 'Text'),
+            ('storage_type', 'Text'),
+            ('url', 'Text'),
             # UBCCR
             ('Core Count', 'Int'),
             # ('expiry_time', 'Int'),
@@ -98,8 +99,7 @@ class Command(BaseCommand):
             ('holylfs05/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('holylfs06/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('nesetape/tier3', 'Cold storage for past projects', True, storage, 'Tape', 20, True, True),
-            ('holy-isilon/tier1', 'Tier1 storage with snapshots and disaster recovery copy', True, storage, 'Tier 1', 1, True, True),
-            ('bos-isilon/tier1', 'Tier1 storage for on-campus storage mounting', True, storage, 'Tier 1', 1, True, True),
+            ('lab-storage-nfs', 'NFS Lab Storage', True, storage, 'Lab Storage', 1, True, True),
             ('holystore01/tier0', 'Luster storage under Tier0', True, storage, 'Tier 0', 1, True, True),
             ('b-nfs02-p/tier2', 'Tier2 CEPH storage', True, storage, 'Tier 2', 1, True, True),
             ('b-nfs03-p/tier2', 'Tier2 CEPH storage', True, storage, 'Tier 2', 1, True, True),

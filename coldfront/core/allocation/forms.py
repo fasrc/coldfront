@@ -208,21 +208,20 @@ class AllocationApprovalForm(forms.Form):
         required=False,
     )
 
-    automation_specifications = forms.MultipleChoiceField(
-        label='If you have opted for automatic allocation creation, please select from the following options:',
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        choices=(
-            ('snapshots', 'Enable daily snapshots, 7 days of retention, for this allocation'),
-            ('nfs_share', 'Create a NFS share for this allocation'),
-            ('cifs_share', 'Create a CIFS share for this allocation'),
-        ),
-    )
+    # automation_specifications = forms.MultipleChoiceField(
+    #     label='If you have opted for automatic allocation creation, please select from the following options:',
+    #     required=False,
+    #     widget=forms.CheckboxSelectMultiple,
+    #     choices=(
+    #         ('nfs_share', 'Create a NFS share for this allocation'),
+    #         ('cifs_share', 'Create a CIFS share for this allocation'),
+    #     ),
+    # )
 
     def clean(self):
         cleaned_data = super().clean()
         auto_create_opts = cleaned_data.get('auto_create_opts')
-        automation_specifications = cleaned_data.get('automation_specifications')
+        # automation_specifications = cleaned_data.get('automation_specifications')
         # if the action is 'approve', make auto_create_opts and sheetcheck mandatory
         if not auto_create_opts:
             self.add_error(

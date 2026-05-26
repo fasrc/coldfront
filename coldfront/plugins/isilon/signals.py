@@ -5,11 +5,12 @@ from coldfront.core.allocation.signals import (
         allocation_autocreate,
         allocation_autoupdate,
 )
-from coldfront.core.resource.models import ResourceAttributeType
+from coldfront.core.resource.models import Resource, ResourceAttributeType
 from coldfront.core.resource.signals import update_volume_information
 from coldfront.plugins.isilon.utils import (
     IsilonConnection,
     create_isilon_allocation_quota,
+    get_isilon_url,
     update_isilon_allocation_quota,
 )
 
@@ -19,8 +20,8 @@ logger = logging.getLogger(__name__)
 def update_isilon_volume_information(sender, **kwargs):
 
     resource = kwargs['resource']
-    if 'isilon' in resource.name:
-        resource_name = resource.name.split('/')[0]
+    if resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
+        resource_name = get_isilon_url(resource)
         isilon_api = IsilonConnection(resource_name)
         isilon_capacity_tb = isilon_api.to_tb(isilon_api.total_space)
         isilon_free_tb = isilon_api.to_tb(isilon_api.unused_space)
@@ -43,17 +44,17 @@ def update_isilon_volume_information(sender, **kwargs):
 @receiver(allocation_autocreate)
 def activate_allocation(sender, **kwargs):
 
-    approval_form_data = kwargs['approval_form_data']
+    # approval_form_data = kwargs['approval_form_data']
     allocation_obj = kwargs['allocation_obj']
     resource = kwargs['resource']
 
-    automation_specifications = approval_form_data.get('automation_specifications')
-    automation_kwargs = {k:True for k in automation_specifications}
+    # automation_specifications = approval_form_data.get('automation_specifications')
+    # automation_kwargs = {k:True for k in automation_specifications}
 
-    if 'isilon' in resource.name:
+    if resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
         try:
             option_exceptions = create_isilon_allocation_quota(
-                allocation_obj, resource, **automation_kwargs
+                allocation_obj, resource # , **automation_kwargs
             )
             if option_exceptions:
                 err = f'some options failed to be created for new allocation {allocation_obj} ({allocation_obj.pk}): {option_exceptions}'
@@ -69,7 +70,7 @@ def update_allocation_quota(sender, **kwargs):
     allocation_obj = kwargs['allocation_obj']
     new_quota_value = kwargs['new_quota_value']
     resource = allocation_obj.resources.first()
-    if 'isilon' in resource.name:
+    if resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
         try:
             update_isilon_allocation_quota(allocation_obj, new_quota_value)
             logger.info(
