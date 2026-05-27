@@ -118,6 +118,10 @@ LOGGING = {
         'request': {
             'handlers': ['console', 'json'],
             'level': 'INFO',
-        }
+        },
+        'sftocf': {
+            'handlers': ['console', 'json', 'key-events'],
+            'level': 'INFO',
+        },
     },
 }
