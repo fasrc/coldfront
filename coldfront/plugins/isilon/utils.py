@@ -1,7 +1,7 @@
 import logging
 
-import isilon_sdk.v9_3_0 as isilon_api
-from isilon_sdk.v9_3_0.rest import ApiException
+import isilon_sdk.v9_8_0 as isilon_api
+from isilon_sdk.v9_8_0.rest import ApiException
 
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.allocation.models import AllocationAttributeType, AllocationAttribute
