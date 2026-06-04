@@ -99,7 +99,7 @@ class Command(BaseCommand):
             ('holylfs05/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('holylfs06/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('nesetape/tier3', 'Cold storage for past projects', True, storage, 'Tape', 20, True, True),
-            ('lab-storage-nfs', 'NFS Lab Storage', True, storage, 'Lab Storage', 1, True, True),
+            ('lab-storage', 'NFS Lab Storage', True, storage, 'Lab Storage', 1, True, True),
             ('holystore01/tier0', 'Luster storage under Tier0', True, storage, 'Tier 0', 1, True, True),
             ('b-nfs02-p/tier2', 'Tier2 CEPH storage', True, storage, 'Tier 2', 1, True, True),
             ('b-nfs03-p/tier2', 'Tier2 CEPH storage', True, storage, 'Tier 2', 1, True, True),
@@ -135,8 +135,10 @@ class Command(BaseCommand):
             if parent_name:
                 resource_defaults['parent_resource'] = Resource.objects.get(name=parent_name)
 
-            resource_obj, _ = Resource.objects.update_or_create(
+            resource_obj, created = Resource.objects.update_or_create(
                 name=name, defaults=resource_defaults)
+            if created:
+                print(f"Created resource {name}")
 
             resource_obj.resourceattribute_set.update_or_create(
                 resource_attribute_type=default_value_type,
