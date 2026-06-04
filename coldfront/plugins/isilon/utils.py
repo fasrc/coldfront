@@ -1,7 +1,7 @@
 import logging
 
-import isilon_sdk.v9_3_0 as isilon_api
-from isilon_sdk.v9_3_0.rest import ApiException
+import isilon_sdk.v9_8_0 as isilon_api
+from isilon_sdk.v9_8_0.rest import ApiException
 
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.allocation.models import AllocationAttributeType, AllocationAttribute
@@ -31,9 +31,9 @@ def get_isilon_url(resource):
 class IsilonConnection:
     """Convenience class containing methods for collecting data from an isilon cluster
     """
-    def __init__(self, cluster_name):
-        self.cluster_name = cluster_name
-        self.api_client = self.connect(cluster_name)
+    def __init__(self, url):
+        self.cluster_name = url
+        self.api_client = self.connect(url)
         # APIs
         self._auth_client = None
         self._namespace_client = None
