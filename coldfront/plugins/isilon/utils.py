@@ -283,7 +283,7 @@ def create_isilon_allocation_quota(
     isilon_conn = IsilonConnection(isilon_resource)
     actions_performed = []
     # determine whether rc_labs or rc_fasse_labs path
-    subdir = 'rc_fasse_labs' if '_l3' in lab_name else 'rc_labs'
+    subdir = 'rc_labs' # if 'fasse' not in isilon_resource else 'rc_fasse_labs'
     path = f'ifs/{subdir}/{lab_name}'
     root_uid = isilon_conn.auth_client.list_auth_users(filter='root').users[0].uid.id
 
