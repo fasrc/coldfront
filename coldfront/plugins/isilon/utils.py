@@ -153,6 +153,28 @@ class IsilonConnection:
             raise Exception(f'no quotas returned for quota {self.cluster_name}:{path}')
         return current_quota.quotas[0]
 
+    def create_directory(self, path):
+        try:
+            self.namespace_client.create_directory(
+                path,
+                x_isi_ifs_target_type='container',
+                overwrite=False,
+            )
+        except ApiException as e:
+            logger.error("can't create directory: %s", e)
+            if e.status == 403:
+                logger.error("can't create directory %s, it already exists", path)
+            raise
+
+    def set_directory_acl(self, path, namespace_acl):
+        try:
+            self.namespace_client.set_acl(path, True, namespace_acl)
+        except ApiException as e:
+            logger.exception(
+                "can't set directory acl. path=%s acl_obj=%s error=%s", path, namespace_acl, e
+            )
+            raise
+
 
 class IsilonUser:
     """Class for retrieval and storage of an isilon user from a coldfront user
@@ -195,38 +217,39 @@ class IsilonGroup:
             return ldap_conn.return_group_by_name(self.name)['gidNumber'][0]
 
 
-def create_isilon_allocation_quota(
-        allocation, resource, nfs_share=True, cifs_share=True
-    ):
-    """Create a new isilon allocation quota
+def create_isilon_subdirectory_structure(labroot_path, isilon_pi, isilon_group, isilon_conn):
+    """create labroot_path/Lab and labroot_path/Everyone directories with correct ACLs
+    Lab directory should be owned by the lab's PI and lab group with 2770 permissions
+    Everyone directory should be owned by lab group and lab PI with 2775 permissions
     """
-    lab_name = allocation.project.title
-    isilon_resource = get_isilon_url(resource)
-    isilon_conn = IsilonConnection(isilon_resource)
-    actions_performed = []
-    # determine whether rc_labs or rc_fasse_labs path
-    subdir = 'rc_fasse_labs' if '_l3' in lab_name else 'rc_labs'
-    path = f'ifs/{subdir}/{lab_name}'
+    everyone_path = f'{labroot_path}/Everyone'
+    isilon_conn.create_directory(everyone_path)
 
-    ### Set ownership and default permissions ###
-    isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
-    isilon_group = IsilonGroup(allocation.project, isilon_conn)
+    everyone_acl = isilon_api.NamespaceAcl(
+        acl=[
+            isilon_api.AclObject(# acl object for group permissions
+                accessrights=['dir_gen_read','dir_gen_execute','file_gen_read','file_gen_execute'],
+                inherit_flags=['object_inherit','container_inherit','inherit_only'],
+                trustee=isilon_api.MemberObject(
+                    id='SID:S-1-3-1', name='Creator Group', type='wellknown')
+            ),
+            isilon_api.AclObject(# acl object for owner permissions
+                accessrights=['dir_gen_all'],
+                inherit_flags=['object_inherit','container_inherit','inherit_only'],
+                trustee=isilon_api.MemberObject(
+                    id='SID:S-1-3-0', name='Creator Owner', type='wellknown'),
+            ),
+        ],
+        group={'id': f'GID:{isilon_group.gid}'},
+        owner={'id': f'UID:{isilon_pi.uid}'},
+        authoritative='mode',
+        mode='2775',
+    )
+    isilon_conn.set_directory_acl(everyone_path, everyone_acl)
 
-    ### make the directory ###
-    try:
-        isilon_conn.namespace_client.create_directory(
-            path,
-            x_isi_ifs_target_type='container',
-            overwrite=False,
-        )
-    except ApiException as e:
-        logger.error("can't create directory: %s", e)
-        if e.status == 403:
-            logger.error("can't create directory %s, it already exists", path)
-        raise
-    actions_performed.append('directory created')
-
-    namespace_acl = isilon_api.NamespaceAcl(
+    lab_path = f'{labroot_path}/Lab'
+    isilon_conn.create_directory(lab_path)
+    lab_acl = isilon_api.NamespaceAcl(
         acl=[
             isilon_api.AclObject(# acl object for group permissions
                 accessrights=['dir_gen_read','dir_gen_execute','file_gen_read','file_gen_execute'],
@@ -246,11 +269,53 @@ def create_isilon_allocation_quota(
         authoritative='mode',
         mode='2770',
     )
-    try:
-        isilon_conn.namespace_client.set_acl(path, True, namespace_acl)
-    except ApiException as e:
-        logger.error("can't set directory acl: %s", e)
-        raise
+    isilon_conn.set_directory_acl(lab_path, lab_acl)
+    return 'Everyone and Lab subdirectories created with ACLs'
+
+
+def create_isilon_allocation_quota(
+        allocation, resource, nfs_share=True, cifs_share=True
+    ):
+    """Create a new isilon allocation quota
+    """
+    lab_name = allocation.project.title
+    isilon_resource = get_isilon_url(resource)
+    isilon_conn = IsilonConnection(isilon_resource)
+    actions_performed = []
+    # determine whether rc_labs or rc_fasse_labs path
+    subdir = 'rc_fasse_labs' if '_l3' in lab_name else 'rc_labs'
+    path = f'ifs/{subdir}/{lab_name}'
+    root_uid = isilon_conn.auth_client.list_auth_users(filter='root').users[0].uid.id
+
+    ### Set ownership and default permissions ###
+    isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
+    isilon_group = IsilonGroup(allocation.project, isilon_conn)
+
+    ### make the directory ###
+    isilon_conn.create_directory(path)
+    actions_performed.append('directory created')
+
+    namespace_acl = isilon_api.NamespaceAcl(
+        acl=[
+            isilon_api.AclObject(# acl object for group permissions
+                accessrights=['dir_gen_read','dir_gen_execute','file_gen_read','file_gen_execute'],
+                inherit_flags=['object_inherit','container_inherit','inherit_only'],
+                trustee=isilon_api.MemberObject(
+                    id='SID:S-1-3-1', name='Creator Group', type='wellknown')
+            ),
+            isilon_api.AclObject(# acl object for owner permissions
+                accessrights=['dir_gen_all'],
+                inherit_flags=['object_inherit','container_inherit','inherit_only'],
+                trustee=isilon_api.MemberObject(
+                    id='SID:S-1-3-0', name='Creator Owner', type='wellknown'),
+            ),
+        ],
+        group={'id': f'GID:{isilon_group.gid}'},
+        owner={'id': f'UID:{root_uid}'},
+        authoritative='mode',
+        mode='2755',
+    )
+    isilon_conn.set_directory_acl(path, namespace_acl)
     actions_performed.append('acl set')
 
     ### Set up quota ###
@@ -275,6 +340,13 @@ def create_isilon_allocation_quota(
         raise
     actions_performed.append('quota set')
 
+    subdir_type = AllocationAttributeType.objects.get(name='Subdirectory')
+    AllocationAttribute.objects.create(
+        allocation=allocation,
+        allocation_attribute_type_id=subdir_type.pk,
+        value=f'{subdir}/{lab_name}'
+    )
+
     option_exceptions = {}
     ### set up snapshots for the created quota ###
     snapshot_schedule = isilon_api.SnapshotScheduleCreateParams(
@@ -290,24 +362,24 @@ def create_isilon_allocation_quota(
     except Exception as e:
         option_exceptions['snapshots'] = e
 
-    if nfs_share:
-        ### set up NFS export ###
-        root_clients = import_from_settings('ISILON_NFS_ROOT_CLIENTS').split(',')
-        if 'fasse' in path:
-            clients = import_from_settings('ISILON_NFS_FASSE_CLIENTS').split(',')
-        else:
-            clients = import_from_settings('ISILON_NFS_CANNON_CLIENTS').split(',')
+    # if nfs_share:
+    #     ### set up NFS export ###
+    #     root_clients = import_from_settings('ISILON_NFS_ROOT_CLIENTS').split(',')
+    #     if 'fasse' in path:
+    #         clients = import_from_settings('ISILON_NFS_FASSE_CLIENTS').split(',')
+    #     else:
+    #         clients = import_from_settings('ISILON_NFS_CANNON_CLIENTS').split(',')
 
-        nfs_export = isilon_api.NfsExportCreateParams(
-            root_clients=root_clients,
-            clients=clients,
-            paths=[f'/{path}'],
-        )
-        try:
-            isilon_conn.protocols_client.create_nfs_export(nfs_export)
-            actions_performed.append('nfs share created')
-        except Exception as e:
-            option_exceptions['nfs_share'] = e
+    #     nfs_export = isilon_api.NfsExportCreateParams(
+    #         root_clients=root_clients,
+    #         clients=clients,
+    #         paths=[f'/{path}'],
+    #     )
+    #     try:
+    #         isilon_conn.protocols_client.create_nfs_export(nfs_export)
+    #         actions_performed.append('nfs share created')
+    #     except Exception as e:
+    #         option_exceptions['nfs_share'] = e
 
     if cifs_share:
         ### set up smb share ###
@@ -323,12 +395,12 @@ def create_isilon_allocation_quota(
         except Exception as e:
             option_exceptions['cifs_share'] = e
 
-    subdir_type = AllocationAttributeType.objects.get(name='Subdirectory')
-    AllocationAttribute.objects.create(
-        allocation=allocation,
-        allocation_attribute_type_id=subdir_type.pk,
-        value=f'{subdir}/{lab_name}'
-    )
+    try:
+        subdir_structure = create_isilon_subdirectory_structure(
+                path, isilon_pi, isilon_group, isilon_conn)
+        actions_performed.append(subdir_structure)
+    except Exception as e:
+        option_exceptions['subdirectory_structure'] = e
 
     logger.info(
         'Auto-created Isilon allocation quota.',
