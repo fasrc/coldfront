@@ -285,7 +285,7 @@ def create_isilon_allocation_quota(
     # determine whether rc_labs or rc_fasse_labs path
     subdir = 'rc_labs' # if 'fasse' not in isilon_resource else 'rc_fasse_labs'
     path = f'ifs/{subdir}/{lab_name}'
-    root_uid = isilon_conn.auth_client.list_auth_users(filter='root').users[0].uid.id
+    root_uid = '0'
 
     ### Set ownership and default permissions ###
     isilon_pi = IsilonUser(allocation.project.pi, isilon_conn)
