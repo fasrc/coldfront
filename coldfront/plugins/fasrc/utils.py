@@ -45,26 +45,7 @@ class ATTAllocationQuery:
                 'path_def': "substring(e.Path, size('/n/') + size(split(e.Path, '/')[2]) + 1)",
                 'unique':'datetime(e.DotsLFSUpdateDate) as begin_date'
             },
-            'isilon': {
-                'volumes': '|'.join(r.name.split('/')[0] for r in Resource.objects.filter(parent_resource__name='Tier 1')),
-                'relation': 'Owns',
-                'match': "(e:IsilonPath) MATCH (d:ConfigValue {Name: 'IsilonPath.Invocation'})",
-                'server': 'Isilon',
-                'validation_query': "r.DotsUpdateDate = d.DotsUpdateDate\
-                    AND NOT (e.Path =~ '.*/rc_admin/.*')\
-                    AND (e.Path =~ '.*labs.*')\
-                    AND (datetime() - duration('P31D') <= datetime(r.DotsUpdateDate))\
-                    AND NOT (e.SizeGB = 0)",
-                'r_updated': 'DotsUpdateDate',
-                'storage_type': 'Isilon',
-                'usedgb': 'UsedGB',
-                'tb_allocation': 'e.SizeGB / 1024.0',
-                'sizebytes': 'e.SizeBytes',
-                'usedbytes': 'UsedBytes',
-                'server_replace': "'01.rc.fas.harvard.edu', ''",
-                'path_def': "replace(e.Path, '/ifs/', '')",
-                'unique': 'datetime(e.DotsUpdateDate) as begin_date'
-            },
+
             'volume': {
                 'volumes': '|'.join(r.name.split('/')[0] for r in Resource.objects.filter(parent_resource__name='Tier 2')),
                 'relation': 'Owns',
