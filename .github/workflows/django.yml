@@ -58,6 +58,68 @@ jobs:
         docker run -d --rm --name coldfront -v `pwd`:/usr/src/app \
         -e PLUGIN_SFTOCF=True -e SFUSER=${{ secrets.SFUSER }} -e SFPASS=${{ secrets.SFPASS }} \
         -e PLUGIN_IFX=True -e PLUGIN_FASRC=True -e NEO4JP=${{ secrets.NEO4JP }} \
+        -e PLUGIN_ISILON=True \
+        -e PLUGIN_API=True -e PLUGIN_LDAP=True -e PLUGIN_LFS=True \
+        -e AUTH_LDAP_SERVER_URI=${{ secrets.AUTH_LDAP_SERVER_URI }} \
+        -e AUTH_LDAP_BIND_DN=${{ secrets.AUTH_LDAP_BIND_DN }} \
+        -e AUTH_LDAP_BIND_PASSWORD=${{ secrets.AUTH_LDAP_BIND_PASSWORD }} \
+        -e AUTH_LDAP_GROUP_SEARCH_BASE=${{ secrets.AUTH_LDAP_GROUP_SEARCH_BASE }} \
+        -e AUTH_LDAP_USER_SEARCH_BASE=${{ secrets.AUTH_LDAP_USER_SEARCH_BASE }} \
+        -p 9000:80 coldfront
+      env:
+        SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout with submodules
+      uses: actions/checkout@v6
+      with:
+        repository: fasrc/coldfront
+        submodules: recursive
+        token: ${{ secrets.GIT_HTTPS_TOKEN }}
+    - name: Set up SSH key
+      run: |
+        mkdir -p ~/.ssh/
+        echo "$SSH_KEY" > ~/.ssh/staging.key
+        chmod 600 ~/.ssh/staging.key
+        ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+        ssh-add ~/.ssh/staging.key
+      env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          SSH_KEY: ${{ secrets.ACTION_SSH }}
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    # - name: Format with black
+    #   run: |
+    #     pip install black
+    #     # format the files with black
+    #     black .
+    # - name: Lint with flake8
+    #   run: |
+    #     pip install flake8
+    #     # stop the build if there are Python syntax errors or undefined names
+    #     flake8 . --count --select=E9,F63,F7 --show-source --statistics
+    #     # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+    #     flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    # - name: Sort imports
+    #   run: |
+    #     pip install isort
+    #     # stop the build if there are Python syntax errors or undefined names
+    #     isort .
+    #     isort --check --diff .
+    - name: Build the images and start the containers
+      run: |
+        export GITHUB_WORKFLOW=True
+        export MODE="Test"
+        export COMPOSE_DOCKER_CLI_BUILD=1
+        export DOCKER_BUILDKIT=1
+        make build
+        docker run -d --rm --name coldfront -v `pwd`:/usr/src/app \
+        -e PLUGIN_SFTOCF=True -e SFUSER=${{ secrets.SFUSER }} -e SFPASS=${{ secrets.SFPASS }} \
+        -e PLUGIN_IFX=True -e PLUGIN_FASRC=True -e NEO4JP=${{ secrets.NEO4JP }} \
         -e PLUGIN_API=True -e PLUGIN_LDAP=True -e PLUGIN_LFS=True \
         -e AUTH_LDAP_SERVER_URI=${{ secrets.AUTH_LDAP_SERVER_URI }} \
         -e AUTH_LDAP_BIND_DN=${{ secrets.AUTH_LDAP_BIND_DN }} \
