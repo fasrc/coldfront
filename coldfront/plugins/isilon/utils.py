@@ -388,6 +388,17 @@ def create_isilon_allocation_quota(
             name=lab_name,
             ntfs_acl_support=False,
             path=f'/{path}',
+            permissions=[
+                isilon_api.SmbSharePermission(
+                    permission='change',
+                    permission_type='allow',
+                    trustee=isilon_api.MemberObject(
+                        id=f'GID:{isilon_group.gid}',
+                        name=isilon_group.name,
+                        type='group',
+                    ),
+                ),
+            ],
         )
         try:
             isilon_conn.protocols_client.create_smb_share(smb_share)
