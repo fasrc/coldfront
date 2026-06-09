@@ -31,6 +31,7 @@ class Command(BaseCommand):
 
         for name, attribute_type, has_usage, is_private in (
             ('Starfish Zone', 'Int', False, False),
+            ('is_fasse', 'Yes/No', False, False),
             # UBCCR defaults
             # ('Project ID', 'Text', False, False),
             # ('Account Number', 'Int', False, True),

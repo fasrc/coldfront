@@ -25,6 +25,8 @@ from coldfront.core.utils.fasrc import (
 from coldfront.core.allocation.models import AllocationUserStatusChoice, AllocationUser
 from coldfront.core.project.models import (
     Project,
+    ProjectAttribute,
+    ProjectAttributeType,
     ProjectStatusChoice,
     ProjectUserRoleChoice,
     ProjectUserStatusChoice,
@@ -559,6 +561,22 @@ def collect_update_project_status_membership():
 
     ad_conn = LDAPConn()
 
+    # Resolve the set of project AD group SAMAccountNames that are MemberOf the fasse group.
+    CF_LDAP_FASSE_GROUP = import_from_settings('CF_LDAP_FASSE_GROUP', None)
+    fasse_project_titles = set()
+    if CF_LDAP_FASSE_GROUP:
+        fasse_entries = ad_conn.search_groups(
+            {'sAMAccountName': CF_LDAP_FASSE_GROUP}, attributes=['member']
+        )
+        if fasse_entries:
+            fasse_member_dns = fasse_entries[0].get('member', [])
+            if fasse_member_dns:
+                fasse_member_groups = ad_conn.search_groups(
+                    {'distinguishedName': fasse_member_dns}, attributes=['sAMAccountName']
+                )
+                fasse_project_titles = {g['sAMAccountName'][0] for g in fasse_member_groups}
+        logger.debug('fasse project titles resolved from AD: %s', fasse_project_titles)
+
     proj_membs_mans = {p: ad_conn.return_group_members_manager(p.title) for p in active_projects}
     proj_membs_mans, _ = cleaned_membership_query(proj_membs_mans)
     groupusercollections = [
@@ -633,7 +651,22 @@ def collect_update_project_status_membership():
     )
     logger.info("Reactivating projects: %s", [p.title for p in active_pi_group_projs_statuschange])
     active_pi_group_projs_statuschange.update(status=project_active_status)
+    is_fasse_attr_type = ProjectAttributeType.objects.filter(name='is_fasse').first()
+
     for group in active_pi_groups:
+
+        # Update is_fasse ProjectAttribute based on fasse group membership in AD.
+        if CF_LDAP_FASSE_GROUP and is_fasse_attr_type:
+            is_fasse = group.name in fasse_project_titles
+            ProjectAttribute.objects.update_or_create(
+                project=group.project,
+                proj_attr_type=is_fasse_attr_type,
+                defaults={'value': str(is_fasse)},
+            )
+        else:
+            logger.warning(
+                'Skipping is_fasse ProjectAttribute update. CF_LDAP_FASSE_GROUP or is_fasse ProjectAttributeType not found.'
+            )
 
         ad_users_not_added, remove_projuser_names = group.compare_members_projectusers()
         group_storage_allocations = group.project.allocation_set.filter(
