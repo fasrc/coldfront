@@ -54,7 +54,7 @@ django-mathfilters==1.0.0
 django-tables2==2.3.4
 djangorestframework==3.15.2
 djangorestframework-datatables==0.7.0
-ipython==7.16.3
+ipython==8.39.0
 isilon-sdk==0.7.0
 jinja2
 knox
@@ -62,7 +62,6 @@ ldap3
 logging_tree==1.9
 mysqlclient==2.2.0
 natural-keys
-python-dateutil
 python-json-logger
 pandas==2.2.1
 reportlab==4.0.5
@@ -70,3 +69,4 @@ xhtml2pdf==0.2.15
 XlsxWriter
 git+https://github.com/fasrc/slurmrest_python_sdk.git
 git+https://github.com/fasrc/sftocf.git
+vastpy
