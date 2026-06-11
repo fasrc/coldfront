@@ -12,8 +12,11 @@ LABEL org.opencontainers.image.description="fasrc coldfront application"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-    && apt-get install -y redis redis-server vim \
-    && apt-get install -y libsasl2-dev libldap2-dev libssl-dev \
+        redis-server \
+        vim \
+        libsasl2-dev \
+        libldap2-dev \
+        libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 RUN mkdir ~/.ssh && echo "Host git*\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
@@ -26,14 +29,13 @@ COPY etc/ipython_init.py ${IPYTHON_STARTUP}
 
 
 RUN pip install --upgrade pip && \
-    pip install vastpy && \
     pip install -r requirements.txt
 
-COPY . .
+RUN pip install django-prometheus gunicorn
 
 RUN if [ "${BUILD_ENV}" = "dev" ]; then pip install django-redis django-debug-toolbar; fi
 
-RUN pip install django-prometheus gunicorn
+COPY . .
 
 ENV PYTHONPATH /usr/src/app:/usr/src/app/ifxreport:/usr/src/app/ifxbilling:/usr/src/app/fiine.client:/usr/src/app/ifxurls:/usr/src/app/nanites.client:/usr/src/app/ifxuser:/usr/src/app/ifxmail.client:/usr/src/app/ifxec
 
