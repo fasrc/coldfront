@@ -144,6 +144,11 @@ class Project(TimeStampedModel):
         return self.get_attribute('Starfish Zone')
 
     @property
+    def is_fasse(self):
+        """Return True if the project has an is_fasse attribute set to 'True', False otherwise."""
+        return self.get_attribute('is_fasse') == 'True'
+
+    @property
     def needs_review(self):
         """
         Returns:
