@@ -507,6 +507,178 @@ def print_log_error(e, message):
     print(f'ERROR: {message} - {e}')
     logger.error('%s - %s', message, e)
 
+def delete_isilon_allocation(resource_url, path, force=False):
+    """Delete an isilon allocation directory and all associated items created by
+    ``create_isilon_allocation_quota``.
+
+    Deletes, in order: snapshot schedule, SMB share, NFS export, quota, Lab and Everyone
+    subdirectories, root lab directory. Items that do not exist are skipped gracefully.
+
+    Fails before deleting anything if physical data is present in the Lab or Everyone
+    subdirectories (quota ``usage.physical > 0``).
+
+    Prints a preview of what will be deleted and requires explicit confirmation before
+    proceeding.  Pass ``force=True`` to bypass the prompt in automated tests.
+
+    Parameters
+    ----------
+    resource_url : str
+        Isilon cluster URL (e.g. ``'https://isilon01.university.edu:8080'``).
+    path : str
+        Allocation path as stored in the ``Subdirectory`` attribute
+        (e.g. ``'rc_labs/smithlab'``).  The lab name is derived from the last path component.
+    force : bool
+        Skip the confirmation prompt.  Defaults to ``False``.
+
+    Raises
+    ------
+    ValueError
+        If physical data is found in the Lab or Everyone subdirectories.
+    """
+    isilon_conn = IsilonConnection(resource_url)
+
+    lab_name = path.rsplit('/', 1)[-1]
+    root_path = f'/ifs/{path}'
+    lab_path = f'{root_path}/Lab'
+    everyone_path = f'{root_path}/Everyone'
+
+    # ------------------------------------------------------------------
+    # Discovery: find every item that actually exists on the cluster
+    # ------------------------------------------------------------------
+    to_delete = {}  # key → human label, used for the confirmation prompt
+    deletion_plan = {}  # key → (callable, *args) executed during deletion
+
+    # Quota (also used for the data-present check below)
+    quota_obj = None
+    try:
+        quota_result = isilon_conn.quota_client.list_quota_quotas(
+            path=root_path,
+            recurse_path_children=False,
+            recurse_path_parents=False,
+            type='directory',
+        )
+        if quota_result.quotas:
+            quota_obj = quota_result.quotas[0]
+            hard_tib = quota_obj.thresholds.hard / 1024 ** 4 if quota_obj.thresholds.hard else 0
+            to_delete['quota'] = f'Quota  {root_path}  (hard limit: {hard_tib:.1f} TiB)'
+            deletion_plan['quota'] = (
+                isilon_conn.quota_client.delete_quota_quota, quota_obj.id
+            )
+    except ApiException as e:
+        logger.warning('Could not query quota for %s: %s', root_path, e)
+
+    # Snapshot schedule (named after the lab)
+    try:
+        schedule_result = isilon_conn.snapshot_client.list_snapshot_schedules()
+        matching = [s for s in (schedule_result.schedules or []) if s.name == lab_name]
+        if matching:
+            to_delete['snapshot'] = f'Snapshot schedule  "{lab_name}"  (path: {matching[0].path})'
+            deletion_plan['snapshot'] = (
+                isilon_conn.snapshot_client.delete_snapshot_schedule, lab_name
+            )
+    except ApiException as e:
+        logger.warning('Could not list snapshot schedules: %s', e)
+
+    # SMB share (named after the lab)
+    try:
+        smb_result = isilon_conn.protocols_client.list_smb_shares()
+        matching_smb = [s for s in (smb_result.shares or []) if s.name == lab_name]
+        if matching_smb:
+            to_delete['smb'] = f'SMB share  "{lab_name}"  (path: {matching_smb[0].path})'
+            deletion_plan['smb'] = (
+                isilon_conn.protocols_client.delete_smb_share, lab_name
+            )
+    except ApiException as e:
+        logger.warning('Could not list SMB shares: %s', e)
+
+    # NFS export (matched by path prefix)
+    try:
+        nfs_result = isilon_conn.protocols_client.list_nfs_exports()
+        matching_nfs = [
+            x for x in (nfs_result.exports or [])
+            if any(p == root_path or p.startswith(root_path + '/') for p in (x.paths or []))
+        ]
+        for export in matching_nfs:
+            label = f'NFS export  id={export.id}  paths={export.paths}'
+            to_delete[f'nfs_{export.id}'] = label
+            deletion_plan[f'nfs_{export.id}'] = (
+                isilon_conn.protocols_client.delete_nfs_export, export.id
+            )
+    except ApiException as e:
+        logger.warning('Could not list NFS exports: %s', e)
+
+    # Subdirectories and root directory (existence check via namespace)
+    for dir_path, key, label in [
+        (lab_path,      'dir_lab',      f'Directory  {lab_path}'),
+        (everyone_path, 'dir_everyone', f'Directory  {everyone_path}'),
+        (root_path,     'dir_root',     f'Directory  {root_path}'),
+    ]:
+        try:
+            isilon_conn.namespace_client.get_directory_metadata(dir_path)
+            to_delete[key] = label
+            deletion_plan[key] = (isilon_conn.namespace_client.delete_directory, dir_path)
+        except ApiException as e:
+            if e.status == 404:
+                pass  # directory does not exist; skip silently
+            else:
+                logger.warning('Could not check existence of %s: %s', dir_path, e)
+
+    if not to_delete:
+        print(f'Nothing found to delete for lab "{lab_name}" on {resource_url}.')
+        return
+
+    # ------------------------------------------------------------------
+    # Data-present guard: refuse to proceed if Lab or Everyone have data
+    # ------------------------------------------------------------------
+    if quota_obj is not None:
+        physical_bytes = getattr(quota_obj.usage, 'physical', None)
+        if physical_bytes and physical_bytes > 0:
+            raise ValueError(
+                f'Refusing to delete: quota reports {physical_bytes:,} bytes of physical data '
+                f'in {root_path}. Remove the data manually before running this function.'
+            )
+
+    # ------------------------------------------------------------------
+    # Confirmation prompt
+    # ------------------------------------------------------------------
+    print(f'\nThe following items will be PERMANENTLY DELETED from {resource_url}:\n')
+    for label in to_delete.values():
+        print(f'  - {label}')
+    print()
+
+    if not force:
+        answer = input('Type "yes" to confirm deletion, or anything else to abort: ').strip()
+        if answer.lower() != 'yes':
+            print('Aborted. Nothing was deleted.')
+            return
+
+    # ------------------------------------------------------------------
+    # Deletion (snapshot → SMB → NFS → quota → Lab → Everyone → root)
+    # ------------------------------------------------------------------
+    ordered_keys = (
+        ['snapshot', 'smb']
+        + [k for k in deletion_plan if k.startswith('nfs_')]
+        + ['quota', 'dir_lab', 'dir_everyone', 'dir_root']
+    )
+    for key in ordered_keys:
+        if key not in deletion_plan:
+            continue
+        fn, *args = deletion_plan[key]
+        label = to_delete[key]
+        try:
+            fn(*args)
+            print(f'  Deleted: {label}')
+            logger.info('delete_isilon_allocation: deleted %s', label)
+        except ApiException as e:
+            if e.status == 404:
+                print(f'  Skipped (not found): {label}')
+            else:
+                print(f'  ERROR deleting {label}: {e}')
+                logger.error('delete_isilon_allocation: error deleting %s: %s', label, e)
+
+    print(f'\nDeletion complete for lab "{lab_name}" on {resource_url}.')
+
+
 def update_coldfront_quota_and_usage(alloc, usage_attribute_type, value_list):
     usage_attribute, _ = alloc.allocationattribute_set.get_or_create(
         allocation_attribute_type=usage_attribute_type
