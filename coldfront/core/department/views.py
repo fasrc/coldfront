@@ -9,7 +9,6 @@ from django.views.generic import DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django_renderpdf.views import PDFView
 
-from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.views import ColdfrontListView, NoteCreateView, NoteUpdateView
 from coldfront.core.allocation.models import Allocation, AllocationUser, AllocationAttributeType
 from coldfront.core.department.forms import DepartmentSearchForm
@@ -295,42 +294,40 @@ class DepartmentStorageReportView(LoginRequiredMixin, UserPassesTestMixin, PDFVi
         context = super().get_context_data(**kwargs)
 
         department_obj = get_object_or_404(Department, pk=self.kwargs.get('pk'))
-        projects = department_obj.projects.filter(status__name='Active').order_by('title')
+        project_objs = list(department_obj.projects.filter(status__name='Active'))
 
-        department_total = {'allocation_user_count': 0, 'size': 0, 'cost': 0, 'usage': 0}
-        project_reports = []
-        for project_obj in projects:
-            project_users = project_obj.projectuser_set.filter(
-                status__name='Active').order_by('user__username')
-            storage_allocations = project_obj.allocation_set.filter(
-                status__name__in=['Active', 'Paid', 'Ready for Review', 'Payment Requested'],
-                resources__resource_type__name='Storage'
-            ).distinct().prefetch_related('resources').order_by('-pk')
+        storage_pi_dict = {p.pi: [] for p in project_objs}
+        for p in project_objs:
+            p.storage_allocs = p.allocation_set.filter(
+                resources__resource_type__name='Storage',
+                allocationattribute__allocation_attribute_type__name='RequiresPayment',
+                allocationattribute__value='True',
+                status__name='Active',
+            )
+            storage_pi_dict[p.pi].extend(list(p.storage_allocs))
+        storage_pi_dict = {pi: allocs for pi, allocs in storage_pi_dict.items() if allocs}
+        for pi, allocs in storage_pi_dict.items():
+            pi.storage_total_price = sum(float(a.cost) for a in allocs if a.cost)
 
-            allocation_total = {'allocation_user_count': 0, 'size': 0, 'cost': 0, 'usage': 0}
-            for allocation in storage_allocations:
-                if allocation.cost and allocation.requires_payment:
-                    allocation_total['cost'] += allocation.cost
-                if allocation.size:
-                    allocation_total['size'] += allocation.size
-                if allocation.usage:
-                    allocation_total['usage'] += allocation.usage
-                allocation_total['allocation_user_count'] += int(
-                    allocation.allocationuser_set.count()
-                )
+        storage_alloc_ids = [a.id for allocs in storage_pi_dict.values() for a in allocs]
+        storage_project_ids = {a.project_id for allocs in storage_pi_dict.values() for a in allocs}
 
-            for key in department_total:
-                department_total[key] += allocation_total[key]
+        allocationuser_filter = Q(status__name='Active') & ~Q(usage_bytes__isnull=True)
+        allocation_users = AllocationUser.objects.filter(
+            Q(allocation_id__in=storage_alloc_ids) & allocationuser_filter
+        )
 
-            project_reports.append({
-                'project': project_obj,
-                'storage_allocations': storage_allocations,
-                'allocation_total': allocation_total,
-                'project_users': project_users,
-            })
+        storage_full_price = sum(pi.storage_total_price for pi in storage_pi_dict)
+        detail_table = [
+            ('Department', department_obj.name),
+            ('Total Labs in Bill', len(storage_project_ids)),
+            ('Total Allocations in Bill', len(storage_alloc_ids)),
+            ('Total Users in Bill', allocation_users.count()),
+            ('Service Period', '1 Month'),
+            ('Total Amount Due, Monthly Storage', f'${round(storage_full_price, 2)}'),
+        ]
 
         context['department'] = department_obj
-        context['project_reports'] = project_reports
-        context['department_total'] = department_total
-        context['CENTER_BASE_URL'] = import_from_settings('CENTER_BASE_URL', '')
+        context['storage_pi_dict'] = storage_pi_dict
+        context['detail_table'] = detail_table
         return context

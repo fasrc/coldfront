@@ -1,179 +1,105 @@
 {% extends "common/base.html" %}
-{% load crispy_forms_tags %}
-{% load humanize %}
 {% load static %}
 {% load common_tags %}
 
 {% block ifx_head %}
-
 <style type="text/css">
-  /* 1) Force all Bootstrap flex or overflow containers to behave:
-     remove flex so children CAN break across pages, kill overflow-x  */
   .table-responsive,
   .card-body,
   .card {
     display: block !important;
     overflow: visible !important;
   }
-
-  /* 2) Tell WeasyPrint that tables may break inside, and rows should not split in half */
   table {
     page-break-inside: auto;
     break-inside: auto;
   }
   thead {
-    /* repeat on every page */
     display: table-header-group;
   }
-  tfoot {
-    /* repeat on every page if you need footers */
-    display: table-footer-group;
-  }
   tr {
-    /* don’t slice a row in half */
     page-break-inside: avoid;
     break-inside: avoid;
   }
   tbody {
-    /* allow breaking between rows */
     display: table-row-group;
   }
 </style>
 {% endblock %}
 
-
-{% block title %}
-Department Storage Report
-{% endblock %}
-
+{% block title %}Department Storage Report{% endblock %}
 
 {% block content %}
 
-<div id="alert_div">
-</div>
-
 <div class="mb-3">
-  <h2 class="text-justify">{{ department.name }}</h2>
+  <h2>FAS Research Computing Usage Report</h2>
   <hr>
 </div>
 
-<!-- Start Department Summary -->
-<div class="card mb-3">
-  <div class="card-body">
-    <h3 class="card-title">Department Storage Summary</h3>
-    <p class="card-text text-justify"><strong>Labs in Report: </strong>{{ project_reports|length }}</p>
-    <p class="card-text text-justify"><strong>Total Storage Quota: </strong>{{ department_total.size|floatformat:1 }}</p>
-    <p class="card-text text-justify"><strong>Total Storage Used: </strong>{{ department_total.usage|floatformat:1 }}</p>
-    <p class="card-text text-justify"><strong>Total Monthly Cost: </strong>${{ department_total.cost|floatformat:2 }}</p>
-  </div>
-</div>
-<!-- End Department Summary -->
-
-{% for report in project_reports %}
-<div class="html2pdf__page-break"></div>
-
-<!-- Start Project Heading -->
-<div class="card mb-3">
-  <div class="card-body">
-    <h3 class="card-title">{{ report.project.title }}</h3>
-    <h4 class="card-title">
-      Principal Investigator:
-      {{ report.project.pi.first_name }}
-      {{ report.project.pi.last_name }}
-      ({{ report.project.pi.username }})
-    </h4>
-    <p class="card-text text-justify"><strong>Description: </strong>{{ report.project.description }}</p>
-    <p class="card-text text-justify"><strong>Field of Science: </strong>{{ report.project.field_of_science }}</p>
-    <p class="card-text text-justify"><strong>Project Status: </strong>{{ report.project.status }}</p>
-    <p class="card-text text-justify"><strong>Created: </strong>{{ report.project.created|date:"M. d, Y" }}</p>
-  </div>
-</div>
-<!-- End Project Heading -->
-
-<!-- Start Project Invoice/Allocations -->
+<!-- Usage Summary -->
 <div class="card mb-3">
   <div class="card-header">
-    <h4 class="d-inline"><i class="fas fa-list" aria-hidden="true"></i> Storage Allocations</h4>
-    <span class="badge badge-secondary">{{ report.storage_allocations.count }}</span>
+    <h3><i class="fas fa-list" aria-hidden="true"></i> Usage Summary For: {{ department.name }}</h3>
   </div>
   <div class="card-body">
-    <table class="table table-hover">
+    <table class="table table-bordered table-sm">
+      {% for row in detail_table %}
+        <tr>
+          <th scope="row" class="text-nowrap">{{ row.0 }}:</th>
+          <td>{{ row.1 }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<!-- Monthly Storage Invoice Details -->
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="d-inline"><i class="fas fa-users" aria-hidden="true"></i> Monthly Storage Invoice Details</h3>
+    <span class="badge badge-secondary">{{ storage_pi_dict.keys|length }}</span>
+  </div>
+  <div class="card-body">
+    <table class="table table-striped table-bordered">
       <thead>
         <tr>
-          <th scope="col">Resource Name</th>
-          <th scope="col">Location</th>
+          <th scope="col">PI</th>
+          <th scope="col">Project</th>
+          <th scope="col">Allocation</th>
           <th scope="col">Users</th>
           <th scope="col">Quota</th>
-          <th scope="col">Used</th>
           <th scope="col">Monthly Cost</th>
         </tr>
       </thead>
       <tbody>
-        {% for allocation in report.storage_allocations %}
-          {% if allocation.status.name == 'Active' %}
-            <tr style="background-color:#FFFFFF">
-              <td>{{ allocation.get_parent_resource.name }}</td>
-              <td>{{ allocation.path }}</td>
-              <td>{{ allocation.allocationuser_set.count }}</td>
-              <td>{{ allocation.size|floatformat:1 }} {{ allocation.get_parent_resource.quantity_label }}</td>
-              <td>{{ allocation.usage|floatformat:1 }}</td>
-              <td>
-                {% if allocation.requires_payment %}
-                  ${{ allocation.cost|floatformat:2}}
-                {% endif %}
-              </td>
-            </tr>
-          {% endif %}
-        {% endfor %}
-      </tbody>
-      {% if report.storage_allocations|length > 1 %}
-        <tfoot>
-          <tr style="background-color:#C2C2C2;font-weight:bold">
-              <td>Total Storage</td>
-              <td></td>
-              <td>{{ report.allocation_total.allocation_user_count }}</td>
-              <td>{{ report.allocation_total.size|floatformat:1}}</td>
-              <td>{{ report.allocation_total.usage|floatformat:1}}</td>
-              <td>${{ report.allocation_total.cost|floatformat:2 }}</td>
+        {% for pi, allocs in storage_pi_dict.items %}
+          <tr style="background-color:#C2C2C2">
+            <td>{{ pi.full_name }}</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td>${{ pi.storage_total_price|floatformat:2 }}</td>
           </tr>
-        </tfoot>
-      {% endif %}
-    </table>
-  </div>
-</div>
-<!-- End Project Invoice/Allocations -->
-
-<!-- Start Project Users -->
-<div class="card mb-3">
-  <div class="card-header">
-    <h4 class="d-inline"><i class="fas fa-users" aria-hidden="true"></i> Users</h4>
-    <span class="badge badge-secondary">{{ report.project_users.count }}</span>
-  </div>
-  <div class="card-body">
-    <table class="table table-hover">
-      <thead>
-        <tr>
-          <th scope="col">Username</th>
-          <th scope="col">Name</th>
-          <th scope="col">Email</th>
-          <th scope="col" class="text-nowrap">Role</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in report.project_users %}
-          <tr>
-            <td>{{ user.user.username }}</td>
-            <td>{{ user.user.first_name }} {{ user.user.last_name }}</td>
-            <td>{{ user.user.email }}</td>
-            <td>{{ user.role.name }}</td>
-          </tr>
+          {% for allocation in allocs %}
+            {% if allocation.resources.first.resource_type.name == "Storage" %}
+              <tr style="background-color:#FFFFFF">
+                <td></td>
+                <td>{{ allocation.project.title }}</td>
+                <td>
+                  {{ allocation.resources.first.name }}
+                  {% if allocation.path %}({{ allocation.path }}){% endif %}
+                </td>
+                <td>{{ allocation.allocationuser_set.count }}</td>
+                <td>{{ allocation.size|floatformat:1 }} {{ allocation.unit_label }}</td>
+                <td>${{ allocation.cost|floatformat:2 }}</td>
+              </tr>
+            {% endif %}
+          {% endfor %}
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
-<!-- End Project Users -->
-
-{% endfor %}
 
 {% endblock %}
