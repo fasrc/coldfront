@@ -7,6 +7,9 @@ urlpatterns = [
     path(
         '<int:pk>/', dept_views.DepartmentDetailView.as_view(), name='department-detail'
     ),
+    path(
+        '<int:pk>/report', dept_views.DepartmentStorageReportView.as_view(), name='department-report'
+    ),
     path('<int:pk>/departmentnote/add', dept_views.DepartmentNoteCreateView.as_view(), name='department-note-add'),
     path(
         'department-note/<int:pk>/update',

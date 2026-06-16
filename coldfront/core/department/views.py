@@ -7,7 +7,9 @@ from django.urls import reverse, reverse_lazy
 from django.shortcuts import get_object_or_404
 from django.views.generic import DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django_renderpdf.views import PDFView
 
+from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.views import ColdfrontListView, NoteCreateView, NoteUpdateView
 from coldfront.core.allocation.models import Allocation, AllocationUser, AllocationAttributeType
 from coldfront.core.department.forms import DepartmentSearchForm
@@ -265,4 +267,70 @@ class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
             context['ondemand_url'] = settings.ONDEMAND_URL
         except AttributeError:
             pass
+        return context
+
+
+class DepartmentStorageReportView(LoginRequiredMixin, UserPassesTestMixin, PDFView):
+    """Render a department-wide PDF storage report covering every active
+    project (lab) in the department, with full allocation detail per project.
+    """
+
+    template_name = 'department/department_storagereport.html'
+
+    def test_func(self):
+        """UserPassesTestMixin Tests"""
+        if self.request.user.is_superuser:
+            return True
+
+        department_obj = get_object_or_404(Department, pk=self.kwargs.get('pk'))
+        member_permissions = return_department_roles(self.request.user, department_obj)
+        if 'approver' in member_permissions:
+            return True
+
+        err = 'You do not have permission to view the previous page.'
+        messages.error(self.request, err)
+        return False
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        department_obj = get_object_or_404(Department, pk=self.kwargs.get('pk'))
+        projects = department_obj.projects.filter(status__name='Active').order_by('title')
+
+        department_total = {'allocation_user_count': 0, 'size': 0, 'cost': 0, 'usage': 0}
+        project_reports = []
+        for project_obj in projects:
+            project_users = project_obj.projectuser_set.filter(
+                status__name='Active').order_by('user__username')
+            storage_allocations = project_obj.allocation_set.filter(
+                status__name__in=['Active', 'Paid', 'Ready for Review', 'Payment Requested'],
+                resources__resource_type__name='Storage'
+            ).distinct().prefetch_related('resources').order_by('-pk')
+
+            allocation_total = {'allocation_user_count': 0, 'size': 0, 'cost': 0, 'usage': 0}
+            for allocation in storage_allocations:
+                if allocation.cost and allocation.requires_payment:
+                    allocation_total['cost'] += allocation.cost
+                if allocation.size:
+                    allocation_total['size'] += allocation.size
+                if allocation.usage:
+                    allocation_total['usage'] += allocation.usage
+                allocation_total['allocation_user_count'] += int(
+                    allocation.allocationuser_set.count()
+                )
+
+            for key in department_total:
+                department_total[key] += allocation_total[key]
+
+            project_reports.append({
+                'project': project_obj,
+                'storage_allocations': storage_allocations,
+                'allocation_total': allocation_total,
+                'project_users': project_users,
+            })
+
+        context['department'] = department_obj
+        context['project_reports'] = project_reports
+        context['department_total'] = department_total
+        context['CENTER_BASE_URL'] = import_from_settings('CENTER_BASE_URL', '')
         return context
