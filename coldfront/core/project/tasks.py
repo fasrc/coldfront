@@ -14,7 +14,7 @@ from coldfront.core.utils.mail import send_email_template, email_template_contex
 TESTUSER = import_from_settings('TESTUSER')
 EMAIL_TICKET_SYSTEM_ADDRESS = import_from_settings('EMAIL_TICKET_SYSTEM_ADDRESS')
 
-DEPARTMENT_REPORT_PROJECT_THRESHOLD = 10
+DEPARTMENT_REPORT_RANKS = ('school', 'institution')
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +78,10 @@ def send_storagereport_pdf(project, context=None):
 
 def send_dept_storage_report_emails():
     """Send monthly email with department storage reports to departments
-    with more than DEPARTMENT_REPORT_PROJECT_THRESHOLD active projects.
+    with rank of 'school' or 'institution'.
     """
-    for department in Department.objects.all():
-        active_project_count = department.get_projects().filter(status__name='Active').count()
-        if active_project_count > DEPARTMENT_REPORT_PROJECT_THRESHOLD:
-            send_dept_storagereport_pdf(department)
+    for department in Department.objects.filter(rank__in=DEPARTMENT_REPORT_RANKS):
+        send_dept_storagereport_pdf(department)
 
 def send_dept_storagereport_pdf(department, context=None):
     """
