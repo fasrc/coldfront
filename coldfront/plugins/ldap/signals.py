@@ -55,8 +55,10 @@ def identify_ad_group(sender, **kwargs):
 def reactivate_user(sender, **kwargs):
     """Reactivate a user in LDAP"""
     user = kwargs['user']
+    actor_username = kwargs.get('actor_username')
+    actor_role = kwargs.get('actor_role')
     ldap_conn = LDAPConn()
-    ldap_conn.reactivate_user(user.username)
+    ldap_conn.reactivate_user(user.username, actor_username=actor_username, actor_role=actor_role)
     ldap_user = ldap_conn.return_user_by_name(user.username)
     user_group_names = [group.split(',')[0].replace('CN=', '') for group in ldap_user['memberOf']]
     projectuser_entries = ProjectUser.objects.filter(
@@ -141,7 +143,12 @@ def add_user_to_group(sender, **kwargs):
 @receiver(project_preremove_projectuser)
 def remove_member_from_group(sender, **kwargs):
     ldap_conn = LDAPConn()
-    ldap_conn.remove_member_from_group(kwargs['user_name'], kwargs['group_name'])
+    ldap_conn.remove_member_from_group(
+        kwargs['user_name'],
+        kwargs['group_name'],
+        actor_username=kwargs.get('actor_username'),
+        actor_role=kwargs.get('actor_role'),
+    )
 
 
 def _fsadm_group_name(project_title):
