@@ -92,6 +92,7 @@ def send_dept_storagereport_pdf(department, context=None):
     month = datetime.now().strftime("%B")
     year = datetime.now().year
     name = department.name
+    code = department.code
     subject = f'Monthly ColdFront Department Storage Report for {name} [{month} {year}]'
     context = email_template_context(extra_context={
         'EMAIL_TICKET_SYSTEM_ADDRESS': EMAIL_TICKET_SYSTEM_ADDRESS,
@@ -114,7 +115,7 @@ def send_dept_storagereport_pdf(department, context=None):
 
     approvers = department.members.filter(role="Approver")
     receiver_list = [approver.user.email for approver in approvers]
-    attachment = (f'{name}_{month}_{year}_dept_storagereport.pdf', pdf_bytes, 'application/pdf')
+    attachment = (f'{code}_{month}_{year}_dept_storagereport.pdf', pdf_bytes, 'application/pdf')
     try:
         send_email_template(
             subject,
