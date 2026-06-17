@@ -1,0 +1,11 @@
+Please review the latest monthly report for {{department_name}}. Included in this report is a list of the labs under your department and the latest usage and limits for each lab's storage allocations.
+
+This is NOT A BILL. This is an informative report generated monthly to ensure the list of users and storage allocations are up to date.
+
+You can login to the Coldfront dashboard for further details using your FASRC account name and password. Please visit the FASRC website if you require a new password or a password reset. We recommend accessing the Coldfront dashboard using the FASRC VPN.
+
+Further questions or concerns should be directed to {{ EMAIL_TICKET_SYSTEM_ADDRESS }}.
+
+Thank you,
+
+{{ signature }}

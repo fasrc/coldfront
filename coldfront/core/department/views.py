@@ -7,6 +7,7 @@ from django.urls import reverse, reverse_lazy
 from django.shortcuts import get_object_or_404
 from django.views.generic import DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django_renderpdf.views import PDFView
 
 from coldfront.core.utils.views import ColdfrontListView, NoteCreateView, NoteUpdateView
 from coldfront.core.allocation.models import Allocation, AllocationUser, AllocationAttributeType
@@ -265,4 +266,68 @@ class DepartmentDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
             context['ondemand_url'] = settings.ONDEMAND_URL
         except AttributeError:
             pass
+        return context
+
+
+class DepartmentStorageReportView(LoginRequiredMixin, UserPassesTestMixin, PDFView):
+    """Render a department-wide PDF storage report covering every active
+    project (lab) in the department, with full allocation detail per project.
+    """
+
+    template_name = 'department/department_storagereport.html'
+
+    def test_func(self):
+        """UserPassesTestMixin Tests"""
+        if self.request.user.is_superuser:
+            return True
+
+        department_obj = get_object_or_404(Department, pk=self.kwargs.get('pk'))
+        member_permissions = return_department_roles(self.request.user, department_obj)
+        if 'approver' in member_permissions:
+            return True
+
+        err = 'You do not have permission to view the previous page.'
+        messages.error(self.request, err)
+        return False
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        department_obj = get_object_or_404(Department, pk=self.kwargs.get('pk'))
+        project_objs = list(department_obj.projects.filter(status__name='Active'))
+
+        storage_pi_dict = {p.pi: [] for p in project_objs}
+        for p in project_objs:
+            p.storage_allocs = p.allocation_set.filter(
+                resources__resource_type__name='Storage',
+                allocationattribute__allocation_attribute_type__name='RequiresPayment',
+                allocationattribute__value='True',
+                status__name='Active',
+            )
+            storage_pi_dict[p.pi].extend(list(p.storage_allocs))
+        storage_pi_dict = {pi: allocs for pi, allocs in storage_pi_dict.items() if allocs}
+        for pi, allocs in storage_pi_dict.items():
+            pi.storage_total_price = sum(float(a.cost) for a in allocs if a.cost)
+
+        storage_alloc_ids = [a.id for allocs in storage_pi_dict.values() for a in allocs]
+        storage_project_ids = {a.project_id for allocs in storage_pi_dict.values() for a in allocs}
+
+        allocationuser_filter = Q(status__name='Active') & ~Q(usage_bytes__isnull=True)
+        allocation_users = AllocationUser.objects.filter(
+            Q(allocation_id__in=storage_alloc_ids) & allocationuser_filter
+        )
+
+        storage_full_price = sum(pi.storage_total_price for pi in storage_pi_dict)
+        detail_table = [
+            ('Department', department_obj.name),
+            ('Total Labs in Bill', len(storage_project_ids)),
+            ('Total Allocations in Bill', len(storage_alloc_ids)),
+            ('Total Users in Bill', allocation_users.count()),
+            ('Service Period', '1 Month'),
+            ('Total Amount Due, Monthly Storage', f'${round(storage_full_price, 2)}'),
+        ]
+
+        context['department'] = department_obj
+        context['storage_pi_dict'] = storage_pi_dict
+        context['detail_table'] = detail_table
         return context
