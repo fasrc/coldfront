@@ -12,6 +12,7 @@ from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.mail import send_email_template, email_template_context, build_link
 
 TESTUSER = import_from_settings('TESTUSER')
+EMAIL_ADMIN_LIST = import_from_settings('EMAIL_ADMIN_LIST')
 EMAIL_TICKET_SYSTEM_ADDRESS = import_from_settings('EMAIL_TICKET_SYSTEM_ADDRESS')
 
 DEPARTMENT_REPORT_RANKS = ('school', 'institution')
@@ -123,6 +124,7 @@ def send_dept_storagereport_pdf(department, context=None):
             context,
             EMAIL_TICKET_SYSTEM_ADDRESS,
             receiver_list,
+            cc=EMAIL_ADMIN_LIST,
             attachments=(attachment,)
         )
     except Exception as e:
