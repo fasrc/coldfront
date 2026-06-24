@@ -246,7 +246,7 @@ class LDAPConn:
         )
         return result
 
-    def remove_member_from_group(self, user_name, group_name):
+    def remove_member_from_group(self, user_name, group_name, actor_username=None, actor_role=None):
         # get group
         group = self.return_group_by_name(group_name)
         # get user
@@ -268,7 +268,7 @@ class LDAPConn:
                     'primary_group_sid': group_sid,
                 }
             )
-            result = self.deactivate_user(member_name)
+            result = self.deactivate_user(member_name, actor_username=actor_username, actor_role=actor_role)
             return result
         try:
             result = ad_remove_members_from_groups(
@@ -291,7 +291,31 @@ class LDAPConn:
         )
         return result
 
-    def deactivate_user(self, username):
+    AD_INFO_MAX_LENGTH = 1024
+
+    def _append_info_note(self, user_dn, current_info, actor_username, actor_role, action):
+        """Append a timestamped note to the AD user's info field.
+
+        Skips the write and logs a warning if the result would exceed AD_INFO_MAX_LENGTH.
+        """
+        date_str = datetime.now().strftime('%Y%m%d')
+        note = f'\n{date_str} {actor_username}{actor_role} {action} via CF'
+        existing = (current_info[0] if current_info else '') or ''
+        new_info = existing + note
+        if len(new_info) > self.AD_INFO_MAX_LENGTH:
+            logger.warning(
+                'AD info field would exceed %d chars after appending CF note; skipping write.',
+                self.AD_INFO_MAX_LENGTH,
+                extra={
+                    'category': 'integration:AD',
+                    'actor': actor_username,
+                    'user_dn': user_dn,
+                }
+            )
+            return
+        self.conn.modify(user_dn, {'info': [(MODIFY_REPLACE, [new_info])]})
+
+    def deactivate_user(self, username, actor_username=None, actor_role=None):
         user = self.return_user_by_name(username)
         user_dn = user['distinguishedName']
         filetime_now = now_filetime()
@@ -321,12 +345,14 @@ class LDAPConn:
                 'status': 'success',
                 'username': username,
                 'user_dn': user_dn,
+                'actor': actor_username,
             }
         )
-
+        if actor_username:
+            self._append_info_note(user_dn, user.get('info'), actor_username, actor_role or 'CF', 'disabled')
         return result
 
-    def reactivate_user(self, username):
+    def reactivate_user(self, username, actor_username=None, actor_role=None):
         user = self.return_user_by_name(username)
         user_dn = user['distinguishedName']
         result = self.conn.modify(
@@ -340,6 +366,18 @@ class LDAPConn:
             reason = self.conn.last_error
             logger.error('Failed to reactivate user. username=%s error=%s', username, reason)
             raise LDAPException(f'Failed to reactivate user {username}: {reason}')
+        logger.info(
+            'Reactivated user.',
+            extra={
+                'category': 'integration:AD',
+                'status': 'success',
+                'username': username,
+                'user_dn': user_dn,
+                'actor': actor_username,
+            }
+        )
+        if actor_username:
+            self._append_info_note(user_dn, user.get('info'), actor_username, actor_role or 'CF', 'enabled')
         return result
 
     def users_in_primary_group(self, usernames, groupname):
