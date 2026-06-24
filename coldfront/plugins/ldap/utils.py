@@ -298,8 +298,8 @@ class LDAPConn:
 
         Skips the write and logs a warning if the result would exceed AD_INFO_MAX_LENGTH.
         """
-        date_str = datetime.now().strftime('%Y-%m-%d')
-        note = f'\n{date_str} {actor_role} {actor_username} {action} via CF'
+        date_str = datetime.now().strftime('%Y%m%d')
+        note = f'\n{date_str} {actor_username}{actor_role} {action} via CF'
         existing = (current_info[0] if current_info else '') or ''
         new_info = existing + note
         if len(new_info) > self.AD_INFO_MAX_LENGTH:
