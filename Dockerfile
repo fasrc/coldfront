@@ -35,8 +35,6 @@ RUN pip install --upgrade pip && \
         pip install -r requirements.txt; \
     fi
 
-RUN pip install django-prometheus gunicorn
-
 COPY . .
 
 ENV PYTHONPATH /usr/src/app:/usr/src/app/ifxreport:/usr/src/app/ifxbilling:/usr/src/app/fiine.client:/usr/src/app/ifxurls:/usr/src/app/nanites.client:/usr/src/app/ifxuser:/usr/src/app/ifxmail.client:/usr/src/app/ifxec
