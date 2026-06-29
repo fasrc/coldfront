@@ -313,7 +313,29 @@ class LDAPConn:
                 }
             )
             return
-        self.conn.modify(user_dn, {'info': [(MODIFY_REPLACE, [new_info])]})
+        result = self.conn.modify(user_dn, {'info': [(MODIFY_REPLACE, [new_info])]})
+        if result is False:
+            reason = self.conn.last_error
+            logger.error(
+                'Failed to append info note to user.',
+                extra={
+                    'category': 'integration:AD',
+                    'status': 'failure',
+                    'user_dn': user_dn,
+                    'error': reason,
+                }
+            )
+        else:
+            logger.info(
+                'Appended info note to user.',
+                extra={
+                    'category': 'integration:AD',
+                    'status': 'success',
+                    'user_dn': user_dn,
+                    'actor': actor_username,
+                }
+            )
+
 
     def deactivate_user(self, username, actor_username=None, actor_role=None):
         user = self.return_user_by_name(username)
