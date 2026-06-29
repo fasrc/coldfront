@@ -32,7 +32,7 @@ python-dateutil==2.9.0.post0
 python-memcached==1.62
 pytz==2024.1
 redis==5.0.0
-requests==2.32.0
+requests==2.33.0
 six==1.16.0
 sqlparse==0.5.0
 text-unidecode==1.3
