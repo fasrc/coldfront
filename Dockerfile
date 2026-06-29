@@ -29,11 +29,11 @@ COPY etc/ipython_init.py ${IPYTHON_STARTUP}
 
 
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
-
-RUN pip install django-prometheus gunicorn
-
-RUN if [ "${BUILD_ENV}" = "dev" ]; then pip install django-redis django-debug-toolbar; fi
+    if [ "${BUILD_ENV}" = "dev" ]; then \
+        pip install -r requirements.txt django-redis==5.3.0 django-debug-toolbar==6.3.0; \
+    else \
+        pip install -r requirements.txt; \
+    fi
 
 COPY . .
 

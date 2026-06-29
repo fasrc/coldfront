@@ -32,7 +32,7 @@ python-dateutil==2.9.0.post0
 python-memcached==1.62
 pytz==2024.1
 redis==5.0.0
-requests==2.32.0
+requests==2.33.0
 six==1.16.0
 sqlparse==0.5.0
 text-unidecode==1.3
@@ -70,3 +70,9 @@ XlsxWriter
 git+https://github.com/fasrc/slurmrest_python_sdk.git
 git+https://github.com/fasrc/sftocf.git
 vastpy
+django-prometheus
+gunicorn
+# the following packages are dependencies. Versions are listed to cut down on build time and may be updated as needed
+cryptography==45.0.7
+pydantic==2.9.2
+svglib==1.5.1
