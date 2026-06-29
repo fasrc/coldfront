@@ -70,3 +70,7 @@ XlsxWriter
 git+https://github.com/fasrc/slurmrest_python_sdk.git
 git+https://github.com/fasrc/sftocf.git
 vastpy
+# the following packages are dependencies. Versions are listed to cut down on build time and may be updated as needed
+cryptography==45.0.7
+pydantic==2.9.2
+svglib==1.5.1
