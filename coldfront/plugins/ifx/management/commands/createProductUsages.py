@@ -56,6 +56,11 @@ class Command(BaseCommand):
             dest='productstr',
             help='Create for specified products (comma separated list)'
         )
+        parser.add_argument(
+            '--project-ids',
+            dest='project_ids',
+            help='Create for specified projects (comma separated list of project IDs)'
+        )
 
     def handle(self, *args, **kwargs):
         month = select_month = int(kwargs['month'])
@@ -70,6 +75,11 @@ class Command(BaseCommand):
             products = Product.objects.filter(product_name__in=product_names)
             print(f'Only processing {product_names}')
 
+        project_ids = []
+        if 'project_ids' in kwargs and kwargs['project_ids']:
+            project_ids = [int(pid) for pid in kwargs['project_ids'].split(',')]
+            print(f'Only processing projects with IDs {project_ids}')
+
         overwrite = kwargs['overwrite']
         successes = 0
         errors = []
@@ -82,6 +92,8 @@ class Command(BaseCommand):
                 if not products or product in products:
                     # Get the AllocationUser records
                     allocations = Allocation.objects.filter(resources__in=[resource], status__name='Active')
+                    if project_ids:
+                        allocations = allocations.filter(project__id__in=project_ids)
                     print(f'Processing {len(allocations)} allocations for {resource}')
                     for allocation in allocations:
                         requires_payment = allocation.get_attribute('RequiresPayment')
@@ -113,7 +125,7 @@ class Command(BaseCommand):
                         else:
                             print(f'Allocation {allocation} does not require payment')
             else:
-                errors.append(f'Unable to fine a Product for resource {resource}')
+                errors.append(f'Unable to find a Product for resource {resource}')
         print(f'{successes} records successfully created.')
         if errors:
             print('Errors: %s' % "\n".join(errors))
