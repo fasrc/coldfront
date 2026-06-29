@@ -92,6 +92,27 @@ EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings('EMAIL_DIRECTOR_EMAIL_ADDRES
 EMAIL_SENDER = import_from_settings('EMAIL_SENDER')
 EMAIL_TICKET_SYSTEM_ADDRESS = import_from_settings('EMAIL_TICKET_SYSTEM_ADDRESS')
 
+_ROLE_ABBREVIATIONS = {
+    'Principal Investigator': 'PI',
+    'General Manager': 'GM',
+    'Access Manager': 'AM',
+    'Storage Manager': 'SM',
+}
+
+
+def _actor_role_label(actor, project_obj):
+    """Return a short role label for actor on project_obj, for use in AD info notes."""
+    if actor.is_superuser:
+        pu = project_obj.projectuser_set.filter(user=actor).first()
+        if pu:
+            return _ROLE_ABBREVIATIONS.get(pu.role.name, pu.role.name)
+        return 'admin'
+    pu = project_obj.projectuser_set.filter(user=actor).first()
+    if pu:
+        return _ROLE_ABBREVIATIONS.get(pu.role.name, pu.role.name)
+    return 'CF'
+
+
 def produce_filter_parameter(key, value):
     if isinstance(value, list):
         return ''.join([f'{key}={ele}&' for ele in value])
@@ -673,7 +694,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
         return super().dispatch(request, *args, **kwargs)
 
-    def reactivate_user(self, project_obj, user_form_data):
+    def reactivate_user(self, project_obj, user_form_data, actor=None):
         """Full organizational logic for user reactivation
         - reactivate projectuser entry
         x reactivate any other projectusers in active projects that still have this user in AD
@@ -686,7 +707,14 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             user=user_obj,
             status__name='Deactivated'
         ).update(status=ProjectUserStatusChoice.objects.get(name='Active'))
-        project_reactivate_projectuser.send(sender=self.__class__, user=user_obj)
+        actor_username = actor.username if actor else None
+        actor_role = _actor_role_label(actor, project_obj) if actor else None
+        project_reactivate_projectuser.send(
+            sender=self.__class__,
+            user=user_obj,
+            actor_username=actor_username,
+            actor_role=actor_role,
+        )
         AllocationUser.objects.filter(
             user=user_obj,
             allocation__project__status__name__in=['Active', 'Renewal Requested'],
@@ -724,7 +752,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                 for form in deactivated_formset:
                     user_form_data = form.cleaned_data
                     if user_form_data['selected']:
-                        self.reactivate_user(project_obj, user_form_data)
+                        self.reactivate_user(project_obj, user_form_data, actor=request.user)
                         messages.success(
                             request, f'Reactivated {user_form_data["username"]}.'
                         )
@@ -1039,7 +1067,10 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 try:
                     project_preremove_projectuser.send(
                         sender=self.__class__,
-                        user_name=user_obj.username, group_name=project_obj.title
+                        user_name=user_obj.username,
+                        group_name=project_obj.title,
+                        actor_username=request.user.username,
+                        actor_role=_actor_role_label(request.user, project_obj),
                     )
                     logger.info(
                         'AD group member removed or deactivated.',
@@ -1049,6 +1080,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                             'member': user_obj.username,
                             'group': project_obj.title,
                             'primary_group': user_form_data['primary_group'],
+                            'actor': request.user.username,
                         }
                     )
                 except Exception as e:
