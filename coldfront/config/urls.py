@@ -54,3 +54,8 @@ if 'coldfront.plugins.fasrc_monitoring' in settings.INSTALLED_APPS:
 
 if 'django_prometheus' in settings.INSTALLED_APPS:
     urlpatterns.append(path('', include('django_prometheus.urls')))
+
+if 'coldfront_notifications' in settings.INSTALLED_APPS:
+    urlpatterns.append(
+        path("notifications/", include(("coldfront_notifications.urls", "notifications")))
+    )

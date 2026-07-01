@@ -27,10 +27,11 @@ plugin_configs = {
     'PLUGIN_AUTH_LDAP': 'plugins/ldap.py',
     'PLUGIN_LDAP_USER_SEARCH': 'plugins/ldap_user_search.py',
     'PLUGIN_API': 'plugins/api.py',
-    'PLUGIN_LDAP': 'plugins/ldap_fasrc.py',
     'PLUGIN_FASRC': 'plugins/fasrc.py',
     'PLUGIN_FASRC_MONITORING': 'plugins/fasrc_monitoring.py',
+    'PLUGIN_LDAP': 'plugins/ldap_fasrc.py',
     'PLUGIN_ISILON': 'plugins/isilon.py',
+    'PLUGIN_NOTIFICATIONS': 'plugins/notifications.py',
     'PLUGIN_VAST': 'plugins/vast.py',
     'PLUGIN_SLURMREST': 'plugins/slurmrest.py',
 }
