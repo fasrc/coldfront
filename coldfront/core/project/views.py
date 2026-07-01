@@ -472,7 +472,7 @@ class ProjectCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
     def form_valid(self, form):
         project_obj = form.save(commit=False)
         try:
-            project_create.send(
+            ad_pi = project_create.send(
                 sender=self.__class__, project_title=project_obj.title,
             )
         except Exception as exception:
@@ -480,7 +480,7 @@ class ProjectCreateView(LoginRequiredMixin, UserPassesTestMixin, CreateView):
             messages.error(self.request, str(exception))
             return HttpResponseRedirect(reverse('project-create'))
         form.instance.status = ProjectStatusChoice.objects.get(name='New')
-        form.instance.pi = self.request.user
+        form.instance.pi = ad_pi[0][1]
         try:
             project_obj.save()
         except Exception as exception:
@@ -1046,7 +1046,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         extra={
                             'category': 'integration:AD',
                             'status': 'success',
-                            'member': user_obj.username,
+                            'username': user_obj.username,
                             'group': project_obj.title,
                             'primary_group': user_form_data['primary_group'],
                         }
