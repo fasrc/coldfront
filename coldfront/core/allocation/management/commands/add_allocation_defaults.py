@@ -37,7 +37,7 @@ class Command(BaseCommand):
             choice_obj.description = description
             choice_obj.save()
 
-        for choice in ('Pending', 'Approved', 'Denied',):
+        for choice in ('Pending', 'Approved', 'Denied', 'Cancelled',):
             AllocationChangeStatusChoice.objects.get_or_create(name=choice)
 
         for choice in ('Active', 'Error', 'Removed', ):

@@ -486,6 +486,25 @@ class AllocationChangeNoteForm(forms.Form):
             help_text='Leave any feedback about the allocation change request.')
 
 
+class AllocationChangePIUpdateForm(forms.Form):
+    """Form for PIs/managers to update the requested new value of an attribute change."""
+    change_pk = forms.IntegerField(required=True, disabled=True)
+    name = forms.CharField(max_length=150, required=False, disabled=True)
+    new_value = forms.CharField(max_length=150, required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['change_pk'].widget = forms.HiddenInput()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('new_value') != '':
+            from coldfront.core.allocation.models import AllocationAttributeChangeRequest
+            attr_change = AllocationAttributeChangeRequest.objects.get(pk=cleaned_data.get('change_pk'))
+            attr_change.allocation_attribute.value = cleaned_data.get('new_value')
+            attr_change.allocation_attribute.clean()
+
+
 ALLOCATION_AUTOUPDATE_OPTIONS = [
     ('1', 'I have already modified the allocation.'),
     ('2', 'I would like to use the automated allocation modification process. If any issues arise in the course of the modification process, I understand I may need to modify the allocation manually instead.'),

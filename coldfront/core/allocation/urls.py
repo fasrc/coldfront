@@ -10,6 +10,8 @@ urlpatterns = [
          name='allocation-detail'),
     path('change-request/<int:pk>/', allocation_views.AllocationChangeDetailView.as_view(),
          name='allocation-change-detail'),
+    path('change-request/<int:pk>/pi-actions', allocation_views.AllocationChangePIActionsView.as_view(),
+         name='allocation-change-pi-actions'),
     path('<int:pk>/delete-attribute-change', allocation_views.AllocationChangeDeleteAttributeView.as_view(),
          name='allocation-attribute-change-delete'),
     path('<int:pk>/add-users', allocation_views.AllocationAddUsersView.as_view(),
