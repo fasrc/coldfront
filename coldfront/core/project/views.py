@@ -638,6 +638,14 @@ class ProjectAddUsersSearchResultsView(
         context = combined_user_search_obj.search()
 
         matches = context.get('matches')
+        inactive_usernames = set(
+            get_user_model().objects.filter(
+                username__in=[match['username'] for match in matches],
+                is_active=False,
+            ).values_list('username', flat=True)
+        )
+        matches = [match for match in matches if match['username'] not in inactive_usernames]
+        context['matches'] = matches
         for match in matches:
             match.update({'role': ProjectUserRoleChoice.objects.get(name='User')})
 
