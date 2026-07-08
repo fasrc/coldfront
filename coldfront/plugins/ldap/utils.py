@@ -32,6 +32,7 @@ from coldfront.core.project.models import (
     ProjectUserStatusChoice,
     ProjectUser,
 )
+from coldfront.core.project.exceptions import ProjectUserDeactivatedError
 
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,9 @@ class LDAPException(Exception):
 
 class LDAPUserAdditionError(LDAPException):
     """An exception raised when a user cannot be added to an LDAP Group"""
+
+class LDAPUserDeactivatedError(LDAPUserAdditionError, ProjectUserDeactivatedError):
+    """An exception raised when a user cannot be added to an LDAP Group because their account is deactivated"""
 
 class LDAPUserRemovalError(LDAPException):
     """An exception raised when a user cannot be removed from an LDAP Group"""
@@ -211,6 +215,10 @@ class LDAPConn:
 
     def add_user_to_group(self, user_name, group_name):
         user = self.return_user_by_name(user_name)
+        if not user_valid(user):
+            raise LDAPUserDeactivatedError(
+                f"Cannot add user {user_name} to group {group_name}: user is deactivated."
+            )
         group = self.return_group_by_name(group_name)
         self.add_member_to_group(user, group)
 

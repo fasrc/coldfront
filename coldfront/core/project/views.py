@@ -66,6 +66,7 @@ from coldfront.core.project.models import (
 )
 from coldfront.core.project.manager_role_notifications import notify_manager_role_transition
 from coldfront.core.project.utils import generate_usage_history_graph
+from coldfront.core.project.exceptions import ProjectUserDeactivatedError
 from coldfront.core.publication.models import Publication
 from coldfront.core.research_output.models import ResearchOutput
 from coldfront.core.resource.models import ResourceAttribute
@@ -833,6 +834,12 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             sender=self.__class__,
                             user_name=user_obj.username, group_name=project_obj.title
                         )
+                    except ProjectUserDeactivatedError:
+                        errors.append(
+                            f"Could not add user {user_obj} to project {project_obj.title}: "
+                            "this user's account is deactivated."
+                        )
+                        continue
                     except Exception as e:
                         logger.exception(
                             'AD user addition to group failed.',
