@@ -486,6 +486,16 @@ class AllocationChangeNoteForm(forms.Form):
             help_text='Leave any feedback about the allocation change request.')
 
 
+class AllocationRequestPIActionsForm(forms.Form):
+    """Form for PIs/managers to update the requested size of a pending allocation request."""
+    quantity = forms.IntegerField(
+        label='Requested Size',
+        min_value=1,
+        required=True,
+        help_text='Enter the new requested size in the allocation\'s unit.',
+    )
+
+
 class AllocationChangePIUpdateForm(forms.Form):
     """Form for PIs/managers to update the requested new value of an attribute change."""
     change_pk = forms.IntegerField(required=True, disabled=True)

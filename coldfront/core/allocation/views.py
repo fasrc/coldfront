@@ -38,6 +38,7 @@ from coldfront.core.allocation.forms import (AllocationAccountForm,
                                              AllocationChangeForm,
                                              AllocationChangeNoteForm,
                                              AllocationChangePIUpdateForm,
+                                             AllocationRequestPIActionsForm,
                                              AllocationAttributeChangeForm,
                                              AllocationAttributeUpdateForm,
                                              AllocationForm,
@@ -325,6 +326,15 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
 
         context['form'] = form
         context['allocation'] = allocation_obj
+
+        if allocation_obj.status.name in PENDING_ALLOCATION_STATUSES:
+            is_manager = allocation_obj.has_perm(request.user, AllocationPermission.MANAGER)
+            context['is_manager'] = is_manager
+            if is_manager:
+                context['pi_actions_form'] = AllocationRequestPIActionsForm(
+                    initial={'quantity': allocation_obj.quantity or 1}
+                )
+
         return self.render_to_response(context)
 
     def post(self, request, *args, **kwargs):
@@ -2302,6 +2312,72 @@ class AllocationAccountListView(LoginRequiredMixin, UserPassesTestMixin, ListVie
 
     def get_queryset(self):
         return AllocationAccount.objects.filter(user=self.request.user)
+
+
+class AllocationRequestPIActionsView(LoginRequiredMixin, UserPassesTestMixin, View):
+    """Allows PIs, Storage Managers, and General Managers to update the requested size
+    of a pending allocation request or withdraw it entirely."""
+
+    def test_func(self):
+        allocation_obj = get_object_or_404(Allocation, pk=self.kwargs.get('pk'))
+        return allocation_obj.has_perm(self.request.user, AllocationPermission.MANAGER)
+
+    def post(self, request, *args, **kwargs):
+        pk = self.kwargs.get('pk')
+        allocation_obj = get_object_or_404(Allocation, pk=pk)
+        redirect_url = reverse('allocation-detail', kwargs={'pk': pk})
+
+        if allocation_obj.status.name not in PENDING_ALLOCATION_STATUSES:
+            messages.error(request, 'This allocation request is no longer pending and cannot be modified.')
+            return HttpResponseRedirect(redirect_url)
+
+        action = request.POST.get('pi_action')
+        if action not in ['update_size', 'withdraw']:
+            return HttpResponseBadRequest('Invalid request')
+
+        if action == 'withdraw':
+            withdrawn_status = AllocationStatusChoice.objects.get(name='Withdrawn')
+            allocation_obj.status = withdrawn_status
+            allocation_obj.save()
+            messages.success(request, 'Allocation request has been withdrawn.')
+            return HttpResponseRedirect(redirect_url)
+
+        # action == 'update_size'
+        form = AllocationRequestPIActionsForm(request.POST)
+        if not form.is_valid():
+            for err in form.errors.values():
+                messages.error(request, err)
+            return HttpResponseRedirect(redirect_url)
+
+        new_quantity = form.cleaned_data['quantity']
+
+        if allocation_obj.get_parent_resource.name == 'Tape' and new_quantity % 20 != 0:
+            messages.error(request, 'Tape quantity must be a multiple of 20.')
+            return HttpResponseRedirect(redirect_url)
+
+        unit_label = allocation_obj.unit_label
+        conversion_factor = 1000 if unit_label == 'TB' else 1024
+        quota_in_bytes = new_quantity * (conversion_factor ** 4)
+
+        allocation_obj.quantity = new_quantity
+        allocation_obj.save()
+
+        quota_attr = allocation_obj.allocationattribute_set.filter(
+            allocation_attribute_type__name=f'Storage Quota ({unit_label})'
+        ).first()
+        if quota_attr:
+            quota_attr.value = new_quantity
+            quota_attr.save()
+
+        bytes_attr = allocation_obj.allocationattribute_set.filter(
+            allocation_attribute_type__name='Quota_In_Bytes'
+        ).first()
+        if bytes_attr:
+            bytes_attr.value = quota_in_bytes
+            bytes_attr.save()
+
+        messages.success(request, f'Requested size updated to {new_quantity} {unit_label}.')
+        return HttpResponseRedirect(redirect_url)
 
 
 class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
