@@ -19,7 +19,7 @@ from coldfront.core.project.models import (
     ProjectUserStatusChoice,
     ProjectUser,
 )
-from coldfront.plugins.ldap.utils import LDAPConn
+from coldfront.plugins.ldap.utils import LDAPConn, LDAPUserDeactivatedError
 
 if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
     from sftocf.signals import (
@@ -138,7 +138,19 @@ def filter_project_users_to_remove(sender, **kwargs):
 @receiver(project_make_projectuser)
 def add_user_to_group(sender, **kwargs):
     ldap_conn = LDAPConn()
-    ldap_conn.add_user_to_group(kwargs['user_name'], kwargs['group_name'])
+    try:
+        ldap_conn.add_user_to_group(kwargs['user_name'], kwargs['group_name'])
+    except LDAPUserDeactivatedError:
+        logger.warning(
+            'Cannot add deactivated user to AD group.',
+            extra={
+                'category': 'ldap:GroupMembership',
+                'status': 'error',
+                'user': kwargs['user_name'],
+                'group': kwargs['group_name'],
+            }
+        )
+        raise
 
 @receiver(project_preremove_projectuser)
 def remove_member_from_group(sender, **kwargs):
