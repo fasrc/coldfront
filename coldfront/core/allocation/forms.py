@@ -492,8 +492,18 @@ class AllocationRequestPIActionsForm(forms.Form):
         label='Requested Size',
         min_value=1,
         required=True,
-        help_text='Enter the new requested size in the allocation\'s unit.',
+        help_text="Enter the new requested size in the allocation's unit.",
     )
+
+    def __init__(self, *args, resource=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._resource = resource
+
+    def clean_quantity(self):
+        quantity = self.cleaned_data['quantity']
+        if self._resource and self._resource.name == 'Tape' and quantity % 20 != 0:
+            raise forms.ValidationError('Tape quantity must be a multiple of 20.')
+        return quantity
 
 
 class AllocationChangePIUpdateForm(forms.Form):

@@ -233,6 +233,101 @@ Project Detail
 <!-- End Project Invoice/Allocations -->
 
 
+<!-- Start Pending Allocation Requests -->
+{% if pending_allocation_requests %}
+<div class="html2pdf__page-break"></div>
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="d-inline"><i class="fas fa-clock" aria-hidden="true"></i> Pending Allocation Requests</h3>
+    <span class="badge badge-warning">{{ pending_allocation_requests.count }}</span>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm">
+        <thead>
+          <tr>
+            <th scope="col">Resource</th>
+            <th scope="col">Requested Size</th>
+            <th scope="col">Status</th>
+            <th scope="col">Date Requested</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for allocation in pending_allocation_requests %}
+            <tr>
+              <td>{{ allocation.get_parent_resource }}</td>
+              <td>
+                {% if allocation.quantity and allocation.unit_label %}
+                  {{ allocation.quantity }} {{ allocation.unit_label }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>{{ allocation.status }}</td>
+              <td>{{ allocation.created|date:"M. d, Y" }}</td>
+              <td>
+                <a href="{% url 'allocation-detail' allocation.pk %}" class="btn btn-sm btn-primary">Details</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+<!-- End Pending Allocation Requests -->
+
+
+<!-- Start Pending Allocation Change Requests -->
+{% if pending_change_requests %}
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="d-inline"><i class="fas fa-exchange-alt" aria-hidden="true"></i> Pending Allocation Change Requests</h3>
+    <span class="badge badge-warning">{{ pending_change_requests.count }}</span>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm">
+        <thead>
+          <tr>
+            <th scope="col">Resource</th>
+            <th scope="col">Requested Change</th>
+            <th scope="col">Date Requested</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for change_request in pending_change_requests %}
+            <tr>
+              <td>{{ change_request.allocation.get_parent_resource }}</td>
+              <td>
+                {% for attr_change in change_request.allocationattributechangerequest_set.all %}
+                  {{ attr_change.allocation_attribute.allocation_attribute_type.name }}: {{ attr_change.new_value }}<br>
+                {% empty %}
+                  {% if change_request.end_date_extension %}
+                    End date extension: {{ change_request.end_date_extension }} days
+                  {% else %}
+                    —
+                  {% endif %}
+                {% endfor %}
+              </td>
+              <td>{{ change_request.created|date:"M. d, Y" }}</td>
+              <td>
+                <a href="{% url 'allocation-change-detail' change_request.pk %}" class="btn btn-sm btn-primary">Details</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+<!-- End Pending Allocation Change Requests -->
+
+
 <!-- Start Allocations -->
 <div class="html2pdf__page-break"></div>
 <div class="card mb-3">

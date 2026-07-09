@@ -332,7 +332,8 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             context['is_manager'] = is_manager
             if is_manager:
                 context['pi_actions_form'] = AllocationRequestPIActionsForm(
-                    initial={'quantity': allocation_obj.quantity or 1}
+                    initial={'quantity': allocation_obj.quantity or 1},
+                    resource=allocation_obj.get_parent_resource,
                 )
 
         return self.render_to_response(context)
@@ -2343,17 +2344,13 @@ class AllocationRequestPIActionsView(LoginRequiredMixin, UserPassesTestMixin, Vi
             return HttpResponseRedirect(redirect_url)
 
         # action == 'update_size'
-        form = AllocationRequestPIActionsForm(request.POST)
+        form = AllocationRequestPIActionsForm(request.POST, resource=allocation_obj.get_parent_resource)
         if not form.is_valid():
             for err in form.errors.values():
                 messages.error(request, err)
             return HttpResponseRedirect(redirect_url)
 
         new_quantity = form.cleaned_data['quantity']
-
-        if allocation_obj.get_parent_resource.name == 'Tape' and new_quantity % 20 != 0:
-            messages.error(request, 'Tape quantity must be a multiple of 20.')
-            return HttpResponseRedirect(redirect_url)
 
         unit_label = allocation_obj.unit_label
         conversion_factor = 1000 if unit_label == 'TB' else 1024

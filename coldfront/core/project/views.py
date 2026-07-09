@@ -22,6 +22,7 @@ from django_renderpdf.views import PDFView
 from coldfront.core.allocation.utils import generate_guauge_data_from_usage
 from coldfront.core.allocation.models import (
     Allocation,
+    AllocationChangeRequest,
     AllocationUser,
     AllocationStatusChoice,
     AllocationUserStatusChoice,
@@ -86,6 +87,8 @@ ALLOCATION_ENABLE_ALLOCATION_RENEWAL = import_from_settings(
     'ALLOCATION_ENABLE_ALLOCATION_RENEWAL', True)
 ALLOCATION_DEFAULT_ALLOCATION_LENGTH = import_from_settings(
     'ALLOCATION_DEFAULT_ALLOCATION_LENGTH', 365)
+PENDING_ALLOCATION_STATUSES = import_from_settings(
+    'PENDING_ALLOCATION_STATUSES', ['New', 'In Progress', 'On Hold', 'Pending Activation'])
 
 
 EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings('EMAIL_DIRECTOR_EMAIL_ADDRESS')
@@ -306,6 +309,20 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         context['storage_allocations'] = storage_allocations
         context['compute_allocations'] = compute_allocations
         context['allocation_total'] = allocation_total
+
+        pending_allocation_requests = self.object.allocation_set.filter(
+            status__name__in=PENDING_ALLOCATION_STATUSES
+        ).prefetch_related('resources').order_by('-created')
+        context['pending_allocation_requests'] = pending_allocation_requests
+
+        pending_change_requests = AllocationChangeRequest.objects.filter(
+            allocation__project=self.object,
+            status__name='Pending',
+        ).select_related('allocation', 'status').prefetch_related(
+            'allocation__resources',
+            'allocationattributechangerequest_set__allocation_attribute__allocation_attribute_type',
+        ).order_by('-created')
+        context['pending_change_requests'] = pending_change_requests
         context['attributes'] = attributes
         context['guage_data'] = guage_data
         context['attributes_with_usage'] = attributes_with_usage
