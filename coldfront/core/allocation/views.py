@@ -2463,7 +2463,8 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
                     }
                     for a in attr_changes
                 ]
-                pi_formset_class = formset_factory(AllocationChangePIUpdateForm, max_num=len(pi_initial))
+                resource = allocation_change_obj.allocation.get_parent_resource
+                pi_formset_class = formset_factory(_make_pi_update_form(resource), max_num=len(pi_initial))
                 context['pi_formset'] = pi_formset_class(initial=pi_initial, prefix='pi_attributeform')
 
         return render(request, self.template_name, context)
@@ -2679,6 +2680,11 @@ class AllocationChangeDetailView(LoginRequiredMixin, UserPassesTestMixin, FormVi
         return self.redirect_to_detail(pk)
 
 
+def _make_pi_update_form(resource):
+    """Return a subclass of AllocationChangePIUpdateForm bound to the given resource."""
+    return type('BoundAllocationChangePIUpdateForm', (AllocationChangePIUpdateForm,), {'_resource': resource})
+
+
 class AllocationChangePIActionsView(LoginRequiredMixin, UserPassesTestMixin, View):
     """Allows PIs, Storage Managers, and General Managers to update or cancel a pending change request."""
 
@@ -2713,7 +2719,8 @@ class AllocationChangePIActionsView(LoginRequiredMixin, UserPassesTestMixin, Vie
             alloc_change_obj.allocationattributechangerequest_set.all()
         )
         if attrs_to_change:
-            formset_class = formset_factory(AllocationChangePIUpdateForm, max_num=len(attrs_to_change))
+            resource = alloc_change_obj.allocation.get_parent_resource
+            formset_class = formset_factory(_make_pi_update_form(resource), max_num=len(attrs_to_change))
             initial = [
                 {
                     'change_pk': a.pk,

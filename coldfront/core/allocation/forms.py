@@ -512,17 +512,31 @@ class AllocationChangePIUpdateForm(forms.Form):
     name = forms.CharField(max_length=150, required=False, disabled=True)
     new_value = forms.CharField(max_length=150, required=False)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, resource=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['change_pk'].widget = forms.HiddenInput()
+        self._resource = resource
 
     def clean(self):
         cleaned_data = super().clean()
-        if cleaned_data.get('new_value') != '':
+        new_value = cleaned_data.get('new_value', '')
+        if new_value != '':
             from coldfront.core.allocation.models import AllocationAttributeChangeRequest
             attr_change = AllocationAttributeChangeRequest.objects.get(pk=cleaned_data.get('change_pk'))
-            attr_change.allocation_attribute.value = cleaned_data.get('new_value')
+            attr_change.allocation_attribute.value = new_value
             attr_change.allocation_attribute.clean()
+
+            attr_name = attr_change.allocation_attribute.allocation_attribute_type.name
+            if (
+                self._resource
+                and self._resource.name == 'Tape'
+                and 'Storage Quota' in attr_name
+            ):
+                try:
+                    if int(float(new_value)) % 20 != 0:
+                        raise forms.ValidationError('Tape quantity must be a multiple of 20.')
+                except (ValueError, TypeError):
+                    raise forms.ValidationError('Tape quantity must be a whole number.')
 
 
 ALLOCATION_AUTOUPDATE_OPTIONS = [
