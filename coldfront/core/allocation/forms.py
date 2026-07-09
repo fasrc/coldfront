@@ -501,7 +501,7 @@ class AllocationRequestPIActionsForm(forms.Form):
 
     def clean_quantity(self):
         quantity = self.cleaned_data['quantity']
-        if self._resource and self._resource.name == 'Tape' and quantity % 20 != 0:
+        if self._resource and 'tape' in self._resource.name.lower() and quantity % 20 != 0:
             raise forms.ValidationError('Tape quantity must be a multiple of 20.')
         return quantity
 
