@@ -529,7 +529,7 @@ class AllocationChangePIUpdateForm(forms.Form):
             attr_name = attr_change.allocation_attribute.allocation_attribute_type.name
             if (
                 self._resource
-                and self._resource.name == 'Tape'
+                and 'tape' in self._resource.name.lower()
                 and 'Storage Quota' in attr_name
             ):
                 try:
