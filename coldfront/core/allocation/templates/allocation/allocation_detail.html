@@ -329,6 +329,41 @@ Allocation Detail
   </div>
 </div>
 
+{% if is_manager and allocation.status.name in 'New,In Progress,On Hold,Pending Activation' %}
+<div class="card mb-3">
+  <div class="card-header">
+    <h3 class="d-inline"><i class="fas fa-edit" aria-hidden="true"></i> Actions</h3>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{% url 'allocation-request-pi-actions' allocation.pk %}">
+      {% csrf_token %}
+      {% if pi_actions_form %}
+        <div class="form-group row align-items-center mb-3">
+          <label class="col-sm-3 col-form-label font-weight-bold">
+            {{ pi_actions_form.quantity.label }}
+            {% if allocation.unit_label %}({{ allocation.unit_label }}){% endif %}
+          </label>
+          <div class="col-sm-3">
+            {{ pi_actions_form.quantity }}
+          </div>
+          <div class="col-sm-6 text-muted small">{{ pi_actions_form.quantity.help_text }}</div>
+        </div>
+      {% endif %}
+      <div class="d-flex justify-content-end">
+        {% if pi_actions_form %}
+          <button type="submit" name="pi_action" value="update_size" class="btn btn-primary mr-2">
+            <i class="fas fa-save" aria-hidden="true"></i> Update Requested Size
+          </button>
+        {% endif %}
+        <button type="submit" name="pi_action" value="withdraw"
+                class="btn btn-danger confirm-withdraw-request">
+          <i class="fas fa-times" aria-hidden="true"></i> Withdraw Request
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <div class="html2pdf__page-break"></div>
 {% if attributes or attributes_with_usage or user_can_manage_allocation %}
@@ -849,6 +884,9 @@ Allocation Detail
         if (notes_num == 0) {
             return confirm('Are you sure you want to deny this allocation request without setting a notification?');
         }
+    })
+    $(document).on('click', '.confirm-withdraw-request', function(){
+        return confirm('Are you sure you want to withdraw this allocation request?');
     })
 </script>
 {% endblock %}

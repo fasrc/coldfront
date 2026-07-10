@@ -486,23 +486,57 @@ class AllocationChangeNoteForm(forms.Form):
             help_text='Leave any feedback about the allocation change request.')
 
 
+class AllocationRequestPIActionsForm(forms.Form):
+    """Form for PIs/managers to update the requested size of a pending allocation request."""
+    quantity = forms.IntegerField(
+        label='Requested Size',
+        min_value=1,
+        required=True,
+        help_text="Enter the new requested size in the allocation's unit.",
+    )
+
+    def __init__(self, *args, resource=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._resource = resource
+
+    def clean_quantity(self):
+        quantity = self.cleaned_data['quantity']
+        if self._resource and 'tape' in self._resource.name.lower() and quantity % 20 != 0:
+            raise forms.ValidationError('Tape quantity must be a multiple of 20.')
+        return quantity
+
+
 class AllocationChangePIUpdateForm(forms.Form):
     """Form for PIs/managers to update the requested new value of an attribute change."""
     change_pk = forms.IntegerField(required=True, disabled=True)
     name = forms.CharField(max_length=150, required=False, disabled=True)
     new_value = forms.CharField(max_length=150, required=False)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, resource=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['change_pk'].widget = forms.HiddenInput()
+        self._resource = resource
 
     def clean(self):
         cleaned_data = super().clean()
-        if cleaned_data.get('new_value') != '':
+        new_value = cleaned_data.get('new_value', '')
+        if new_value != '':
             from coldfront.core.allocation.models import AllocationAttributeChangeRequest
             attr_change = AllocationAttributeChangeRequest.objects.get(pk=cleaned_data.get('change_pk'))
-            attr_change.allocation_attribute.value = cleaned_data.get('new_value')
+            attr_change.allocation_attribute.value = new_value
             attr_change.allocation_attribute.clean()
+
+            attr_name = attr_change.allocation_attribute.allocation_attribute_type.name
+            if (
+                self._resource
+                and 'tape' in self._resource.name.lower()
+                and 'Storage Quota' in attr_name
+            ):
+                try:
+                    if int(float(new_value)) % 20 != 0:
+                        raise forms.ValidationError('Tape quantity must be a multiple of 20.')
+                except (ValueError, TypeError):
+                    raise forms.ValidationError('Tape quantity must be a whole number.')
 
 
 ALLOCATION_AUTOUPDATE_OPTIONS = [
