@@ -295,13 +295,19 @@ Project Detail
             <th scope="col">Resource</th>
             <th scope="col">Requested Change</th>
             <th scope="col">Date Requested</th>
-            <th scope="col">Actions</th>
+            {% if request.user.is_superuser or is_allowed_to_update_project %}
+              <th scope="col">Actions</th>
+            {% endif %}
           </tr>
         </thead>
         <tbody>
           {% for change_request in pending_change_requests %}
             <tr>
-              <td>{{ change_request.allocation.get_parent_resource }}</td>
+              <td>
+                <a href="{% url 'allocation-detail' change_request.allocation.pk %}">
+                  {{ change_request.allocation.get_parent_resource }}
+                </a>
+              </td>
               <td>
                 {% for attr_change in change_request.allocationattributechangerequest_set.all %}
                   {{ attr_change.allocation_attribute.allocation_attribute_type.name }}: {{ attr_change.new_value }}<br>
@@ -314,9 +320,11 @@ Project Detail
                 {% endfor %}
               </td>
               <td>{{ change_request.created|date:"M. d, Y" }}</td>
-              <td>
-                <a href="{% url 'allocation-change-detail' change_request.pk %}" class="btn btn-sm btn-primary">Details</a>
-              </td>
+              {% if request.user.is_superuser or is_allowed_to_update_project %}
+                <td>
+                  <button href="{% url 'allocation-change-detail' change_request.pk %}" class="btn btn-sm btn-primary">Details</button>
+                </td>
+              {% endif %}
             </tr>
           {% endfor %}
         </tbody>
