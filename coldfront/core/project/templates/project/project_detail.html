@@ -267,7 +267,7 @@ Project Detail
               <td>{{ allocation.status }}</td>
               <td>{{ allocation.created|date:"M. d, Y" }}</td>
               <td>
-                <a href="{% url 'allocation-detail' allocation.pk %}" class="btn btn-sm btn-primary">Details</a>
+                <button href="{% url 'allocation-detail' allocation.pk %}" class="btn btn-sm btn-primary">Details</button>
               </td>
             </tr>
           {% endfor %}
