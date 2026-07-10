@@ -29,6 +29,7 @@ class Command(BaseCommand):
             ('In Progress', 'Allocation request is being processed'),
             ('On Hold', 'Allocation request is on hold'),
             ('Pending Activation', 'Allocation is in the process of being set up and not yet ready for use/billing'),
+            ('Withdrawn', 'Allocation request was withdrawn by the PI or manager'),
             # UBCCR Defaults
             # 'Paid', 'Payment Pending', 'Payment Requested',
             # 'Payment Declined', 'Revoked', 'Renewal Requested', 'Unpaid',
@@ -37,7 +38,7 @@ class Command(BaseCommand):
             choice_obj.description = description
             choice_obj.save()
 
-        for choice in ('Pending', 'Approved', 'Denied',):
+        for choice in ('Pending', 'Approved', 'Denied', 'Cancelled',):
             AllocationChangeStatusChoice.objects.get_or_create(name=choice)
 
         for choice in ('Active', 'Error', 'Removed', ):
