@@ -686,6 +686,7 @@ def sync_isilon_resource_allocations(resource):
         'activated': [],
         'updated': [],
         'missing_projects': [],
+        'unresolved_group': [],
         'no_limit': [],
     }
     isilon_url = get_isilon_url(resource)
@@ -702,6 +703,13 @@ def sync_isilon_resource_allocations(resource):
             continue
 
         group_name = get_directory_group(isilon_conn, directory_quota)
+        if not group_name:
+            logger.warning(
+                'Could not resolve an owning group for %s on %s', directory_quota.path, resource.name
+            )
+            report['unresolved_group'].append(directory_quota.path)
+            continue
+
         project = Project.objects.filter(title=group_name).first()
         if project is None:
             report['missing_projects'].append(group_name)

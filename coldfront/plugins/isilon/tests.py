@@ -181,6 +181,13 @@ class SyncIsilonAllocationsTests(TestCase):
         self.assertIn('ghost_lab', report['missing_projects'])
         self.assertEqual(Allocation.objects.count(), 0)
 
+    def test_unresolved_group_name_is_reported_not_crashed(self):
+        quota = make_mock_quota('/ifs/rc_labs/orphaned_dir', TIB, 0)
+        report = self.sync_with_quotas([quota], group_name=None)
+        self.assertIn('/ifs/rc_labs/orphaned_dir', report['unresolved_group'])
+        self.assertEqual(report['missing_projects'], [])
+        self.assertEqual(Allocation.objects.count(), 0)
+
     def test_new_allocation_created_when_none_exists(self):
         quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
         report = self.sync_with_quotas([quota])
