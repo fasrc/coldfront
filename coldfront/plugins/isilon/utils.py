@@ -554,11 +554,19 @@ def is_isilon_path_ignored(path):
 
 
 def get_directory_group(isilon_conn, directory_quota):
-    """Return the name of the group that owns a directory smartquota's path."""
+    """Return the name of the group that owns a directory smartquota's path.
+
+    Isilon sometimes returns this as a domain-qualified name (e.g. 'RC\\poisson_lab')
+    rather than the bare group name ColdFront Project titles use, so strip any
+    'DOMAIN\\' prefix.
+    """
     acl = isilon_conn.namespace_client.get_acl(
         namespace_path=directory_quota.path.lstrip('/'), acl=True
     )
-    return acl.group.name
+    group_name = acl.group.name
+    if group_name and '\\' in group_name:
+        group_name = group_name.rsplit('\\', 1)[-1]
+    return group_name
 
 
 def find_matching_pending_allocation(project, resource, quota_bytes):

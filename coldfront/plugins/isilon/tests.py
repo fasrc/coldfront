@@ -23,6 +23,7 @@ from coldfront.plugins.isilon.utils import (
     IsilonConnection,
     IsilonDirectoryQuota,
     create_isilon_allocation_quota,
+    get_directory_group,
     get_isilon_url,
     is_isilon_path_ignored,
     sync_isilon_resource_allocations,
@@ -122,6 +123,28 @@ class IsilonDirectoryQuotaTests(TestCase):
         self.assertEqual(IsilonDirectoryQuota(quota).cf_path, 'rc_fasse_labs/poisson_lab')
 
 
+class GetDirectoryGroupTests(TestCase):
+    """Tests for get_directory_group's domain-prefix stripping in isilon/utils.py"""
+
+    def test_strips_domain_prefix(self):
+        directory_quota = IsilonDirectoryQuota(make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, 0))
+        mock_conn = MagicMock()
+        mock_conn.namespace_client.get_acl.return_value.group.name = 'RC\\poisson_lab'
+        self.assertEqual(get_directory_group(mock_conn, directory_quota), 'poisson_lab')
+
+    def test_leaves_unqualified_name_unchanged(self):
+        directory_quota = IsilonDirectoryQuota(make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, 0))
+        mock_conn = MagicMock()
+        mock_conn.namespace_client.get_acl.return_value.group.name = 'poisson_lab'
+        self.assertEqual(get_directory_group(mock_conn, directory_quota), 'poisson_lab')
+
+    def test_none_group_name_stays_none(self):
+        directory_quota = IsilonDirectoryQuota(make_mock_quota('/ifs/rc_labs/orphaned_dir', TIB, 0))
+        mock_conn = MagicMock()
+        mock_conn.namespace_client.get_acl.return_value.group.name = None
+        self.assertIsNone(get_directory_group(mock_conn, directory_quota))
+
+
 class SyncIsilonAllocationsTests(TestCase):
     """Tests for sync_isilon_allocations reconciliation logic in isilon/utils.py"""
 
@@ -199,6 +222,14 @@ class SyncIsilonAllocationsTests(TestCase):
         self.assertEqual(
             int(float(allocation.get_attribute('Quota_In_Bytes', typed=False))), TIB
         )
+
+    def test_domain_qualified_group_name_is_stripped_before_project_match(self):
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota], group_name='RC\\poisson_lab')
+
+        self.assertIn('rc_labs/poisson_lab', report['created'])
+        self.assertEqual(report['missing_projects'], [])
+        self.assertTrue(Allocation.objects.filter(project=self.project).exists())
 
     def test_existing_allocation_is_updated_not_duplicated(self):
         allocation = AllocationFactory(project=self.project, status__name='Active')
