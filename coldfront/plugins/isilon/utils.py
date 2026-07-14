@@ -2,9 +2,16 @@ import logging
 
 import isilon_sdk.v9_12_0 as isilon_api
 from isilon_sdk.v9_12_0.rest import ApiException
+from django.utils import timezone
 
 from coldfront.core.utils.common import import_from_settings
-from coldfront.core.allocation.models import AllocationAttributeType, AllocationAttribute
+from coldfront.core.allocation.models import (
+    Allocation,
+    AllocationAttribute,
+    AllocationAttributeType,
+    AllocationStatusChoice,
+)
+from coldfront.core.project.models import Project
 from coldfront.config.plugins.isilon import ISILON_AUTH_MODEL
 
 logger = logging.getLogger(__name__)
@@ -517,3 +524,176 @@ def update_coldfront_quota_and_usage(alloc, usage_attribute_type, value_list):
     usage.value = value_list[1]
     usage.save()
     return usage_attribute
+
+
+class IsilonDirectoryQuota:
+    """Wraps a SmartQuotas API directory quota object with the fields
+    sync_isilon_allocations needs, so callers don't reach into the raw isilon_sdk
+    object (or re-derive the same values) at multiple call sites.
+    """
+    def __init__(self, quota):
+        self.quota = quota
+        self.path = quota.path
+        self.has_hard_limit = quota.thresholds.hard is not None
+        self.hard_limit_bytes = quota.thresholds.hard
+        self.usage_bytes = quota.usage.fslogical
+
+    @property
+    def cf_path(self):
+        """The quota's path in the form stored on an Allocation's Subdirectory attribute."""
+        path = self.path.lstrip('/')
+        if path.startswith('ifs/'):
+            path = path[len('ifs/'):]
+        return path
+
+
+def is_isilon_path_ignored(path):
+    """Return True if `path` is in the ISILON_PATH_IGNORE setting."""
+    return path in import_from_settings('ISILON_PATH_IGNORE', [])
+
+
+def get_directory_group(isilon_conn, directory_quota):
+    """Return the name of the group that owns a directory smartquota's path."""
+    acl = isilon_conn.namespace_client.get_acl(
+        namespace_path=directory_quota.path.lstrip('/'), acl=True
+    )
+    return acl.group.name
+
+
+def find_matching_pending_allocation(project, resource, quota_bytes):
+    """Find an open allocation request (New/On Hold/In Progress/Pending Activation) for
+    `project`/`resource` whose requested quota size matches `quota_bytes` and that
+    doesn't already have a Subdirectory attribute set.
+    """
+    pending_statuses = import_from_settings(
+        'PENDING_ALLOCATION_STATUSES', ['New', 'In Progress', 'On Hold', 'Pending Activation']
+    )
+    quota_tib = quota_bytes / 1024**4
+    candidates = project.allocation_set.filter(
+        resources=resource, status__name__in=pending_statuses,
+    ).exclude(
+        allocationattribute__allocation_attribute_type__name='Subdirectory'
+    )
+    for candidate in candidates:
+        bytes_value = candidate.get_attribute('Quota_In_Bytes', typed=False)
+        if bytes_value is not None and int(float(bytes_value)) == int(quota_bytes):
+            return candidate
+        tib_value = candidate.get_attribute('Storage Quota (TiB)', typed=False)
+        if tib_value is not None and abs(float(tib_value) - quota_tib) < 0.01:
+            return candidate
+    return None
+
+
+def update_allocation_quota_and_usage(allocation, quota_bytes, usage_bytes):
+    """Update Quota_In_Bytes and Storage Quota (TiB) attributes/usage on `allocation`.
+
+    Only rewrites the quota value when it has actually changed, to avoid noisy
+    HistoricalRecords churn on every sync run; usage is always refreshed.
+    Returns True if the quota value changed.
+    """
+    quota_bytes_type = AllocationAttributeType.objects.get(name='Quota_In_Bytes')
+    quota_tib_type = AllocationAttributeType.objects.get(name='Storage Quota (TiB)')
+    quota_tib = quota_bytes / 1024**4
+    usage_tib = usage_bytes / 1024**4
+
+    bytes_attr = allocation.allocationattribute_set.filter(
+        allocation_attribute_type=quota_bytes_type
+    ).first()
+    quota_changed = bytes_attr is None or int(float(bytes_attr.value)) != int(quota_bytes)
+
+    if quota_changed:
+        update_coldfront_quota_and_usage(allocation, quota_bytes_type, [quota_bytes, usage_bytes])
+        update_coldfront_quota_and_usage(allocation, quota_tib_type, [quota_tib, usage_tib])
+    else:
+        bytes_attr.allocationattributeusage.value = usage_bytes
+        bytes_attr.allocationattributeusage.save()
+        tib_attr = allocation.allocationattribute_set.get(allocation_attribute_type=quota_tib_type)
+        tib_attr.allocationattributeusage.value = usage_tib
+        tib_attr.allocationattributeusage.save()
+    return quota_changed
+
+
+def sync_allocation_for_quota(project, resource, directory_quota, report):
+    """Reconcile a single Directory SmartQuota (already matched to `project`) with
+    ColdFront allocation state: update an existing Allocation, activate a matching
+    pending allocation request, or create a new Allocation.
+    """
+    subdir_type = AllocationAttributeType.objects.get(name='Subdirectory')
+    cf_path = directory_quota.cf_path
+    quota_bytes = directory_quota.hard_limit_bytes
+    usage_bytes = directory_quota.usage_bytes
+
+    existing_allocation = Allocation.objects.filter(
+        project=project,
+        resources=resource,
+        allocationattribute__allocation_attribute_type=subdir_type,
+        allocationattribute__value=cf_path,
+    ).first()
+    if existing_allocation:
+        update_allocation_quota_and_usage(existing_allocation, quota_bytes, usage_bytes)
+        report['updated'].append(cf_path)
+        return existing_allocation
+
+    pending_allocation = find_matching_pending_allocation(project, resource, quota_bytes)
+    if pending_allocation:
+        AllocationAttribute.objects.create(
+            allocation=pending_allocation,
+            allocation_attribute_type=subdir_type,
+            value=cf_path,
+        )
+        pending_allocation.status = AllocationStatusChoice.objects.get(name='Active')
+        if not pending_allocation.start_date:
+            pending_allocation.start_date = timezone.now().date()
+        pending_allocation.save()
+        update_allocation_quota_and_usage(pending_allocation, quota_bytes, usage_bytes)
+        report['activated'].append(cf_path)
+        return pending_allocation
+
+    new_allocation = Allocation.objects.create(
+        project=project,
+        status=AllocationStatusChoice.objects.get(name='Active'),
+        start_date=timezone.now().date(),
+        justification=f'Auto-created by sync_isilon_allocations for {project.title} at {cf_path}',
+    )
+    new_allocation.resources.add(resource)
+    AllocationAttribute.objects.create(
+        allocation=new_allocation, allocation_attribute_type=subdir_type, value=cf_path,
+    )
+    update_allocation_quota_and_usage(new_allocation, quota_bytes, usage_bytes)
+    report['created'].append(cf_path)
+    return new_allocation
+
+
+def sync_isilon_resource_allocations(resource):
+    """Sync all Directory smartquotas with a hard limit on `resource` into ColdFront
+    Allocations. Returns a report dict summarizing what happened.
+    """
+    report = {
+        'created': [],
+        'activated': [],
+        'updated': [],
+        'missing_projects': [],
+        'no_limit': [],
+    }
+    isilon_url = get_isilon_url(resource)
+    isilon_conn = IsilonConnection(isilon_url)
+
+    quotas = isilon_conn.quota_client.list_quota_quotas(type='directory').quotas
+
+    for quota in quotas:
+        directory_quota = IsilonDirectoryQuota(quota)
+        if not directory_quota.has_hard_limit:
+            if not is_isilon_path_ignored(directory_quota.path):
+                logger.warning('No hard quota limit set for %s on %s', directory_quota.path, resource.name)
+                report['no_limit'].append(directory_quota.path)
+            continue
+
+        group_name = get_directory_group(isilon_conn, directory_quota)
+        project = Project.objects.filter(title=group_name).first()
+        if project is None:
+            report['missing_projects'].append(group_name)
+            continue
+
+        sync_allocation_for_quota(project, resource, directory_quota, report)
+
+    return report
