@@ -228,6 +228,29 @@ class SyncIsilonAllocationsTests(TestCase):
         self.assertEqual(pending.status.name, 'Active')
         self.assertEqual(pending.path, 'rc_labs/poisson_lab')
 
+    def test_pending_request_on_tier_resource_is_activated_and_repointed(self):
+        tier_resource = ResourceFactory(name='Tier 1', resource_type__name='Storage Tier')
+        self.resource.parent_resource = tier_resource
+        self.resource.save()
+
+        pending = AllocationFactory(
+            project=self.project, status__name='New', justification='requesting tier 1 storage',
+        )
+        pending.resources.add(tier_resource)
+        AllocationAttributeFactory(
+            allocation=pending, allocation_attribute_type=self.quota_tib_type, value=1.0,
+        )
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('rc_labs/poisson_lab', report['activated'])
+        self.assertEqual(Allocation.objects.filter(project=self.project).count(), 1)
+        pending.refresh_from_db()
+        self.assertEqual(pending.status.name, 'Active')
+        self.assertEqual(pending.path, 'rc_labs/poisson_lab')
+        self.assertEqual(list(pending.resources.all()), [self.resource])
+
     def test_update_allocation_quota_and_usage_skips_rewrite_when_unchanged(self):
         allocation = AllocationFactory(project=self.project, status__name='Active')
         allocation.resources.add(self.resource)

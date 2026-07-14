@@ -2,6 +2,7 @@ import logging
 
 import isilon_sdk.v9_12_0 as isilon_api
 from isilon_sdk.v9_12_0.rest import ApiException
+from django.db.models import Q
 from django.utils import timezone
 
 from coldfront.core.utils.common import import_from_settings
@@ -564,13 +565,20 @@ def find_matching_pending_allocation(project, resource, quota_bytes):
     """Find an open allocation request (New/On Hold/In Progress/Pending Activation) for
     `project`/`resource` whose requested quota size matches `quota_bytes` and that
     doesn't already have a Subdirectory attribute set.
+
+    Requests are often made against the storage tier (e.g. 'Tier 1') rather than the
+    specific cluster resource a quota ends up provisioned on, so this also matches
+    requests attached to `resource.parent_resource`.
     """
     pending_statuses = import_from_settings(
         'PENDING_ALLOCATION_STATUSES', ['New', 'In Progress', 'On Hold', 'Pending Activation']
     )
     quota_tib = quota_bytes / 1024**4
+    resource_filter = Q(resources=resource)
+    if resource.parent_resource:
+        resource_filter |= Q(resources=resource.parent_resource)
     candidates = project.allocation_set.filter(
-        resources=resource, status__name__in=pending_statuses,
+        resource_filter, status__name__in=pending_statuses,
     ).exclude(
         allocationattribute__allocation_attribute_type__name='Subdirectory'
     )
@@ -645,6 +653,11 @@ def sync_allocation_for_quota(project, resource, directory_quota, report):
         if not pending_allocation.start_date:
             pending_allocation.start_date = timezone.now().date()
         pending_allocation.save()
+        # requests are often made against the resource's storage tier rather than the
+        # specific cluster the quota actually landed on - repoint to the specific resource
+        if not pending_allocation.resources.filter(pk=resource.pk).exists():
+            pending_allocation.resources.clear()
+            pending_allocation.resources.add(resource)
         update_allocation_quota_and_usage(pending_allocation, quota_bytes, usage_bytes)
         report['activated'].append(cf_path)
         return pending_allocation
