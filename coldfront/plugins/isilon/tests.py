@@ -161,6 +161,9 @@ class SyncIsilonAllocationsTests(TestCase):
         self.quota_tib_type = AllocationAttributeTypeFactory(
             name='Storage Quota (TiB)', attribute_type=AAttributeTypeFactory(name='Float'), has_usage=True,
         )
+        self.requires_payment_type = AllocationAttributeTypeFactory(
+            name='RequiresPayment', attribute_type=AAttributeTypeFactory(name='Yes/No'), has_usage=False,
+        )
 
         self.project = ProjectFactory(title='poisson_lab')
         self.resource = ResourceFactory(name='isilon01', resource_type__name='Storage')
@@ -222,6 +225,20 @@ class SyncIsilonAllocationsTests(TestCase):
         self.assertEqual(
             int(float(allocation.get_attribute('Quota_In_Bytes', typed=False))), TIB
         )
+        self.assertEqual(
+            allocation.get_attribute('RequiresPayment', typed=False), str(self.resource.requires_payment)
+        )
+
+    def test_new_allocation_requires_payment_matches_paid_resource(self):
+        # bypass Resource's post_save signal (unrelated ifx billing side effect) via .update()
+        Resource.objects.filter(pk=self.resource.pk).update(requires_payment=True)
+        self.resource.refresh_from_db()
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        self.sync_with_quotas([quota])
+
+        allocation = Allocation.objects.get(project=self.project)
+        self.assertEqual(allocation.get_attribute('RequiresPayment', typed=False), 'True')
 
     def test_domain_qualified_group_name_is_stripped_before_project_match(self):
         quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
@@ -265,6 +282,35 @@ class SyncIsilonAllocationsTests(TestCase):
         pending.refresh_from_db()
         self.assertEqual(pending.status.name, 'Active')
         self.assertEqual(pending.path, 'rc_labs/poisson_lab')
+        self.assertEqual(
+            pending.get_attribute('RequiresPayment', typed=False), str(self.resource.requires_payment)
+        )
+
+    def test_activation_overwrites_stale_requires_payment_value(self):
+        pending = AllocationFactory(
+            project=self.project, status__name='New', justification='requesting storage',
+        )
+        pending.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=pending, allocation_attribute_type=self.quota_tib_type, value=1.0,
+        )
+        AllocationAttributeFactory(
+            allocation=pending, allocation_attribute_type=self.requires_payment_type, value=False,
+        )
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        self.sync_with_quotas([quota])
+
+        pending.refresh_from_db()
+        self.assertEqual(
+            pending.allocationattribute_set.filter(
+                allocation_attribute_type=self.requires_payment_type
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            pending.get_attribute('RequiresPayment', typed=False), str(self.resource.requires_payment)
+        )
 
     def test_pending_request_on_tier_resource_is_activated_and_repointed(self):
         tier_resource = ResourceFactory(name='Tier 1', resource_type__name='Storage Tier')

@@ -635,6 +635,7 @@ def sync_allocation_for_quota(project, resource, directory_quota, report):
     pending allocation request, or create a new Allocation.
     """
     subdir_type = AllocationAttributeType.objects.get(name='Subdirectory')
+    requires_payment_type = AllocationAttributeType.objects.get(name='RequiresPayment')
     cf_path = directory_quota.cf_path
     quota_bytes = directory_quota.hard_limit_bytes
     usage_bytes = directory_quota.usage_bytes
@@ -666,6 +667,11 @@ def sync_allocation_for_quota(project, resource, directory_quota, report):
         if not pending_allocation.resources.filter(pk=resource.pk).exists():
             pending_allocation.resources.clear()
             pending_allocation.resources.add(resource)
+        AllocationAttribute.objects.update_or_create(
+            allocation=pending_allocation,
+            allocation_attribute_type=requires_payment_type,
+            defaults={'value': resource.requires_payment},
+        )
         update_allocation_quota_and_usage(pending_allocation, quota_bytes, usage_bytes)
         report['activated'].append(cf_path)
         return pending_allocation
@@ -679,6 +685,10 @@ def sync_allocation_for_quota(project, resource, directory_quota, report):
     new_allocation.resources.add(resource)
     AllocationAttribute.objects.create(
         allocation=new_allocation, allocation_attribute_type=subdir_type, value=cf_path,
+    )
+    AllocationAttribute.objects.create(
+        allocation=new_allocation, allocation_attribute_type=requires_payment_type,
+        value=resource.requires_payment,
     )
     update_allocation_quota_and_usage(new_allocation, quota_bytes, usage_bytes)
     report['created'].append(cf_path)
