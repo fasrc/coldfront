@@ -56,11 +56,13 @@ class MonitorView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         pi_not_projectuser = [p for p in projects if p.pi_id not in  p.projectuser_set.values_list('user_id', flat=True)]
         allocation_not_changeable = Allocation.objects.filter(
             status__name__in=PENDING_ACTIVE_ALLOCATION_STATUSES, is_changeable=False,
-            resources__is_allocatable=True
+            resources__is_allocatable=True, resources__resource_type__name='Storage',
         )
-        multiple_allocation_resources = Allocation.objects.annotate(
-            num_vols=Count('resources')
-        ).filter(num_vols__gte=2)
+        multiple_allocation_resources = (
+            Allocation.objects.filter(resources__resource_type__name='Storage').annotate(
+                num_vols=Count('resources')
+            ).filter(num_vols__gte=2)
+        )
 
         # ui checks
         ui_error_file = 'local_data/error_checks.csv'
