@@ -32,6 +32,13 @@ class VastDirectoryQuota:
     """Wraps a raw VAST userquotas API response dict with the fields
     sync_vast_allocations needs. vastpy is an untyped REST passthrough, so quota
     data arrives as plain dicts rather than SDK objects.
+
+    Unlike Isilon's SmartQuotas, VAST quotas are per-entity limits configured
+    against one shared view path - `path` does not vary per group/project (every
+    quota under a resource reports the same top-level path), so it is NOT a valid
+    per-allocation identity key. Allocation identity for VAST is (project,
+    resource), matching pull_vast_quotas.py's original model - `path` here is
+    kept only for logging.
     """
     def __init__(self, quota_dict):
         self.quota_dict = quota_dict
@@ -41,11 +48,6 @@ class VastDirectoryQuota:
         self.has_hard_limit = hard_limit is not None
         self.hard_limit_bytes = hard_limit
         self.usage_bytes = quota_dict.get('used_capacity', 0)
-
-    @property
-    def cf_path(self):
-        """The quota's path in the form stored on an Allocation's Subdirectory attribute."""
-        return self.path.lstrip('/')
 
 
 def is_vast_path_ignored(path):
@@ -136,31 +138,41 @@ def sync_allocation_for_vast_quota(project, resource, directory_quota, report):
     """Reconcile a single VAST userquota (already matched to `project`) with
     ColdFront allocation state: update an existing Allocation, activate a matching
     pending allocation request, or create a new Allocation.
+
+    Identity here is (project, resource), NOT the quota's path - see
+    VastDirectoryQuota's docstring for why. A Subdirectory attribute is still set
+    (for display/consistency with pull_vast_quotas.py) using the same synthetic
+    'C/{project.title}' convention, but only when one isn't already present, and
+    it's never used to look allocations up.
     """
     subdir_type = AllocationAttributeType.objects.get(name='Subdirectory')
     requires_payment_type = AllocationAttributeType.objects.get(name='RequiresPayment')
-    cf_path = directory_quota.cf_path
     quota_bytes = directory_quota.hard_limit_bytes
     usage_bytes = directory_quota.usage_bytes
+    placeholder_path = f'C/{project.title}'
 
     existing_allocation = Allocation.objects.filter(
-        project=project,
-        resources=resource,
-        allocationattribute__allocation_attribute_type=subdir_type,
-        allocationattribute__value=cf_path,
+        project=project, resources=resource, status__name='Active'
     ).first()
     if existing_allocation:
         update_allocation_quota_and_usage(existing_allocation, quota_bytes, usage_bytes)
-        report['updated'].append(cf_path)
+        if not existing_allocation.path:
+            AllocationAttribute.objects.get_or_create(
+                allocation=existing_allocation,
+                allocation_attribute_type=subdir_type,
+                defaults={'value': placeholder_path},
+            )
+        report['updated'].append(project.title)
         return existing_allocation
 
     pending_allocation = find_matching_pending_allocation(project, resource, quota_bytes)
     if pending_allocation:
-        AllocationAttribute.objects.create(
-            allocation=pending_allocation,
-            allocation_attribute_type=subdir_type,
-            value=cf_path,
-        )
+        if not pending_allocation.path:
+            AllocationAttribute.objects.get_or_create(
+                allocation=pending_allocation,
+                allocation_attribute_type=subdir_type,
+                defaults={'value': placeholder_path},
+            )
         pending_allocation.status = AllocationStatusChoice.objects.get(name='Active')
         if not pending_allocation.start_date:
             pending_allocation.start_date = timezone.now().date()
@@ -171,7 +183,7 @@ def sync_allocation_for_vast_quota(project, resource, directory_quota, report):
             defaults={'value': resource.requires_payment},
         )
         update_allocation_quota_and_usage(pending_allocation, quota_bytes, usage_bytes)
-        report['activated'].append(cf_path)
+        report['activated'].append(project.title)
         return pending_allocation
 
     new_allocation = Allocation.objects.create(
@@ -179,45 +191,45 @@ def sync_allocation_for_vast_quota(project, resource, directory_quota, report):
         status=AllocationStatusChoice.objects.get(name='Active'),
         start_date=timezone.now().date(),
         is_changeable=True,
-        justification=f'Auto-created by sync_vast_allocations for {project.title} at {cf_path}',
+        justification=f'Auto-created by sync_vast_allocations for {project.title}',
     )
     new_allocation.resources.add(resource)
     AllocationAttribute.objects.create(
-        allocation=new_allocation, allocation_attribute_type=subdir_type, value=cf_path,
+        allocation=new_allocation, allocation_attribute_type=subdir_type, value=placeholder_path,
     )
     AllocationAttribute.objects.create(
         allocation=new_allocation, allocation_attribute_type=requires_payment_type,
         value=resource.requires_payment,
     )
     update_allocation_quota_and_usage(new_allocation, quota_bytes, usage_bytes)
-    report['created'].append(cf_path)
+    report['created'].append(project.title)
     return new_allocation
 
 
-def deactivate_missing_allocations(resource, found_paths, report):
-    """Deactivate Active allocations on `resource` whose Subdirectory path is no
-    longer among the volume's quotas. Allocations with no recorded path are left
-    alone, since absence from the volume isn't meaningful for them.
+def deactivate_missing_allocations(resource, found_projects, report):
+    """Deactivate Active allocations on `resource` whose project wasn't seen in
+    this sync run. VAST quotas identify entities by project/group, not by a
+    distinct per-allocation path (see VastDirectoryQuota's docstring), so
+    matching is by project here - unlike isilon, which matches by path.
     """
     inactive_status = AllocationStatusChoice.objects.get(name='Inactive')
     active_allocations = Allocation.objects.filter(resources=resource, status__name='Active')
     for allocation in active_allocations:
-        path = allocation.path
-        if not path or path in found_paths:
+        if allocation.project.title in found_projects:
             continue
         allocation.status = inactive_status
         allocation.save()
         logger.warning(
-            'Deactivating allocation %s on %s - path %s not found on volume',
-            allocation.pk, resource.name, path,
+            'Deactivating allocation %s for project %s on %s - not found in VAST quotas',
+            allocation.pk, allocation.project.title, resource.name,
         )
-        report['deactivated'].append(path)
+        report['deactivated'].append(allocation.project.title)
 
 
 def sync_vast_resource_allocations(resource):
     """Sync all VAST userquotas with a hard limit on `resource` into ColdFront
-    Allocations, and deactivate Active allocations whose path is no longer on the
-    volume. Returns a report dict summarizing what happened.
+    Allocations, and deactivate Active allocations for projects no longer in the
+    VAST quota list. Returns a report dict summarizing what happened.
     """
     report = {
         'created': [],
@@ -235,22 +247,15 @@ def sync_vast_resource_allocations(resource):
     )
 
     ldap_conn = LDAPConn() if VASTAUTHORIZER == 'AD' else None
-    found_paths = set()
+    found_projects = set()
 
     for quota_dict in quotas:
         directory_quota = VastDirectoryQuota(quota_dict)
-        found_paths.add(directory_quota.cf_path)
-
-        if not directory_quota.has_hard_limit:
-            if not is_vast_path_ignored(directory_quota.path):
-                logger.warning('No hard quota limit set for %s on %s', directory_quota.path, resource.name)
-                report['no_limit'].append(directory_quota.path)
-            continue
 
         group_name = get_vast_quota_group(quota_dict, ldap_conn)
         if not group_name:
             logger.warning(
-                'Could not resolve an owning group for %s on %s', directory_quota.path, resource.name
+                'Could not resolve an owning group for a quota on %s: %s', resource.name, quota_dict
             )
             report['unresolved_group'].append(directory_quota.path)
             continue
@@ -260,8 +265,19 @@ def sync_vast_resource_allocations(resource):
             report['missing_projects'].append(group_name)
             continue
 
+        # count the project as "seen" before the hard-limit check, so an existing
+        # allocation isn't deactivated just because its quota currently has no
+        # hard limit set
+        found_projects.add(project.title)
+
+        if not directory_quota.has_hard_limit:
+            if not is_vast_path_ignored(directory_quota.path):
+                logger.warning('No hard quota limit set for a quota on %s: %s', resource.name, quota_dict)
+                report['no_limit'].append(directory_quota.path)
+            continue
+
         sync_allocation_for_vast_quota(project, resource, directory_quota, report)
 
-    deactivate_missing_allocations(resource, found_paths, report)
+    deactivate_missing_allocations(resource, found_projects, report)
 
     return report

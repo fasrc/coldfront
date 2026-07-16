@@ -47,32 +47,28 @@ class VastDirectoryQuotaTests(TestCase):
     """Tests for the VastDirectoryQuota wrapper in vast/utils.py"""
 
     def test_has_hard_limit_and_byte_fields(self):
-        quota_dict = make_mock_quota_dict('/holylabs/poisson_lab', TIB, TIB // 2)
+        quota_dict = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
         directory_quota = VastDirectoryQuota(quota_dict)
         self.assertTrue(directory_quota.has_hard_limit)
         self.assertEqual(directory_quota.hard_limit_bytes, TIB)
         self.assertEqual(directory_quota.usage_bytes, TIB // 2)
 
     def test_no_hard_limit(self):
-        quota_dict = make_mock_quota_dict('/holylabs/scratch_tmp', None, 0)
+        quota_dict = make_mock_quota_dict('/holylabs', None, 0)
         directory_quota = VastDirectoryQuota(quota_dict)
         self.assertFalse(directory_quota.has_hard_limit)
-
-    def test_cf_path_strips_leading_slash(self):
-        quota_dict = make_mock_quota_dict('/holylabs/poisson_lab', TIB, 0)
-        self.assertEqual(VastDirectoryQuota(quota_dict).cf_path, 'holylabs/poisson_lab')
 
 
 class GetVastQuotaGroupTests(TestCase):
     """Tests for get_vast_quota_group's identifier-type dispatch in vast/utils.py"""
 
     def test_groupname_identifier_returns_identifier_directly(self):
-        quota_dict = make_mock_quota_dict('/holylabs/poisson_lab', TIB, 0, group_name='poisson_lab')
+        quota_dict = make_mock_quota_dict('/holylabs', TIB, 0, group_name='poisson_lab')
         self.assertEqual(get_vast_quota_group(quota_dict), 'poisson_lab')
 
     def test_gid_identifier_resolves_via_ldap(self):
         quota_dict = {
-            'path': '/holylabs/poisson_lab',
+            'path': '/holylabs',
             'hard_limit': TIB,
             'used_capacity': 0,
             'entity': {'is_group': True, 'identifier_type': 'gid', 'identifier': 1234},
@@ -86,7 +82,7 @@ class GetVastQuotaGroupTests(TestCase):
 
     def test_gid_identifier_unresolved_in_ldap_returns_none(self):
         quota_dict = {
-            'path': '/holylabs/ghost_lab',
+            'path': '/holylabs',
             'hard_limit': TIB,
             'used_capacity': 0,
             'entity': {'is_group': True, 'identifier_type': 'gid', 'identifier': 9999},
@@ -97,7 +93,7 @@ class GetVastQuotaGroupTests(TestCase):
 
     def test_unhandled_identifier_type_returns_none(self):
         quota_dict = {
-            'path': '/holylabs/poisson_lab',
+            'path': '/holylabs',
             'hard_limit': TIB,
             'used_capacity': 0,
             'entity': {'is_group': True, 'identifier_type': 'sid', 'identifier': 'S-1-5-21'},
@@ -106,7 +102,14 @@ class GetVastQuotaGroupTests(TestCase):
 
 
 class SyncVastAllocationsTests(TestCase):
-    """Tests for sync_vast_allocations reconciliation logic in vast/utils.py"""
+    """Tests for sync_vast_allocations reconciliation logic in vast/utils.py
+
+    VAST quotas identify entities by project/group, not by a distinct
+    per-allocation path - every quota under a resource reports the same shared
+    view path (e.g. '/holylabs') regardless of which group it's for. So unlike
+    isilon, allocation identity here is (project, resource), and quota dicts in
+    these tests deliberately all use the same 'path' value to reflect that.
+    """
 
     def setUp(self):
         for status in ('Active', 'Inactive', 'New', 'On Hold', 'In Progress', 'Pending Activation', 'Denied'):
@@ -134,6 +137,13 @@ class SyncVastAllocationsTests(TestCase):
             ),
             value='vast',
         )
+        ResourceAttributeFactory(
+            resource=self.resource,
+            resource_attribute_type=ResourceAttributeTypeFactory(
+                name='url', attribute_type=RAttributeTypeFactory(name='Text'),
+            ),
+            value='holylabs',
+        )
 
     def sync_with_quotas(self, quotas):
         mock_client = MagicMock()
@@ -144,42 +154,53 @@ class SyncVastAllocationsTests(TestCase):
             return sync_vast_resource_allocations(self.resource)
 
     def test_no_hard_limit_warns_and_is_skipped(self):
-        quota = make_mock_quota_dict('/holylabs/scratch_tmp', None, 0)
+        quota = make_mock_quota_dict('/holylabs', None, 0, group_name='poisson_lab')
         report = self.sync_with_quotas([quota])
-        self.assertIn('/holylabs/scratch_tmp', report['no_limit'])
+        self.assertIn('/holylabs', report['no_limit'])
         self.assertEqual(Allocation.objects.count(), 0)
 
     def test_no_hard_limit_ignored_path_not_warned(self):
-        quota = make_mock_quota_dict('/holylabs/scratch_tmp', None, 0)
-        with override_settings(VAST_PATH_IGNORE=['/holylabs/scratch_tmp']):
+        quota = make_mock_quota_dict('/holylabs', None, 0, group_name='poisson_lab')
+        with override_settings(VAST_PATH_IGNORE=['/holylabs']):
             report = self.sync_with_quotas([quota])
         self.assertEqual(report['no_limit'], [])
 
+    def test_no_hard_limit_does_not_deactivate_existing_allocation(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+
+        quota = make_mock_quota_dict('/holylabs', None, 0, group_name='poisson_lab')
+        report = self.sync_with_quotas([quota])
+
+        self.assertEqual(report['deactivated'], [])
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status.name, 'Active')
+
     def test_group_without_matching_project_is_reported(self):
-        quota = make_mock_quota_dict('/holylabs/ghost_lab', TIB, 0, group_name='ghost_lab')
+        quota = make_mock_quota_dict('/holylabs', TIB, 0, group_name='ghost_lab')
         report = self.sync_with_quotas([quota])
         self.assertIn('ghost_lab', report['missing_projects'])
         self.assertEqual(Allocation.objects.count(), 0)
 
     def test_unresolved_group_name_is_reported_not_crashed(self):
         quota = {
-            'path': '/holylabs/orphaned_dir',
+            'path': '/holylabs',
             'hard_limit': TIB,
             'used_capacity': 0,
             'entity': {'is_group': True, 'identifier_type': 'sid', 'identifier': 'S-1-5-21'},
         }
         report = self.sync_with_quotas([quota])
-        self.assertIn('/holylabs/orphaned_dir', report['unresolved_group'])
+        self.assertIn('/holylabs', report['unresolved_group'])
         self.assertEqual(report['missing_projects'], [])
 
     def test_new_allocation_created_when_none_exists(self):
-        quota = make_mock_quota_dict('/holylabs/poisson_lab', TIB, TIB // 2)
+        quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
         report = self.sync_with_quotas([quota])
 
-        self.assertIn('holylabs/poisson_lab', report['created'])
+        self.assertIn('poisson_lab', report['created'])
         allocation = Allocation.objects.get(project=self.project)
         self.assertEqual(allocation.status.name, 'Active')
-        self.assertEqual(allocation.path, 'holylabs/poisson_lab')
+        self.assertEqual(allocation.path, 'C/poisson_lab')
         self.assertEqual(
             int(float(allocation.get_attribute('Quota_In_Bytes', typed=False))), TIB
         )
@@ -191,13 +212,13 @@ class SyncVastAllocationsTests(TestCase):
         allocation = AllocationFactory(project=self.project, status__name='Active')
         allocation.resources.add(self.resource)
         AllocationAttributeFactory(
-            allocation=allocation, allocation_attribute_type=self.subdir_type, value='holylabs/poisson_lab',
+            allocation=allocation, allocation_attribute_type=self.subdir_type, value='C/poisson_lab',
         )
 
-        quota = make_mock_quota_dict('/holylabs/poisson_lab', TIB, TIB // 2)
+        quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
         report = self.sync_with_quotas([quota])
 
-        self.assertIn('holylabs/poisson_lab', report['updated'])
+        self.assertIn('poisson_lab', report['updated'])
         self.assertEqual(Allocation.objects.filter(project=self.project).count(), 1)
         allocation.refresh_from_db()
         self.assertEqual(
@@ -213,14 +234,14 @@ class SyncVastAllocationsTests(TestCase):
             allocation=pending, allocation_attribute_type=self.quota_tib_type, value=1.0,
         )
 
-        quota = make_mock_quota_dict('/holylabs/poisson_lab', TIB, TIB // 2)
+        quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
         report = self.sync_with_quotas([quota])
 
-        self.assertIn('holylabs/poisson_lab', report['activated'])
+        self.assertIn('poisson_lab', report['activated'])
         self.assertEqual(Allocation.objects.filter(project=self.project).count(), 1)
         pending.refresh_from_db()
         self.assertEqual(pending.status.name, 'Active')
-        self.assertEqual(pending.path, 'holylabs/poisson_lab')
+        self.assertEqual(pending.path, 'C/poisson_lab')
         self.assertEqual(
             pending.get_attribute('RequiresPayment', typed=False), str(self.resource.requires_payment)
         )
@@ -238,11 +259,11 @@ class SyncVastAllocationsTests(TestCase):
             allocation=pending, allocation_attribute_type=self.quota_tib_type, value=1.0,
         )
 
-        quota = make_mock_quota_dict('/holylabs/poisson_lab', TIB, TIB // 2)
+        quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
         report = self.sync_with_quotas([quota])
 
         # the tier-attached request must NOT be matched - a new allocation is created instead
-        self.assertIn('holylabs/poisson_lab', report['created'])
+        self.assertIn('poisson_lab', report['created'])
         pending.refresh_from_db()
         self.assertEqual(pending.status.name, 'New')
         self.assertEqual(Allocation.objects.filter(project=self.project).count(), 2)
@@ -264,43 +285,40 @@ class SyncVastAllocationsTests(TestCase):
         self.assertEqual(bytes_attr.history.count(), history_count)
 
     def test_is_vast_path_ignored(self):
-        self.assertFalse(is_vast_path_ignored('/holylabs/poisson_lab'))
-        with override_settings(VAST_PATH_IGNORE=['/holylabs/poisson_lab']):
-            self.assertTrue(is_vast_path_ignored('/holylabs/poisson_lab'))
+        self.assertFalse(is_vast_path_ignored('/holylabs'))
+        with override_settings(VAST_PATH_IGNORE=['/holylabs']):
+            self.assertTrue(is_vast_path_ignored('/holylabs'))
 
     def test_active_allocation_missing_from_volume_is_deactivated(self):
-        allocation = AllocationFactory(project=self.project, status__name='Active')
+        ghost_project = ProjectFactory(title='ghost_lab')
+        allocation = AllocationFactory(project=ghost_project, status__name='Active')
         allocation.resources.add(self.resource)
-        AllocationAttributeFactory(
-            allocation=allocation, allocation_attribute_type=self.subdir_type, value='holylabs/ghost_lab',
-        )
 
-        quota = make_mock_quota_dict('/holylabs/poisson_lab', TIB, TIB // 2)
+        # this run's quota list only contains poisson_lab, not ghost_lab
+        quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2, group_name='poisson_lab')
         report = self.sync_with_quotas([quota])
 
-        self.assertIn('holylabs/ghost_lab', report['deactivated'])
+        self.assertIn('ghost_lab', report['deactivated'])
         allocation.refresh_from_db()
         self.assertEqual(allocation.status.name, 'Inactive')
 
-    def test_active_allocation_still_on_volume_is_not_deactivated(self):
+    def test_active_allocation_still_in_quota_list_is_not_deactivated(self):
         allocation = AllocationFactory(project=self.project, status__name='Active')
         allocation.resources.add(self.resource)
-        AllocationAttributeFactory(
-            allocation=allocation, allocation_attribute_type=self.subdir_type, value='holylabs/poisson_lab',
-        )
 
-        # quota still exists on the volume, just with no hard limit set
-        quota = make_mock_quota_dict('/holylabs/poisson_lab', None, 0)
+        quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2, group_name='poisson_lab')
         report = self.sync_with_quotas([quota])
 
         self.assertEqual(report['deactivated'], [])
         allocation.refresh_from_db()
         self.assertEqual(allocation.status.name, 'Active')
 
-    def test_active_allocation_with_no_path_is_not_deactivated(self):
+    def test_active_allocation_on_other_resource_is_not_deactivated(self):
+        other_resource = ResourceFactory(name='vast-otherlabs', resource_type__name='Storage')
         allocation = AllocationFactory(project=self.project, status__name='Active')
-        allocation.resources.add(self.resource)
+        allocation.resources.add(other_resource)
 
+        # empty quota list for self.resource shouldn't touch allocations on a different resource
         report = self.sync_with_quotas([])
 
         self.assertEqual(report['deactivated'], [])
