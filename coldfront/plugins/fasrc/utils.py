@@ -204,9 +204,8 @@ class AllTheThingsConn:
         ----------
         volumes : List of volume names to collect. Optional, default None.
         """
-        logger = logging.getLogger('coldfront.import_quotas')
         query = ATTAllocationQuery()
-        query.produce_query_statement('isilon', volumes=self.volumes)
+        # query.produce_query_statement('isilon', volumes=self.volumes)
         query.produce_query_statement('quota', volumes=self.volumes)
         query.produce_query_statement('volume', volumes=self.volumes)
         query.produce_query_statement('tapeallocation')
@@ -216,7 +215,6 @@ class AllTheThingsConn:
 
 
 def matched_dict_processing(allocation, data_dicts, paired_allocs, log_message):
-    logger = logging.getLogger('coldfront.import_quotas')
     if len(data_dicts) == 1:
         logger.debug(log_message)
         paired_allocs[allocation] = data_dicts[0]
@@ -228,7 +226,6 @@ def matched_dict_processing(allocation, data_dicts, paired_allocs, log_message):
 
 def pair_allocations_data(project, quota_dicts):
     """pair allocations with usage dicts"""
-    logger = logging.getLogger('coldfront.import_quotas')
     allocs = project.allocation_set.filter(
         status__name__in=['Active','Pending Deactivation'],
         resources__resource_type__name='Storage'
@@ -259,7 +256,6 @@ def pair_allocations_data(project, quota_dicts):
 def push_quota_data(result_file):
     """update group quota & usage values in Coldfront from a JSON of quota data.
     """
-    logger = logging.getLogger('coldfront.import_quotas')
     errored_allocations = {}
     missing_allocations = []
     result_json = read_json(result_file)
@@ -332,7 +328,6 @@ def match_entries_with_projects(result_json):
 
 
 def pull_push_quota_data(volumes=None):
-    logger = logging.getLogger('coldfront.import_quotas')
     att_data = QuotaDataPuller(volumes=volumes).pull('ATTQuery')
     resp_json_by_lab = {entry['lab']:[] for entry in att_data}
     for entry in att_data:

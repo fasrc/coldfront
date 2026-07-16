@@ -1,12 +1,33 @@
 '''tests for Isilon plugin'''
 
+from unittest.mock import MagicMock, patch
+
+from django.test import TestCase, override_settings
+
 from coldfront.core.allocation.models import Allocation, AllocationStatusChoice
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
+from coldfront.core.test_helpers.factories import (
+    AAttributeTypeFactory,
+    AllocationAttributeFactory,
+    AllocationAttributeTypeFactory,
+    AllocationFactory,
+    AllocationStatusChoiceFactory,
+    ProjectFactory,
+    RAttributeTypeFactory,
+    ResourceAttributeFactory,
+    ResourceAttributeTypeFactory,
+    ResourceFactory,
+)
 from coldfront.plugins.isilon.utils import (
     IsilonConnection,
+    IsilonDirectoryQuota,
     create_isilon_allocation_quota,
+    get_directory_group,
     get_isilon_url,
+    is_isilon_path_ignored,
+    sync_isilon_resource_allocations,
+    update_allocation_quota_and_usage,
 )
 
 
@@ -64,4 +85,313 @@ def test_create_isilon_allocation_quota():
 
         # delete the directory
         isilon_connection.namespace_client.delete_directory(path)
+
+
+def make_mock_quota(path, hard_bytes, usage_bytes):
+    """Build a MagicMock standing in for an isilon_sdk SmartQuota object."""
+    quota = MagicMock()
+    quota.path = path
+    quota.thresholds.hard = hard_bytes
+    quota.usage.fslogical = usage_bytes
+    return quota
+
+
+TIB = 1024**4
+
+
+class IsilonDirectoryQuotaTests(TestCase):
+    """Tests for the IsilonDirectoryQuota wrapper in isilon/utils.py"""
+
+    def test_has_hard_limit_and_byte_fields(self):
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        directory_quota = IsilonDirectoryQuota(quota)
+        self.assertTrue(directory_quota.has_hard_limit)
+        self.assertEqual(directory_quota.hard_limit_bytes, TIB)
+        self.assertEqual(directory_quota.usage_bytes, TIB // 2)
+
+    def test_no_hard_limit(self):
+        quota = make_mock_quota('/ifs/rc_labs/scratch_tmp', None, 0)
+        directory_quota = IsilonDirectoryQuota(quota)
+        self.assertFalse(directory_quota.has_hard_limit)
+
+    def test_cf_path_strips_leading_ifs(self):
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, 0)
+        self.assertEqual(IsilonDirectoryQuota(quota).cf_path, 'rc_labs/poisson_lab')
+
+    def test_cf_path_without_leading_ifs(self):
+        quota = make_mock_quota('rc_fasse_labs/poisson_lab', TIB, 0)
+        self.assertEqual(IsilonDirectoryQuota(quota).cf_path, 'rc_fasse_labs/poisson_lab')
+
+
+class GetDirectoryGroupTests(TestCase):
+    """Tests for get_directory_group's domain-prefix stripping in isilon/utils.py"""
+
+    def test_strips_domain_prefix(self):
+        directory_quota = IsilonDirectoryQuota(make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, 0))
+        mock_conn = MagicMock()
+        mock_conn.namespace_client.get_acl.return_value.group.name = 'RC\\poisson_lab'
+        self.assertEqual(get_directory_group(mock_conn, directory_quota), 'poisson_lab')
+
+    def test_leaves_unqualified_name_unchanged(self):
+        directory_quota = IsilonDirectoryQuota(make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, 0))
+        mock_conn = MagicMock()
+        mock_conn.namespace_client.get_acl.return_value.group.name = 'poisson_lab'
+        self.assertEqual(get_directory_group(mock_conn, directory_quota), 'poisson_lab')
+
+    def test_none_group_name_stays_none(self):
+        directory_quota = IsilonDirectoryQuota(make_mock_quota('/ifs/rc_labs/orphaned_dir', TIB, 0))
+        mock_conn = MagicMock()
+        mock_conn.namespace_client.get_acl.return_value.group.name = None
+        self.assertIsNone(get_directory_group(mock_conn, directory_quota))
+
+
+class SyncIsilonAllocationsTests(TestCase):
+    """Tests for sync_isilon_allocations reconciliation logic in isilon/utils.py"""
+
+    def setUp(self):
+        for status in ('Active', 'Inactive', 'New', 'On Hold', 'In Progress', 'Pending Activation', 'Denied'):
+            AllocationStatusChoiceFactory(name=status)
+
+        self.subdir_type = AllocationAttributeTypeFactory(
+            name='Subdirectory', attribute_type=AAttributeTypeFactory(name='Text'), has_usage=False,
+        )
+        self.quota_bytes_type = AllocationAttributeTypeFactory(
+            name='Quota_In_Bytes', attribute_type=AAttributeTypeFactory(name='Int'), has_usage=True,
+        )
+        self.quota_tib_type = AllocationAttributeTypeFactory(
+            name='Storage Quota (TiB)', attribute_type=AAttributeTypeFactory(name='Float'), has_usage=True,
+        )
+        self.requires_payment_type = AllocationAttributeTypeFactory(
+            name='RequiresPayment', attribute_type=AAttributeTypeFactory(name='Yes/No'), has_usage=False,
+        )
+
+        self.project = ProjectFactory(title='poisson_lab')
+        self.resource = ResourceFactory(name='isilon01', resource_type__name='Storage')
+        ResourceAttributeFactory(
+            resource=self.resource,
+            resource_attribute_type=ResourceAttributeTypeFactory(
+                name='storage_protocol', attribute_type=RAttributeTypeFactory(name='Text'),
+            ),
+            value='isilon',
+        )
+        ResourceAttributeFactory(
+            resource=self.resource,
+            resource_attribute_type=ResourceAttributeTypeFactory(
+                name='url', attribute_type=RAttributeTypeFactory(name='Text'),
+            ),
+            value='https://isilon01.example.edu:8080',
+        )
+
+    def sync_with_quotas(self, quotas, group_name='poisson_lab'):
+        mock_conn = MagicMock()
+        mock_conn.quota_client.list_quota_quotas.return_value.quotas = quotas
+        mock_conn.namespace_client.get_acl.return_value.group.name = group_name
+        with patch('coldfront.plugins.isilon.utils.IsilonConnection', return_value=mock_conn):
+            return sync_isilon_resource_allocations(self.resource)
+
+    def test_no_hard_limit_warns_and_is_skipped(self):
+        quota = make_mock_quota('/ifs/rc_labs/scratch_tmp', None, 0)
+        report = self.sync_with_quotas([quota])
+        self.assertIn('/ifs/rc_labs/scratch_tmp', report['no_limit'])
+        self.assertEqual(Allocation.objects.count(), 0)
+
+    @override_settings(ISILON_PATH_IGNORE=['/ifs/rc_labs/scratch_tmp'])
+    def test_no_hard_limit_ignored_path_not_warned(self):
+        quota = make_mock_quota('/ifs/rc_labs/scratch_tmp', None, 0)
+        report = self.sync_with_quotas([quota])
+        self.assertNotIn('/ifs/rc_labs/scratch_tmp', report['no_limit'])
+
+    def test_group_without_matching_project_is_reported(self):
+        quota = make_mock_quota('/ifs/rc_labs/ghost_lab', TIB, 0)
+        report = self.sync_with_quotas([quota], group_name='ghost_lab')
+        self.assertIn('ghost_lab', report['missing_projects'])
+        self.assertEqual(Allocation.objects.count(), 0)
+
+    def test_unresolved_group_name_is_reported_not_crashed(self):
+        quota = make_mock_quota('/ifs/rc_labs/orphaned_dir', TIB, 0)
+        report = self.sync_with_quotas([quota], group_name=None)
+        self.assertIn('/ifs/rc_labs/orphaned_dir', report['unresolved_group'])
+        self.assertEqual(report['missing_projects'], [])
+        self.assertEqual(Allocation.objects.count(), 0)
+
+    def test_new_allocation_created_when_none_exists(self):
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('rc_labs/poisson_lab', report['created'])
+        allocation = Allocation.objects.get(project=self.project)
+        self.assertEqual(allocation.status.name, 'Active')
+        self.assertEqual(allocation.path, 'rc_labs/poisson_lab')
+        self.assertEqual(
+            int(float(allocation.get_attribute('Quota_In_Bytes', typed=False))), TIB
+        )
+        self.assertEqual(
+            allocation.get_attribute('RequiresPayment', typed=False), str(self.resource.requires_payment)
+        )
+
+    def test_new_allocation_requires_payment_matches_paid_resource(self):
+        # bypass Resource's post_save signal (unrelated ifx billing side effect) via .update()
+        Resource.objects.filter(pk=self.resource.pk).update(requires_payment=True)
+        self.resource.refresh_from_db()
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        self.sync_with_quotas([quota])
+
+        allocation = Allocation.objects.get(project=self.project)
+        self.assertEqual(allocation.get_attribute('RequiresPayment', typed=False), 'True')
+
+    def test_domain_qualified_group_name_is_stripped_before_project_match(self):
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota], group_name='RC\\poisson_lab')
+
+        self.assertIn('rc_labs/poisson_lab', report['created'])
+        self.assertEqual(report['missing_projects'], [])
+        self.assertTrue(Allocation.objects.filter(project=self.project).exists())
+
+    def test_existing_allocation_is_updated_not_duplicated(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=allocation, allocation_attribute_type=self.subdir_type, value='rc_labs/poisson_lab',
+        )
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 4)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('rc_labs/poisson_lab', report['updated'])
+        self.assertEqual(Allocation.objects.filter(project=self.project).count(), 1)
+        allocation.refresh_from_db()
+        self.assertEqual(
+            int(float(allocation.get_attribute('Quota_In_Bytes', typed=False))), TIB
+        )
+
+    def test_pending_allocation_request_is_activated(self):
+        pending = AllocationFactory(
+            project=self.project, status__name='New', justification='requesting storage',
+        )
+        pending.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=pending, allocation_attribute_type=self.quota_tib_type, value=1.0,
+        )
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('rc_labs/poisson_lab', report['activated'])
+        self.assertEqual(Allocation.objects.filter(project=self.project).count(), 1)
+        pending.refresh_from_db()
+        self.assertEqual(pending.status.name, 'Active')
+        self.assertEqual(pending.path, 'rc_labs/poisson_lab')
+        self.assertEqual(
+            pending.get_attribute('RequiresPayment', typed=False), str(self.resource.requires_payment)
+        )
+
+    def test_activation_overwrites_stale_requires_payment_value(self):
+        pending = AllocationFactory(
+            project=self.project, status__name='New', justification='requesting storage',
+        )
+        pending.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=pending, allocation_attribute_type=self.quota_tib_type, value=1.0,
+        )
+        AllocationAttributeFactory(
+            allocation=pending, allocation_attribute_type=self.requires_payment_type, value=False,
+        )
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        self.sync_with_quotas([quota])
+
+        pending.refresh_from_db()
+        self.assertEqual(
+            pending.allocationattribute_set.filter(
+                allocation_attribute_type=self.requires_payment_type
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            pending.get_attribute('RequiresPayment', typed=False), str(self.resource.requires_payment)
+        )
+
+    def test_pending_request_on_tier_resource_is_activated_and_repointed(self):
+        tier_resource = ResourceFactory(name='Tier 1', resource_type__name='Storage Tier')
+        self.resource.parent_resource = tier_resource
+        self.resource.save()
+
+        pending = AllocationFactory(
+            project=self.project, status__name='New', justification='requesting tier 1 storage',
+        )
+        pending.resources.add(tier_resource)
+        AllocationAttributeFactory(
+            allocation=pending, allocation_attribute_type=self.quota_tib_type, value=1.0,
+        )
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('rc_labs/poisson_lab', report['activated'])
+        self.assertEqual(Allocation.objects.filter(project=self.project).count(), 1)
+        pending.refresh_from_db()
+        self.assertEqual(pending.status.name, 'Active')
+        self.assertEqual(pending.path, 'rc_labs/poisson_lab')
+        self.assertEqual(list(pending.resources.all()), [self.resource])
+
+    def test_update_allocation_quota_and_usage_skips_rewrite_when_unchanged(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+
+        changed = update_allocation_quota_and_usage(allocation, TIB, 100)
+        self.assertTrue(changed)
+        bytes_attr = allocation.allocationattribute_set.get(allocation_attribute_type=self.quota_bytes_type)
+        history_count = bytes_attr.history.count()
+
+        changed_again = update_allocation_quota_and_usage(allocation, TIB, 200)
+        self.assertFalse(changed_again)
+        bytes_attr.refresh_from_db()
+        self.assertEqual(int(float(bytes_attr.value)), TIB)
+        self.assertEqual(bytes_attr.allocationattributeusage.value, 200)
+        self.assertEqual(bytes_attr.history.count(), history_count)
+
+    def test_is_isilon_path_ignored(self):
+        self.assertFalse(is_isilon_path_ignored('/ifs/rc_labs/poisson_lab'))
+        with override_settings(ISILON_PATH_IGNORE=['/ifs/rc_labs/poisson_lab']):
+            self.assertTrue(is_isilon_path_ignored('/ifs/rc_labs/poisson_lab'))
+
+    def test_active_allocation_missing_from_volume_is_deactivated(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=allocation, allocation_attribute_type=self.subdir_type, value='rc_labs/ghost_lab',
+        )
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('rc_labs/ghost_lab', report['deactivated'])
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status.name, 'Inactive')
+
+    def test_active_allocation_still_on_volume_is_not_deactivated(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=allocation, allocation_attribute_type=self.subdir_type, value='rc_labs/poisson_lab',
+        )
+
+        # quota still exists on the volume, just with no hard limit set
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', None, 0)
+        report = self.sync_with_quotas([quota])
+
+        self.assertEqual(report['deactivated'], [])
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status.name, 'Active')
+
+    def test_active_allocation_with_no_path_is_not_deactivated(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+
+        report = self.sync_with_quotas([])
+
+        self.assertEqual(report['deactivated'], [])
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status.name, 'Active')
 
