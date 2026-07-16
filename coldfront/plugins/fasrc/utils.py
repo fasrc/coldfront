@@ -205,7 +205,7 @@ class AllTheThingsConn:
         volumes : List of volume names to collect. Optional, default None.
         """
         query = ATTAllocationQuery()
-        query.produce_query_statement('isilon', volumes=self.volumes)
+        # query.produce_query_statement('isilon', volumes=self.volumes)
         query.produce_query_statement('quota', volumes=self.volumes)
         query.produce_query_statement('volume', volumes=self.volumes)
         query.produce_query_statement('tapeallocation')
