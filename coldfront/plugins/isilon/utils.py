@@ -695,14 +695,36 @@ def sync_allocation_for_quota(project, resource, directory_quota, report):
     return new_allocation
 
 
+def deactivate_missing_allocations(resource, found_paths, report):
+    """Deactivate Active allocations on `resource` whose Subdirectory path is no
+    longer among the volume's quotas. Allocations with no recorded path are left
+    alone, since absence from the volume isn't meaningful for them.
+    """
+    inactive_status = AllocationStatusChoice.objects.get(name='Inactive')
+    active_allocations = Allocation.objects.filter(resources=resource, status__name='Active')
+    for allocation in active_allocations:
+        path = allocation.path
+        if not path or path in found_paths:
+            continue
+        allocation.status = inactive_status
+        allocation.save()
+        logger.warning(
+            'Deactivating allocation %s on %s - path %s not found on volume',
+            allocation.pk, resource.name, path,
+        )
+        report['deactivated'].append(path)
+
+
 def sync_isilon_resource_allocations(resource):
     """Sync all Directory smartquotas with a hard limit on `resource` into ColdFront
-    Allocations. Returns a report dict summarizing what happened.
+    Allocations, and deactivate Active allocations whose path is no longer on the
+    volume. Returns a report dict summarizing what happened.
     """
     report = {
         'created': [],
         'activated': [],
         'updated': [],
+        'deactivated': [],
         'missing_projects': [],
         'unresolved_group': [],
         'no_limit': [],
@@ -711,9 +733,12 @@ def sync_isilon_resource_allocations(resource):
     isilon_conn = IsilonConnection(isilon_url)
 
     quotas = isilon_conn.quota_client.list_quota_quotas(type='directory').quotas
+    found_paths = set()
 
     for quota in quotas:
         directory_quota = IsilonDirectoryQuota(quota)
+        found_paths.add(directory_quota.cf_path)
+
         if not directory_quota.has_hard_limit:
             if not is_isilon_path_ignored(directory_quota.path):
                 logger.warning('No hard quota limit set for %s on %s', directory_quota.path, resource.name)
@@ -734,5 +759,7 @@ def sync_isilon_resource_allocations(resource):
             continue
 
         sync_allocation_for_quota(project, resource, directory_quota, report)
+
+    deactivate_missing_allocations(resource, found_paths, report)
 
     return report

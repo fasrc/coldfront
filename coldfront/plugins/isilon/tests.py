@@ -149,7 +149,7 @@ class SyncIsilonAllocationsTests(TestCase):
     """Tests for sync_isilon_allocations reconciliation logic in isilon/utils.py"""
 
     def setUp(self):
-        for status in ('Active', 'New', 'On Hold', 'In Progress', 'Pending Activation', 'Denied'):
+        for status in ('Active', 'Inactive', 'New', 'On Hold', 'In Progress', 'Pending Activation', 'Denied'):
             AllocationStatusChoiceFactory(name=status)
 
         self.subdir_type = AllocationAttributeTypeFactory(
@@ -355,4 +355,43 @@ class SyncIsilonAllocationsTests(TestCase):
         self.assertFalse(is_isilon_path_ignored('/ifs/rc_labs/poisson_lab'))
         with override_settings(ISILON_PATH_IGNORE=['/ifs/rc_labs/poisson_lab']):
             self.assertTrue(is_isilon_path_ignored('/ifs/rc_labs/poisson_lab'))
+
+    def test_active_allocation_missing_from_volume_is_deactivated(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=allocation, allocation_attribute_type=self.subdir_type, value='rc_labs/ghost_lab',
+        )
+
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('rc_labs/ghost_lab', report['deactivated'])
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status.name, 'Inactive')
+
+    def test_active_allocation_still_on_volume_is_not_deactivated(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=allocation, allocation_attribute_type=self.subdir_type, value='rc_labs/poisson_lab',
+        )
+
+        # quota still exists on the volume, just with no hard limit set
+        quota = make_mock_quota('/ifs/rc_labs/poisson_lab', None, 0)
+        report = self.sync_with_quotas([quota])
+
+        self.assertEqual(report['deactivated'], [])
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status.name, 'Active')
+
+    def test_active_allocation_with_no_path_is_not_deactivated(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+
+        report = self.sync_with_quotas([])
+
+        self.assertEqual(report['deactivated'], [])
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status.name, 'Active')
 
