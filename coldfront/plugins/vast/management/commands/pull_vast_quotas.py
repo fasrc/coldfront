@@ -6,7 +6,7 @@ from coldfront.core.allocation.models import Allocation, AllocationStatusChoice,
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
 from coldfront.config.plugins.vast import VASTAUTHORIZER
-from coldfront.plugins.vast.utils import client
+from coldfront.plugins.vast.utils import client, VastDirectoryQuota, update_allocation_quota_and_usage
 
 if VASTAUTHORIZER == 'AD':
     from coldfront.plugins.ldap.utils import LDAPConn
@@ -29,8 +29,6 @@ class Command(BaseCommand):
         # translate gids to AD group names via the ldap plugin
         ad = LDAPConn()
         vast_resource = Resource.objects.get(name=f'vast-{resource_name}')
-        quota_bytes_aa_type = AllocationAttributeType.objects.get(name='Quota_In_Bytes')
-        quota_tib_aa_type = AllocationAttributeType.objects.get(name='Storage Quota (TiB)')
         path_aa_type = AllocationAttributeType.objects.get(name='Subdirectory')
         group_names = []
         for quota_dict in quotas:
@@ -51,8 +49,7 @@ class Command(BaseCommand):
                     continue
                 quota_dict['entity']['name'] = group_name
                 group_names.append(group_name)
-                quota_bytes = quota_dict['hard_limit']
-                usage_bytes = quota_dict['used_capacity']
+                directory_quota = VastDirectoryQuota(quota_dict)
                 try:
                     allocation = Allocation.objects.get(
                         project=Project.objects.get(title=quota_dict['entity']['name']),
@@ -61,6 +58,7 @@ class Command(BaseCommand):
                 except Allocation.DoesNotExist:
                     allocation = Allocation.objects.create(
                         project=Project.objects.get(title=quota_dict['entity']['name']),
+                        is_changeable=True,
                         status=AllocationStatusChoice.objects.get(name="Active")
                     )
                     allocation.resources.add(vast_resource)
@@ -69,25 +67,13 @@ class Command(BaseCommand):
                     print(f"Project {quota_dict['entity']['name']} does not exist.")
                     logger.error("Project %s does not exist.", quota_dict['entity']['name'])
                     continue
-                quota_bytes_attr, created = AllocationAttribute.objects.update_or_create(
-                    allocation=allocation,
-                    allocation_attribute_type=quota_bytes_aa_type,
-                    defaults={'value': quota_bytes}
+                update_allocation_quota_and_usage(
+                    allocation, directory_quota.hard_limit_bytes, directory_quota.usage_bytes
                 )
-                quota_bytes_attr.allocationattributeusage.value = usage_bytes
-                quota_bytes_attr.allocationattributeusage.save()
-                quota_tib = quota_bytes / 1024 / 1024 / 1024 / 1024
-                quota_tib_attr, created = AllocationAttribute.objects.update_or_create(
-                    allocation=allocation,
-                    allocation_attribute_type=quota_tib_aa_type,
-                    defaults={'value': quota_tib}
-                )
-                if usage_bytes > 1000:
-                    usage_tib = usage_bytes / 1024 / 1024 / 1024 / 1024
-                else:
-                    usage_tib = 0
-                quota_tib_attr.allocationattributeusage.value = usage_tib
-                quota_tib_attr.allocationattributeusage.save()
+                if directory_quota.usage_bytes <= 1000:
+                    # preserve the old snap-to-zero threshold: below this, treat TiB usage as 0
+                    # rather than a near-zero fraction
+                    allocation.set_usage('Storage Quota (TiB)', 0)
                 if not allocation.path:
                     AllocationAttribute.objects.get_or_create(
                             allocation=allocation,
