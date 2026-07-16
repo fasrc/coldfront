@@ -7,5 +7,6 @@ VASTTOKEN = ENV.str('VASTTOKEN', default=None)
 VASTADDRESS = ENV.str('VASTADDRESS', default=None)
 VASTAPI = ENV.str('VASTAPI', default='v6')
 VASTAUTHORIZER = ENV.str('VASTAUTHORIZER', default='AD')
+VAST_PATH_IGNORE = ENV.list('VAST_PATH_IGNORE', default=[])
 
 INSTALLED_APPS += [ 'coldfront.plugins.vast' ]

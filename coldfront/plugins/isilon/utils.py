@@ -680,6 +680,7 @@ def sync_allocation_for_quota(project, resource, directory_quota, report):
         project=project,
         status=AllocationStatusChoice.objects.get(name='Active'),
         start_date=timezone.now().date(),
+        is_changeable=True,
         justification=f'Auto-created by sync_isilon_allocations for {project.title} at {cf_path}',
     )
     new_allocation.resources.add(resource)
