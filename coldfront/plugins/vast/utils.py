@@ -21,11 +21,21 @@ if VASTAUTHORIZER == 'AD':
     except ImportError:
         logger.warning("no ldap plugin; vast group resolution will have issues")
 
-client = VASTClient(
-    address=VASTADDRESS,
-    user=VASTUSER,
-    password=VASTPASS,
-)
+class _LazyVastClient:
+    """Defers VASTClient construction (which requires live VASTUSER/VASTPASS/
+    VASTADDRESS credentials) until first use, so importing this module - needed
+    just to discover/import vast/tests.py under `manage.py test` - doesn't
+    require those credentials to be configured.
+    """
+    _instance = None
+
+    def __getattr__(self, name):
+        if self._instance is None:
+            self._instance = VASTClient(address=VASTADDRESS, user=VASTUSER, password=VASTPASS)
+        return getattr(self._instance, name)
+
+
+client = _LazyVastClient()
 
 
 class VastDirectoryQuota:
