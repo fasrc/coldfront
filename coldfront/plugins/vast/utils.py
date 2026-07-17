@@ -47,8 +47,7 @@ class VastDirectoryQuota:
     against one shared view path - `path` does not vary per group/project (every
     quota under a resource reports the same top-level path), so it is NOT a valid
     per-allocation identity key. Allocation identity for VAST is (project,
-    resource), matching pull_vast_quotas.py's original model - `path` here is
-    kept only for logging.
+    resource); `path` here is kept only for logging.
     """
     def __init__(self, quota_dict):
         self.quota_dict = quota_dict
@@ -166,10 +165,10 @@ def sync_allocation_for_vast_quota(project, resource, resource_url, directory_qu
     pending allocation request, or create a new Allocation.
 
     Identity here is (project, resource), NOT the quota's path - see
-    VastDirectoryQuota's docstring for why. A Subdirectory attribute is still set
-    (for display/consistency with pull_vast_quotas.py) using the same synthetic
-    'C/{project.title}' convention, but only when one isn't already present, and
-    it's never used to look allocations up.
+    VastDirectoryQuota's docstring for why. A Subdirectory attribute is still
+    set, using the synthetic 'C/{project.title}' path convention (matching the
+    real on-disk layout under each VAST view), but only when one isn't already
+    present, and it's never used to look allocations up.
 
     A new allocation is only created/activated if the project's directory is
     confirmed present on VAST (via folders.stat_path) - an existing Active

@@ -143,10 +143,9 @@ class SyncVastAllocationsTests(TestCase):
     per-allocation path - every quota under a resource reports the same shared
     view path (e.g. '/holylabs') regardless of which group it's for. So unlike
     isilon, allocation identity here is (project, resource); a project's
-    directory is expected at '/holylabs/C/{project.title}', matching
-    pull_vast_quotas.py's legacy path convention, and its presence there
-    (checked via folders.stat_path) gates both allocation creation/activation
-    and deactivation.
+    directory is expected at '/holylabs/C/{project.title}', and its presence
+    there (checked via folders.stat_path) gates both allocation
+    creation/activation and deactivation.
     """
 
     def setUp(self):
