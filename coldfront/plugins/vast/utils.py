@@ -1,7 +1,7 @@
 import logging
 
 from django.utils import timezone
-from vastpy import VASTClient
+from vastpy import VASTClient, RESTFailure
 
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.allocation.models import (
@@ -63,6 +63,22 @@ class VastDirectoryQuota:
 def is_vast_path_ignored(path):
     """Return True if `path` is in the VAST_PATH_IGNORE setting."""
     return path in import_from_settings('VAST_PATH_IGNORE', [])
+
+
+def get_vast_directory_stat(path):
+    """Check whether `path` exists on the VAST filesystem via folders.stat_path.
+
+    Returns the stat dict if the directory is present, or None if VAST reports
+    it as not found. Any other failure (auth, network, etc.) is re-raised
+    rather than treated as "absent", so a transient API problem can never be
+    mistaken for a missing directory and wrongly skip/deactivate an allocation.
+    """
+    try:
+        return client.folders.stat_path.post(path=path)
+    except RESTFailure as e:
+        if e.status == 503:
+            return None
+        raise
 
 
 def get_vast_quota_group(quota_dict, ldap_conn=None):
@@ -144,7 +160,7 @@ def update_allocation_quota_and_usage(allocation, quota_bytes, usage_bytes):
     return quota_changed
 
 
-def sync_allocation_for_vast_quota(project, resource, directory_quota, report):
+def sync_allocation_for_vast_quota(project, resource, resource_url, directory_quota, report):
     """Reconcile a single VAST userquota (already matched to `project`) with
     ColdFront allocation state: update an existing Allocation, activate a matching
     pending allocation request, or create a new Allocation.
@@ -154,6 +170,11 @@ def sync_allocation_for_vast_quota(project, resource, directory_quota, report):
     (for display/consistency with pull_vast_quotas.py) using the same synthetic
     'C/{project.title}' convention, but only when one isn't already present, and
     it's never used to look allocations up.
+
+    A new allocation is only created/activated if the project's directory is
+    confirmed present on VAST (via folders.stat_path) - an existing Active
+    allocation whose directory has since disappeared is left for
+    deactivate_allocations_with_missing_directory to catch, not handled here.
     """
     subdir_type = AllocationAttributeType.objects.get(name='Subdirectory')
     requires_payment_type = AllocationAttributeType.objects.get(name='RequiresPayment')
@@ -174,6 +195,14 @@ def sync_allocation_for_vast_quota(project, resource, directory_quota, report):
             )
         report['updated'].append(project.title)
         return existing_allocation
+
+    if get_vast_directory_stat(f'/{resource_url}/{placeholder_path}') is None:
+        logger.warning(
+            'Directory %s not found on %s for project %s - not creating an allocation',
+            placeholder_path, resource.name, project.title,
+        )
+        report['directory_missing'].append(project.title)
+        return None
 
     pending_allocation = find_matching_pending_allocation(project, resource, quota_bytes)
     if pending_allocation:
@@ -216,30 +245,35 @@ def sync_allocation_for_vast_quota(project, resource, directory_quota, report):
     return new_allocation
 
 
-def deactivate_missing_allocations(resource, found_projects, report):
-    """Deactivate Active allocations on `resource` whose project wasn't seen in
-    this sync run. VAST quotas identify entities by project/group, not by a
-    distinct per-allocation path (see VastDirectoryQuota's docstring), so
-    matching is by project here - unlike isilon, which matches by path.
+def deactivate_allocations_with_missing_directory(resource, resource_url, report):
+    """Deactivate Active allocations on `resource` whose backing directory no
+    longer exists on VAST, checked directly via folders.stat_path.
+
+    This is deliberately not driven by presence in the userquotas list -
+    quota-list membership isn't authoritative about whether the directory
+    itself still exists (that's what caused the original mismatched-allocation
+    bug), so every Active allocation is checked here regardless of whether its
+    project appeared in this run's userquotas.
     """
     inactive_status = AllocationStatusChoice.objects.get(name='Inactive')
     active_allocations = Allocation.objects.filter(resources=resource, status__name='Active')
     for allocation in active_allocations:
-        if allocation.project.title in found_projects:
+        path = allocation.path or f'C/{allocation.project.title}'
+        if get_vast_directory_stat(f'/{resource_url}/{path}') is not None:
             continue
         allocation.status = inactive_status
         allocation.save()
         logger.warning(
-            'Deactivating allocation %s for project %s on %s - not found in VAST quotas',
-            allocation.pk, allocation.project.title, resource.name,
+            'Deactivating allocation %s for project %s on %s - directory %s not found on VAST',
+            allocation.pk, allocation.project.title, resource.name, path,
         )
         report['deactivated'].append(allocation.project.title)
 
 
 def sync_vast_resource_allocations(resource):
     """Sync all VAST userquotas with a hard limit on `resource` into ColdFront
-    Allocations, and deactivate Active allocations for projects no longer in the
-    VAST quota list. Returns a report dict summarizing what happened.
+    Allocations, and deactivate Active allocations whose directory no longer
+    exists on VAST. Returns a report dict summarizing what happened.
     """
     report = {
         'created': [],
@@ -249,6 +283,7 @@ def sync_vast_resource_allocations(resource):
         'missing_projects': [],
         'unresolved_group': [],
         'no_limit': [],
+        'directory_missing': [],
     }
     resource_url = resource.get_attribute('url', expand=False, typed=False)
     quotas = client.userquotas.get(
@@ -257,7 +292,6 @@ def sync_vast_resource_allocations(resource):
     )
 
     ldap_conn = LDAPConn() if VASTAUTHORIZER == 'AD' else None
-    found_projects = set()
 
     for quota_dict in quotas:
         directory_quota = VastDirectoryQuota(quota_dict)
@@ -275,19 +309,14 @@ def sync_vast_resource_allocations(resource):
             report['missing_projects'].append(group_name)
             continue
 
-        # count the project as "seen" before the hard-limit check, so an existing
-        # allocation isn't deactivated just because its quota currently has no
-        # hard limit set
-        found_projects.add(project.title)
-
         if not directory_quota.has_hard_limit:
             if not is_vast_path_ignored(directory_quota.path):
                 logger.warning('No hard quota limit set for a quota on %s: %s', resource.name, quota_dict)
                 report['no_limit'].append(directory_quota.path)
             continue
 
-        sync_allocation_for_vast_quota(project, resource, directory_quota, report)
+        sync_allocation_for_vast_quota(project, resource, resource_url, directory_quota, report)
 
-    deactivate_missing_allocations(resource, found_projects, report)
+    deactivate_allocations_with_missing_directory(resource, resource_url, report)
 
     return report

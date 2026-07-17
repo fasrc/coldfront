@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
+from vastpy import RESTFailure
 
 from coldfront.core.allocation.models import Allocation
 from coldfront.core.test_helpers.factories import (
@@ -19,6 +20,7 @@ from coldfront.core.test_helpers.factories import (
 )
 from coldfront.plugins.vast.utils import (
     VastDirectoryQuota,
+    get_vast_directory_stat,
     get_vast_quota_group,
     is_vast_path_ignored,
     sync_vast_resource_allocations,
@@ -38,6 +40,13 @@ def make_mock_quota_dict(path, hard_bytes, usage_bytes, group_name='poisson_lab'
             'identifier': group_name,
         },
     }
+
+
+def directory_not_found_error():
+    return RESTFailure(
+        'POST', 'folders/stat_path', None, 503,
+        b'{"detail":"Template directory path wasn\'t found","code":"service_unavailable"}',
+    )
 
 
 TIB = 1024**4
@@ -101,14 +110,43 @@ class GetVastQuotaGroupTests(TestCase):
         self.assertIsNone(get_vast_quota_group(quota_dict))
 
 
+class GetVastDirectoryStatTests(TestCase):
+    """Tests for get_vast_directory_stat's stat_path handling in vast/utils.py"""
+
+    def test_present_directory_returns_stat_dict(self):
+        stat = {'is_directory': True, 'owning_group': 'poisson_lab'}
+        mock_client = MagicMock()
+        mock_client.folders.stat_path.post.return_value = stat
+        with patch('coldfront.plugins.vast.utils.client', mock_client):
+            self.assertEqual(get_vast_directory_stat('/holylabs/C/poisson_lab'), stat)
+
+    def test_missing_directory_returns_none(self):
+        mock_client = MagicMock()
+        mock_client.folders.stat_path.post.side_effect = directory_not_found_error()
+        with patch('coldfront.plugins.vast.utils.client', mock_client):
+            self.assertIsNone(get_vast_directory_stat('/holylabs/C/ghost_lab'))
+
+    def test_other_failure_is_reraised(self):
+        mock_client = MagicMock()
+        mock_client.folders.stat_path.post.side_effect = RESTFailure(
+            'POST', 'folders/stat_path', None, 401, b'{"detail":"Unauthorized"}'
+        )
+        with patch('coldfront.plugins.vast.utils.client', mock_client):
+            with self.assertRaises(RESTFailure):
+                get_vast_directory_stat('/holylabs/C/poisson_lab')
+
+
 class SyncVastAllocationsTests(TestCase):
     """Tests for sync_vast_allocations reconciliation logic in vast/utils.py
 
     VAST quotas identify entities by project/group, not by a distinct
     per-allocation path - every quota under a resource reports the same shared
     view path (e.g. '/holylabs') regardless of which group it's for. So unlike
-    isilon, allocation identity here is (project, resource), and quota dicts in
-    these tests deliberately all use the same 'path' value to reflect that.
+    isilon, allocation identity here is (project, resource); a project's
+    directory is expected at '/holylabs/C/{project.title}', matching
+    pull_vast_quotas.py's legacy path convention, and its presence there
+    (checked via folders.stat_path) gates both allocation creation/activation
+    and deactivation.
     """
 
     def setUp(self):
@@ -145,9 +183,23 @@ class SyncVastAllocationsTests(TestCase):
             value='holylabs',
         )
 
-    def sync_with_quotas(self, quotas):
+    def sync_with_quotas(self, quotas, present_paths=None):
+        """present_paths: set of full VAST paths (e.g. '/holylabs/C/poisson_lab')
+        to treat as existing directories. A path not in this set raises the
+        "not found" RESTFailure, matching real VAST behavior. If None (the
+        default), every path is treated as present - convenient for tests that
+        aren't specifically exercising the stat_path presence gate.
+        """
         mock_client = MagicMock()
         mock_client.userquotas.get.return_value = quotas
+
+        def stat_path_side_effect(path):
+            if present_paths is None or path in present_paths:
+                return {'is_directory': True, 'owning_group': 'placeholder'}
+            raise directory_not_found_error()
+
+        mock_client.folders.stat_path.post.side_effect = stat_path_side_effect
+
         with patch('coldfront.plugins.vast.utils.client', mock_client), \
              patch('coldfront.plugins.vast.utils.LDAPConn') as mock_ldap_cls:
             mock_ldap_cls.return_value = MagicMock()
@@ -170,7 +222,7 @@ class SyncVastAllocationsTests(TestCase):
         allocation.resources.add(self.resource)
 
         quota = make_mock_quota_dict('/holylabs', None, 0, group_name='poisson_lab')
-        report = self.sync_with_quotas([quota])
+        report = self.sync_with_quotas([quota])  # directory present by default
 
         self.assertEqual(report['deactivated'], [])
         allocation.refresh_from_db()
@@ -193,9 +245,9 @@ class SyncVastAllocationsTests(TestCase):
         self.assertIn('/holylabs', report['unresolved_group'])
         self.assertEqual(report['missing_projects'], [])
 
-    def test_new_allocation_created_when_none_exists(self):
+    def test_new_allocation_created_when_directory_present(self):
         quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
-        report = self.sync_with_quotas([quota])
+        report = self.sync_with_quotas([quota], present_paths={'/holylabs/C/poisson_lab'})
 
         self.assertIn('poisson_lab', report['created'])
         allocation = Allocation.objects.get(project=self.project)
@@ -208,6 +260,14 @@ class SyncVastAllocationsTests(TestCase):
             allocation.get_attribute('RequiresPayment', typed=False), str(self.resource.requires_payment)
         )
 
+    def test_allocation_not_created_when_directory_missing(self):
+        quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota], present_paths=set())
+
+        self.assertIn('poisson_lab', report['directory_missing'])
+        self.assertEqual(report['created'], [])
+        self.assertEqual(Allocation.objects.count(), 0)
+
     def test_existing_allocation_is_updated_not_duplicated(self):
         allocation = AllocationFactory(project=self.project, status__name='Active')
         allocation.resources.add(self.resource)
@@ -216,7 +276,7 @@ class SyncVastAllocationsTests(TestCase):
         )
 
         quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
-        report = self.sync_with_quotas([quota])
+        report = self.sync_with_quotas([quota], present_paths={'/holylabs/C/poisson_lab'})
 
         self.assertIn('poisson_lab', report['updated'])
         self.assertEqual(Allocation.objects.filter(project=self.project).count(), 1)
@@ -224,6 +284,7 @@ class SyncVastAllocationsTests(TestCase):
         self.assertEqual(
             int(float(allocation.get_attribute('Quota_In_Bytes', typed=False))), TIB
         )
+        self.assertEqual(allocation.status.name, 'Active')
 
     def test_pending_allocation_request_is_activated(self):
         pending = AllocationFactory(
@@ -235,7 +296,7 @@ class SyncVastAllocationsTests(TestCase):
         )
 
         quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
-        report = self.sync_with_quotas([quota])
+        report = self.sync_with_quotas([quota], present_paths={'/holylabs/C/poisson_lab'})
 
         self.assertIn('poisson_lab', report['activated'])
         self.assertEqual(Allocation.objects.filter(project=self.project).count(), 1)
@@ -245,6 +306,23 @@ class SyncVastAllocationsTests(TestCase):
         self.assertEqual(
             pending.get_attribute('RequiresPayment', typed=False), str(self.resource.requires_payment)
         )
+
+    def test_pending_request_not_activated_when_directory_missing(self):
+        pending = AllocationFactory(
+            project=self.project, status__name='New', justification='requesting storage',
+        )
+        pending.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=pending, allocation_attribute_type=self.quota_tib_type, value=1.0,
+        )
+
+        quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota], present_paths=set())
+
+        self.assertIn('poisson_lab', report['directory_missing'])
+        self.assertEqual(report['activated'], [])
+        pending.refresh_from_db()
+        self.assertEqual(pending.status.name, 'New')
 
     def test_pending_request_on_tier_resource_is_not_matched(self):
         tier_resource = ResourceFactory(name='Tier 0', resource_type__name='Storage Tier')
@@ -260,7 +338,7 @@ class SyncVastAllocationsTests(TestCase):
         )
 
         quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2)
-        report = self.sync_with_quotas([quota])
+        report = self.sync_with_quotas([quota], present_paths={'/holylabs/C/poisson_lab'})
 
         # the tier-attached request must NOT be matched - a new allocation is created instead
         self.assertIn('poisson_lab', report['created'])
@@ -289,29 +367,44 @@ class SyncVastAllocationsTests(TestCase):
         with override_settings(VAST_PATH_IGNORE=['/holylabs']):
             self.assertTrue(is_vast_path_ignored('/holylabs'))
 
-    def test_active_allocation_missing_from_volume_is_deactivated(self):
+    def test_active_allocation_deactivated_when_directory_missing(self):
         ghost_project = ProjectFactory(title='ghost_lab')
         allocation = AllocationFactory(project=ghost_project, status__name='Active')
         allocation.resources.add(self.resource)
 
-        # this run's quota list only contains poisson_lab, not ghost_lab
+        # ghost_lab's directory doesn't exist, even though poisson_lab's does -
+        # deactivation is driven by stat_path, not by userquotas list membership
         quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2, group_name='poisson_lab')
-        report = self.sync_with_quotas([quota])
+        report = self.sync_with_quotas([quota], present_paths={'/holylabs/C/poisson_lab'})
 
         self.assertIn('ghost_lab', report['deactivated'])
         allocation.refresh_from_db()
         self.assertEqual(allocation.status.name, 'Inactive')
 
-    def test_active_allocation_still_in_quota_list_is_not_deactivated(self):
+    def test_active_allocation_with_present_directory_is_not_deactivated(self):
         allocation = AllocationFactory(project=self.project, status__name='Active')
         allocation.resources.add(self.resource)
 
         quota = make_mock_quota_dict('/holylabs', TIB, TIB // 2, group_name='poisson_lab')
-        report = self.sync_with_quotas([quota])
+        report = self.sync_with_quotas([quota], present_paths={'/holylabs/C/poisson_lab'})
 
         self.assertEqual(report['deactivated'], [])
         allocation.refresh_from_db()
         self.assertEqual(allocation.status.name, 'Active')
+
+    def test_active_allocation_deactivated_even_if_absent_from_quota_list(self):
+        # ghost_lab never appears in userquotas at all this run (not just
+        # unresolved/missing-project - it's simply not in the list), but its
+        # directory is still checked and found missing
+        ghost_project = ProjectFactory(title='ghost_lab')
+        allocation = AllocationFactory(project=ghost_project, status__name='Active')
+        allocation.resources.add(self.resource)
+
+        report = self.sync_with_quotas([], present_paths=set())
+
+        self.assertIn('ghost_lab', report['deactivated'])
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status.name, 'Inactive')
 
     def test_active_allocation_on_other_resource_is_not_deactivated(self):
         other_resource = ResourceFactory(name='vast-otherlabs', resource_type__name='Storage')
@@ -319,7 +412,7 @@ class SyncVastAllocationsTests(TestCase):
         allocation.resources.add(other_resource)
 
         # empty quota list for self.resource shouldn't touch allocations on a different resource
-        report = self.sync_with_quotas([])
+        report = self.sync_with_quotas([], present_paths=set())
 
         self.assertEqual(report['deactivated'], [])
         allocation.refresh_from_db()
