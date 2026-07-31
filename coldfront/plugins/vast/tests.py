@@ -149,7 +149,7 @@ class SyncVastAllocationsTests(TestCase):
     """
 
     def setUp(self):
-        for status in ('Active', 'Inactive', 'New', 'On Hold', 'In Progress', 'Pending Activation', 'Denied'):
+        for status in ('Active', 'Inactive', 'New', 'On Hold', 'In Progress', 'Pending Activation', 'Denied', 'Pending Deactivation'):
             AllocationStatusChoiceFactory(name=status)
 
         self.subdir_type = AllocationAttributeTypeFactory(
