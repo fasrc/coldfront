@@ -289,7 +289,7 @@ def sync_vast_resource_allocations(resource):
         'activated': [],
         'updated': [],
         'deactivated': [],
-        'deactivation_slated': []
+        'deactivation_slated': [],
         'missing_projects': [],
         'unresolved_group': [],
         'no_limit': [],
