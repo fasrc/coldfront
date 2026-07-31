@@ -10,11 +10,9 @@ from django.views.decorators.cache import cache_page
 from coldfront.core.allocation.models import Allocation, AllocationUser, AllocationChangeRequest
 from coldfront.core.portal.utils import (
     generate_allocations_chart_data,
-    generate_publication_by_year_chart_data,
     generate_resources_chart_data
 )
 from coldfront.core.project.models import Project
-from coldfront.core.publication.models import Publication
 from coldfront.core.resource.models import Resource, ResourceAttribute
 from coldfront.core.department.models import Department, DepartmentMember
 from coldfront.core.utils.common import import_from_settings
@@ -109,19 +107,6 @@ def home(request):
 def center_summary(request):
     context = {}
 
-    # # Publications Card
-    # publications = Publication.objects.filter(year__gte=1999).values('unique_id', 'year')
-    # publications_by_year = list(publications.distinct().values('year').annotate(
-    #                                 num_pub=Count('year')).order_by('-year'))
-
-    # publications_by_year = [(ele['year'], ele['num_pub'])
-    #                         for ele in publications_by_year]
-
-    # publication_by_year_bar_chart_data = generate_publication_by_year_chart_data(
-    #     publications_by_year)
-    # context['publication_by_year_bar_chart_data'] = publication_by_year_bar_chart_data
-    # context['total_publications_count'] = publications.distinct().count()
-
     volumes = []
     storage_resources = list(
         Resource.objects.filter(resource_type__name='Storage', is_available=True, is_public=True)
@@ -176,8 +161,8 @@ def center_summary(request):
         volumes.append(volume)
         context['volumes'] = volumes
 
-    # # Tier Stats
-    #
+    # Tier Stats
+
     # resource_names = Resource.objects.values('name')
     # new = []
     # for n in [vol['name'] for vol in volumes]:
