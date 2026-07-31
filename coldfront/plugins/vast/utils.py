@@ -244,7 +244,7 @@ def sync_allocation_for_vast_quota(project, resource, resource_url, directory_qu
     return new_allocation
 
 
-def deactivate_allocations_with_missing_directory(resource, resource_url, report):
+def deactivate_allocations_with_missing_directory(resource, resource_url, found_projects, report):
     """Deactivate Active allocations on `resource` whose backing directory no
     longer exists on VAST, checked directly via folders.stat_path.
 
@@ -255,15 +255,25 @@ def deactivate_allocations_with_missing_directory(resource, resource_url, report
     project appeared in this run's userquotas.
     """
     inactive_status = AllocationStatusChoice.objects.get(name='Inactive')
-    active_allocations = Allocation.objects.filter(resources=resource, status__name='Active')
+    pending_deactivation_status = AllocationStatusChoice.objects.get(name='Pending Deactivation')
+    active_allocations = Allocation.objects.filter(resources=resource, status__name__in=['Active', 'Pending Deactivation'])
     for allocation in active_allocations:
         path = allocation.path or f'C/{allocation.project.title}'
         if get_vast_directory_stat(f'/{resource_url}/{path}') is not None:
             continue
+        if allocation.project.title in found_projects:
+            allocation.status = pending_deactivation_status
+            allocation.save        
+            logger.warning(
+                'Marked vast allocation as "Pending Deactivation". pk=%s project=%s resource=%s directory=%s',
+                allocation.pk, allocation.project.title, resource.name, path,
+            )
+            report['deactivation_slated'].append(allocation.project.title)
+            continue
         allocation.status = inactive_status
         allocation.save()
         logger.warning(
-            'Deactivating allocation %s for project %s on %s - directory %s not found on VAST',
+            'Deactivating vast allocation. pk=%s project=%s resource=%s directory=%s',
             allocation.pk, allocation.project.title, resource.name, path,
         )
         report['deactivated'].append(allocation.project.title)
@@ -279,6 +289,7 @@ def sync_vast_resource_allocations(resource):
         'activated': [],
         'updated': [],
         'deactivated': [],
+        'deactivation_slated': []
         'missing_projects': [],
         'unresolved_group': [],
         'no_limit': [],
@@ -291,6 +302,7 @@ def sync_vast_resource_allocations(resource):
     )
 
     ldap_conn = LDAPConn() if VASTAUTHORIZER == 'AD' else None
+    found_projects = set()
 
     for quota_dict in quotas:
         directory_quota = VastDirectoryQuota(quota_dict)
@@ -308,6 +320,11 @@ def sync_vast_resource_allocations(resource):
             report['missing_projects'].append(group_name)
             continue
 
+        # count the project as "seen" before the hard-limit check, so an existing
+        # allocation isn't deactivated just because its quota currently has no
+        # hard limit set
+        found_projects.add(project.title)
+        
         if not directory_quota.has_hard_limit:
             if not is_vast_path_ignored(directory_quota.path):
                 logger.warning('No hard quota limit set for a quota on %s: %s', resource.name, quota_dict)
@@ -316,6 +333,6 @@ def sync_vast_resource_allocations(resource):
 
         sync_allocation_for_vast_quota(project, resource, resource_url, directory_quota, report)
 
-    deactivate_allocations_with_missing_directory(resource, resource_url, report)
+    deactivate_allocations_with_missing_directory(resource, resource_url, found_projects, report)
 
     return report
