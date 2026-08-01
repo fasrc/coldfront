@@ -722,6 +722,7 @@ def sync_isilon_resource_allocations(resource):
     volume. Returns a report dict summarizing what happened.
     """
     report = {
+        'resource': resource.name,
         'created': [],
         'activated': [],
         'updated': [],
