@@ -182,7 +182,7 @@ def sync_allocation_for_vast_quota(project, resource, resource_url, directory_qu
     placeholder_path = f'C/{project.title}'
 
     existing_allocation = Allocation.objects.filter(
-        project=project, resources=resource, status__name='Active'
+        project=project, resources=resource, status__name__in=['Active', 'Pending Deactivation', 'Inactive']
     ).first()
     if existing_allocation:
         update_allocation_quota_and_usage(existing_allocation, quota_bytes, usage_bytes)
