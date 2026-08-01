@@ -262,7 +262,7 @@ def deactivate_allocations_with_missing_directory(resource, resource_url, found_
         path = allocation.path or f'C/{allocation.project.title}'
         if get_vast_directory_stat(f'/{resource_url}/{path}') is not None:
             continue
-        if allocation.project.title in found_projects:
+        if allocation.project.title in found_projects and allocation.status.name == 'Active':
             allocation.status = pending_deactivation_status
             allocation.save        
             logger.warning(
