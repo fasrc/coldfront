@@ -40,7 +40,8 @@ class Command(BaseCommand):
                 continue
             all_missing_projects.extend(report['missing_projects'])
             logger.info('isilon allocation sync report for %s: %s', resource.name, report)
-            reports.append(report.pop('updated', None))
+            report.pop('updated', None)
+            reports.append(report)
 
         if all_missing_projects:
             logger.warning(
