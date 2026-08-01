@@ -182,16 +182,17 @@ def sync_allocation_for_vast_quota(project, resource, resource_url, directory_qu
     placeholder_path = f'C/{project.title}'
 
     existing_allocation = Allocation.objects.filter(
-        project=project, resources=resource, status__name__in=['Active', 'Pending Deactivation', 'Inactive']
+        project=project, resources=resource, status__name=['Active', 'Pending Deactivation', 'Inactive']
     ).first()
-    if existing_allocation:
-        update_allocation_quota_and_usage(existing_allocation, quota_bytes, usage_bytes)
-        if not existing_allocation.path:
-            AllocationAttribute.objects.get_or_create(
-                allocation=existing_allocation,
-                allocation_attribute_type=subdir_type,
-                defaults={'value': placeholder_path},
-            )
+    if existing_allocation 
+        if existing_allocation.status.name == 'Active':
+            update_allocation_quota_and_usage(existing_allocation, quota_bytes, usage_bytes)
+            if not existing_allocation.path:
+                AllocationAttribute.objects.get_or_create(
+                    allocation=existing_allocation,
+                    allocation_attribute_type=subdir_type,
+                    defaults={'value': placeholder_path},
+                )
         report['updated'].append(project.title)
         return existing_allocation
 
