@@ -184,7 +184,7 @@ def sync_allocation_for_vast_quota(project, resource, resource_url, directory_qu
     existing_allocation = Allocation.objects.filter(
         project=project, resources=resource, status__name=['Active', 'Pending Deactivation', 'Inactive']
     ).first()
-    if existing_allocation 
+    if existing_allocation:
         if existing_allocation.status.name == 'Active':
             update_allocation_quota_and_usage(existing_allocation, quota_bytes, usage_bytes)
             if not existing_allocation.path:
@@ -193,7 +193,7 @@ def sync_allocation_for_vast_quota(project, resource, resource_url, directory_qu
                     allocation_attribute_type=subdir_type,
                     defaults={'value': placeholder_path},
                 )
-        report['updated'].append(project.title)
+            report['updated'].append(project.title)
         return existing_allocation
 
     if get_vast_directory_stat(f'/{resource_url}/{placeholder_path}') is None:
@@ -325,7 +325,7 @@ def sync_vast_resource_allocations(resource):
         # allocation isn't deactivated just because its quota currently has no
         # hard limit set
         found_projects.add(project.title)
-        
+
         if not directory_quota.has_hard_limit:
             if not is_vast_path_ignored(directory_quota.path):
                 logger.warning('No hard quota limit set for a quota on %s: %s', resource.name, quota_dict)
