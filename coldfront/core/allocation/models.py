@@ -150,7 +150,7 @@ class Allocation(TimeStampedModel):
 
     @property
     def requires_payment(self):
-        requires_payment = self.get_attribute('Requires Payment')
+        requires_payment = self.get_attribute('RequiresPayment')
         if requires_payment == None:
             return self.get_parent_resource.requires_payment
         return requires_payment
