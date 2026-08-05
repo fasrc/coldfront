@@ -541,7 +541,7 @@ class IsilonDirectoryQuota:
     def __init__(self, quota, mount_prefix=DEFAULT_MOUNT_PATH):
         self.quota = quota
         self.path = quota.path
-        self.mount_prefix = mount_prefix
+        self.mount_prefix = mount_prefix + '/'
         self.has_hard_limit = quota.thresholds.hard is not None
         self.hard_limit_bytes = quota.thresholds.hard
         self.usage_bytes = quota.usage.fslogical
