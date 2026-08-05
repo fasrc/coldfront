@@ -16,6 +16,7 @@ from coldfront.core.project.models import Project
 from coldfront.config.plugins.isilon import ISILON_AUTH_MODEL
 
 logger = logging.getLogger(__name__)
+DEFAULT_MOUNT_PATH = import_from_settings('ISILON_DEFAULT_MOUNT_PATH')
 
 if ISILON_AUTH_MODEL == 'ldap':
     try:
@@ -291,8 +292,11 @@ def create_isilon_allocation_quota(
     isilon_conn = IsilonConnection(isilon_resource)
     actions_performed = []
     # determine whether rc_labs or rc_fasse_labs path
-    subdir = 'rc_labs' # if 'fasse' not in isilon_resource else 'rc_fasse_labs'
-    path = f'ifs/{subdir}/{lab_name}'
+    subdir = resource.get_attribute('storage_mount', expand=False, typed=False)
+    if not subdir:
+        subdir = DEFAULT_MOUNT_PATH
+    subdir = subdir.lstrip('/')
+    path = f'{subdir}/{lab_name}'
     root_uid = '0'
 
     ### Set ownership and default permissions ###
@@ -448,9 +452,12 @@ def update_isilon_allocation_quota(allocation, new_quota):
     """
     # make isilon connection to the allocation's resource
     resource = allocation.resources.first()
+    mount = resource.get_attribute('storage_mount', expand=False, typed=False)
+    if not mount:
+        mount = DEFAULT_MOUNT_PATH
     isilon_resource = get_isilon_url(resource)
     isilon_conn = IsilonConnection(isilon_resource)
-    path = f'/ifs/{allocation.path}'
+    path = f'{mount}/{allocation.path}'
 
     # check if enough space exists on the volume
     new_quota_bytes = new_quota * 1024**4
@@ -532,9 +539,10 @@ class IsilonDirectoryQuota:
     sync_isilon_allocations needs, so callers don't reach into the raw isilon_sdk
     object (or re-derive the same values) at multiple call sites.
     """
-    def __init__(self, quota):
+    def __init__(self, quota, mount_prefix=DEFAULT_MOUNT_PATH):
         self.quota = quota
         self.path = quota.path
+        self.mount_prefix = mount_prefix
         self.has_hard_limit = quota.thresholds.hard is not None
         self.hard_limit_bytes = quota.thresholds.hard
         self.usage_bytes = quota.usage.fslogical
@@ -542,9 +550,9 @@ class IsilonDirectoryQuota:
     @property
     def cf_path(self):
         """The quota's path in the form stored on an Allocation's Subdirectory attribute."""
-        path = self.path.lstrip('/')
-        if path.startswith('ifs/'):
-            path = path[len('ifs/'):]
+        path = self.path
+        if path.startswith(self.mount_prefix):
+            path = self.path[len(self.mount_prefix):]
         return path
 
 
@@ -733,16 +741,22 @@ def sync_isilon_resource_allocations(resource):
     isilon_url = get_isilon_url(resource)
     isilon_conn = IsilonConnection(isilon_url)
 
-    quotas = isilon_conn.quota_client.list_quota_quotas(type='directory').quotas
+    mount = resource.get_attribute('storage_mount', expand=False, typed=False)
+    if not mount:
+        mount = DEFAULT_MOUNT_PATH
+    quotas = isilon_conn.quota_client.list_quota_quotas(
+            type='directory', path=mount, recurse_path_children=True
+    ).quotas
     found_paths = set()
 
     for quota in quotas:
-        directory_quota = IsilonDirectoryQuota(quota)
+        directory_quota = IsilonDirectoryQuota(quota, mount_prefix=mount)
         found_paths.add(directory_quota.cf_path)
 
         if not directory_quota.has_hard_limit:
             if not is_isilon_path_ignored(directory_quota.path):
-                logger.warning('No hard quota limit set for %s on %s', directory_quota.path, resource.name)
+                logger.warning(
+                    'No hard quota limit set for %s on %s', directory_quota.path, resource.name)
                 report['no_limit'].append(directory_quota.path)
             continue
 
