@@ -16,7 +16,7 @@ from coldfront.core.project.models import Project
 from coldfront.config.plugins.isilon import ISILON_AUTH_MODEL
 
 logger = logging.getLogger(__name__)
-DEFAULT_MOUNT_PATH = import_from_settings('ISILON_DEFAULT_MOUNT_PATH')
+DEFAULT_MOUNT_PATH = import_from_settings('ISILON_DEFAULT_MOUNT_PATH', '/ifs')
 
 if ISILON_AUTH_MODEL == 'ldap':
     try:
@@ -291,7 +291,6 @@ def create_isilon_allocation_quota(
     isilon_resource = get_isilon_url(resource)
     isilon_conn = IsilonConnection(isilon_resource)
     actions_performed = []
-    # determine whether rc_labs or rc_fasse_labs path
     subdir = resource.get_attribute('storage_mount', expand=False, typed=False)
     if not subdir:
         subdir = DEFAULT_MOUNT_PATH
