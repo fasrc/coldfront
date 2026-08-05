@@ -36,6 +36,7 @@ class Command(BaseCommand):
             ('slurm_integration', 'Text'),
             ('storage_type', 'Text'),
             ('url', 'Text'),
+            ('storage_mount', 'Text'),
             # UBCCR
             ('Core Count', 'Int'),
             # ('expiry_time', 'Int'),

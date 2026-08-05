@@ -10,6 +10,7 @@ ISILON_NFS_ROOT_CLIENTS = ENV.str('ISILON_NFS_ROOT_CLIENTS', '')
 ISILON_NFS_FASSE_CLIENTS = ENV.str('ISILON_NFS_FASSE_CLIENTS', '')
 ISILON_NFS_CANNON_CLIENTS = ENV.str('ISILON_NFS_CANNON_CLIENTS', '')
 ISILON_PATH_IGNORE = ENV.list('ISILON_PATH_IGNORE', default=[])
+ISILON_DEFAULT_MOUNT_PATH = ENV.str('ISILON_DEFAULT_MOUNT_PATH', default='/ifs')
 LOGGING['handlers']['isilon'] = {
     'class': 'logging.handlers.TimedRotatingFileHandler',
     'filename': 'logs/isilon.log',
