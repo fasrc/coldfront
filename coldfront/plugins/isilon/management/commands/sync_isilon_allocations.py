@@ -48,4 +48,5 @@ class Command(BaseCommand):
                 'sync_isilon_allocations: no matching ColdFront Project found for groups: %s',
                 sorted(set(all_missing_projects)),
             )
-        return reports
+        for r in reports:
+            self.stdout.write(str(r))
