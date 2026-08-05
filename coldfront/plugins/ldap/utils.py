@@ -10,6 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from ldap3 import Connection, Server, ALL_ATTRIBUTES, MODIFY_REPLACE
+from ldap3.utils.conv import escape_filter_chars
 from ldap3.extend.microsoft.addMembersToGroups import ad_add_members_to_groups
 from ldap3.extend.microsoft.removeMembersFromGroups import ad_remove_members_from_groups
 
@@ -574,7 +575,27 @@ def format_template_assertions(attr_search_dict, search_operator='and'):
     """
 
     match_operator = {'and':'&', 'or':'|'}
-    val_string = lambda k, v: f'({k}={v})' if is_string(v) else '(|'+ ''.join(f'({k}={i})' for i in v) + ')'
+
+    def escape_value(v: str) -> str:
+        # Preserve '*' wildcards: temporarily replace, escape, then restore
+        if '*' in v:
+            placeholder = '\x00STARPLACEHOLDER\x00'
+            v = v.replace('*', placeholder)
+            v = escape_filter_chars(v)
+            v = v.replace(placeholder, '*')
+            return v
+        return escape_filter_chars(v)
+
+    def val_string(k, v):
+        if is_string(v):
+            v_str = escape_value(str(v))
+            return f'({k}={v_str})'
+        parts = []
+        for item in v:
+            item_str = escape_value(str(item))
+            parts.append(f'({k}={item_str})')
+        return '(|' + ''.join(parts) + ')'
+
     filter_template_vars = [val_string(k, v) for k, v in attr_search_dict.items()]
     search_filter = ''.join(filter_template_vars)
     if len(filter_template_vars) > 1:
