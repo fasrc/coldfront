@@ -58,10 +58,11 @@ class Command(BaseCommand):
         ]
 
         # collect user and lab counts, allocation sizes for each volume
-        resources = Resource.objects.filter(resource_type__name='Storage')
+        resources = Resource.objects.filter(resource_type__name='Storage', is_available=True)
         # update all tier 0 resources
         for resource in resources.filter(
-                resourceattribute__value__in=('isilon', 'powerscale')):
+                resourceattribute__value__in=('isilon', 'powerscale')
+            ):
             update_volume_information.send(sender=self.__class__, resource=resource)
         for resource in resources.exclude(
                 resourceattribute__value__in=('isilon', 'powerscale')):

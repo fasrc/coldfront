@@ -24,10 +24,11 @@ class ATTAllocationQuery:
         self.queries = {'statements': []}
 
     def produce_query_statement(self, vol_type, volumes=None):
+        resources = Resource.objects.filter(is_available=True)
 
         query_dict = {
             'quota': {
-                'volumes': '|'.join(r.name.split('/')[0] for r in Resource.objects.filter(parent_resource__name='Tier 0')),
+                'volumes': '|'.join(r.name.split('/')[0] for r in resources.filter(parent_resource__name='Tier 0')),
                 'relation': 'HasQuota',
                 'match': "(e:Quota) MATCH (d:ConfigValue {Name: 'Quota.Invocation'})",
                 'server': 'filesystem',
@@ -46,7 +47,7 @@ class ATTAllocationQuery:
                 'unique':'datetime(e.DotsLFSUpdateDate) as begin_date'
             },
             'volume': {
-                'volumes': '|'.join(r.name.split('/')[0] for r in Resource.objects.filter(parent_resource__name='Tier 2')),
+                'volumes': '|'.join(r.name.split('/')[0] for r in resources.filter(parent_resource__name='Tier 2')),
                 'relation': 'Owns',
                 'match': '(e:Volume)',
                 'server': 'Hostname',

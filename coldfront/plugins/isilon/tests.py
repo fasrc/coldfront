@@ -43,7 +43,9 @@ def test_create_isilon_allocation_quota():
 
     path = f'ifs/rc_labs/{allocation.project.title}'
     # for each isilon cluster:
-    for resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
+    for resource in Resource.objects.filter(
+        resourceattribute__value__in=('isilon', 'powerscale'), is_available=True
+    ):
         # create isilon IsilonConnection
         isilon_connection = IsilonConnection(get_isilon_url(resource))
         # run create_isilon_allocation_quota on the allocation with the isilon cluster
