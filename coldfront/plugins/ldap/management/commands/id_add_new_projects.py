@@ -58,7 +58,7 @@ class Command(BaseCommand):
         proj_membs_mans, search_errors = cleaned_membership_query(proj_membs_mans)
         for k, v in search_errors.items():
             if v in errortracker:
-                errortracker[v] += k
+                errortracker[v].append(k)
             else:
                 errortracker[v] = [k]
         groupusercollections = [
