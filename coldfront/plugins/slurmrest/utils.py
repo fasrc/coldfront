@@ -197,7 +197,7 @@ class SlurmApiConnection():
 
     # config methods
     def get_config(self):
-        config = self.slurm_api.slurmdb_v0042_get_config()
+        config = self.slurmdb_api.slurmdb_v0042_get_config()
         if config.errors:
             raise Exception('error/s found in get_config output: %s', config.errors)
         return config.to_dict()
@@ -212,7 +212,7 @@ class SlurmApiConnection():
 
     # license methods
     def get_licenses(self):
-        licenses = self.slurmdb_api.slurmdb_v0042_get_licenses()
+        licenses = self.slurm_api.slurm_v0042_get_licenses()
         if licenses.errors:
             raise Exception('error/s found in get_licenses output: %s', licenses.errors)
         return licenses.to_dict()
@@ -255,7 +255,7 @@ class SlurmApiConnection():
         for key, value in change_dict.items():
             user_dict[key] = value
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0042_post_user,
+            self.slurmdb_api.slurmdb_v0042_post_users,
             noop=noop,
             **user_dict
         )
