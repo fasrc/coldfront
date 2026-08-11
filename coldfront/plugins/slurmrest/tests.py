@@ -95,7 +95,7 @@ class SdkCallsTests(SlurmApiConnectionIntegrationTestCase):
 
     def test_add_account(self):
         self.assertReachesRealSdkTransport(
-            self.conn.add_account, 'newacct', specs=['MaxJobs=10']
+            self.conn.add_account, 'newacct'
         )
 
     def test_remove_account(self):

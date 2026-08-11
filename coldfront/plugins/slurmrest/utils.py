@@ -75,17 +75,21 @@ class SlurmApiConnection():
             raise Exception('error/s found in get_accounts output: %s', accounts.errors)
         return accounts.to_dict()
 
-    def add_account(self, account_name, specs=None, noop=SLURMREST_NOOP):
+    def add_account(self, account_name, description=None, organization=None, noop=SLURMREST_NOOP):
         """Add a new account.
         account_name (str): name of the account to be added
         specs (list, default None): list of specifications for the account
         noop (bool, default False): if True, don't actually execute the action
         """
-        if specs is None:
-            specs = []
+        if not description:
+            description = f"Account {account_name} created via SlurmREST"
+        if not organization:
+            organization = ''
         account_dict = {
             'v0044_openapi_accounts_resp': {
-                'accounts': [{'name': account_name, 'specs': specs}]
+                'accounts': [{
+                    'name': account_name, 'description': description, 'organization': organization
+                }]
             }
         }
         response = self._call_api(
