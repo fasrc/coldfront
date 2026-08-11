@@ -57,7 +57,7 @@ class SlurmApiConnection():
 
     # account methods
     def get_account(self, account_name, with_assocs='true', with_coords='true'):
-        account = self.slurmdb_api.slurmdb_v0042_get_account(
+        account = self.slurmdb_api.slurmdb_v0044_get_account(
             account_name=account_name,
             with_assocs=with_assocs,
             with_coords=with_coords,
@@ -67,7 +67,7 @@ class SlurmApiConnection():
         return account.to_dict()
 
     def get_accounts(self, with_associations='true', with_coordinators='true'):
-        accounts = self.slurmdb_api.slurmdb_v0042_get_accounts(
+        accounts = self.slurmdb_api.slurmdb_v0044_get_accounts(
             with_associations=with_associations,
             with_coordinators=with_coordinators,
         )
@@ -75,21 +75,25 @@ class SlurmApiConnection():
             raise Exception('error/s found in get_accounts output: %s', accounts.errors)
         return accounts.to_dict()
 
-    def add_account(self, account_name, specs=None, noop=SLURMREST_NOOP):
+    def add_account(self, account_name, description=None, organization=None, noop=SLURMREST_NOOP):
         """Add a new account.
         account_name (str): name of the account to be added
         specs (list, default None): list of specifications for the account
         noop (bool, default False): if True, don't actually execute the action
         """
-        if specs is None:
-            specs = []
+        if not description:
+            description = f"Account {account_name} created via SlurmREST"
+        if not organization:
+            organization = ''
         account_dict = {
-            'v0042_openapi_accounts_resp': {
-                'accounts': {'name': account_name, 'specs': specs}
+            'v0044_openapi_accounts_resp': {
+                'accounts': [{
+                    'name': account_name, 'description': description, 'organization': organization
+                }]
             }
         }
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0042_post_accounts,
+            self.slurmdb_api.slurmdb_v0044_post_accounts,
             noop=noop,
             **account_dict
         )
@@ -102,7 +106,7 @@ class SlurmApiConnection():
         noop (bool, default False): if True, don't actually execute the action
         """
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0042_delete_account,
+            self.slurmdb_api.slurmdb_v0044_delete_account,
             noop=noop,
             **{'account_name': account_name}
         )
@@ -110,7 +114,7 @@ class SlurmApiConnection():
         return response
 
     def get_assocs(self):
-        associations = self.slurmdb_api.slurmdb_v0042_get_associations()
+        associations = self.slurmdb_api.slurmdb_v0044_get_associations()
         return associations.to_dict()
 
     # association methods
@@ -127,7 +131,7 @@ class SlurmApiConnection():
                 args['parent_account'] = 'root'
             else:
                 args['user'] = user_name
-        associations = self.slurmdb_api.slurmdb_v0042_get_association(**args)
+        associations = self.slurmdb_api.slurmdb_v0044_get_association(**args)
         return associations.to_dict()
 
     def post_assoc(self, account_name, user_name, change_dict, noop=SLURMREST_NOOP):
@@ -139,16 +143,16 @@ class SlurmApiConnection():
         for key, value in change_dict.items():
             associations[0][key] = value
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0042_post_associations,
+            self.slurmdb_api.slurmdb_v0044_post_associations,
             noop=noop,
-            **{'v0042_openapi_assocs_resp':{'associations': associations}}
+            **{'v0044_openapi_assocs_resp':{'associations': associations}}
         )
         logger.info('updated association: %s', response)
         return response
 
     def add_assoc(self, account_name, user_name, noop=SLURMREST_NOOP):
         association_dict = {
-            "v0042_openapi_assocs_resp": {
+            "v0044_openapi_assocs_resp": {
                 "associations": [{
                     'account': account_name,
                     'user': user_name,
@@ -157,7 +161,7 @@ class SlurmApiConnection():
             }
         }
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0042_post_associations,
+            self.slurmdb_api.slurmdb_v0044_post_associations,
             noop=noop,
             **association_dict
         )
@@ -178,7 +182,7 @@ class SlurmApiConnection():
         if assoc_id:
             if user_name or account_name:
                 raise ValueError("Either assoc_id OR user/account pair, not both.")
-            args = {'id': assoc_id}
+            args = {'id': str(assoc_id)}
         else:
             if not (user_name and account_name):
                 raise ValueError("Must supply assoc_id OR user_name/account_name.")
@@ -187,7 +191,7 @@ class SlurmApiConnection():
         args['cluster'] = self.active_cluster['name']
 
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0042_delete_association,
+            self.slurmdb_api.slurmdb_v0044_delete_association,
             noop=noop,
             **args
         )
@@ -197,7 +201,7 @@ class SlurmApiConnection():
 
     # config methods
     def get_config(self):
-        config = self.slurmdb_api.slurmdb_v0042_get_config()
+        config = self.slurmdb_api.slurmdb_v0044_get_config()
         if config.errors:
             raise Exception('error/s found in get_config output: %s', config.errors)
         return config.to_dict()
@@ -205,27 +209,27 @@ class SlurmApiConnection():
 
     # cluster methods
     def get_clusters(self):
-        clusters = self.slurmdb_api.slurmdb_v0042_get_clusters()
+        clusters = self.slurmdb_api.slurmdb_v0044_get_clusters()
         if clusters.errors:
             raise Exception('error/s found in get_clusters output: %s', clusters.errors)
         return clusters.to_dict()
 
     # license methods
     def get_licenses(self):
-        licenses = self.slurm_api.slurm_v0042_get_licenses()
+        licenses = self.slurm_api.slurm_v0044_get_licenses()
         if licenses.errors:
             raise Exception('error/s found in get_licenses output: %s', licenses.errors)
         return licenses.to_dict()
 
     # node methods
     def get_node(self, node_name):
-        node = self.slurm_api.slurm_v0042_get_node(node_name=node_name)
+        node = self.slurm_api.slurm_v0044_get_node(node_name=node_name)
         if node.errors:
             raise Exception('error/s found in get_node output: %s', node.errors)
         return node.to_dict()
 
     def get_nodes(self, update_time=None, flags=None):
-        nodes = self.slurm_api.slurm_v0042_get_nodes(update_time=update_time, flags=flags)
+        nodes = self.slurm_api.slurm_v0044_get_nodes(update_time=update_time, flags=flags)
         if nodes.errors:
             raise Exception('error/s found in get_nodes output: %s', nodes.errors)
         return nodes.to_dict()
@@ -233,31 +237,32 @@ class SlurmApiConnection():
 
     # partition methods
     def get_partitions(self, update_time=None, flags=None):
-        partitions = self.slurm_api.slurm_v0042_get_partitions(update_time=update_time, flags=flags)
+        partitions = self.slurm_api.slurm_v0044_get_partitions(update_time=update_time, flags=flags)
         return partitions.to_dict()
 
 
     # user methods
     def get_user(self, user_name):
-        user = self.slurmdb_api.slurmdb_v0042_get_user(user_name)
+        user = self.slurmdb_api.slurmdb_v0044_get_user(user_name)
         if user.errors:
             raise Exception('error/s found in get_user output: %s', user.errors)
         return user.to_dict()
 
     def get_users(self):
-        users = self.slurmdb_api.slurmdb_v0042_get_users()
+        users = self.slurmdb_api.slurmdb_v0044_get_users()
         if users.errors:
             raise Exception('error/s found in get_users output: %s', users.errors)
         return users.to_dict()
 
     def update_user(self, user_name, change_dict, noop=SLURMREST_NOOP):
-        user_dict = self.get_user(user_name)
+        user_record = self.get_user(user_name)
         for key, value in change_dict.items():
-            user_dict[key] = value
+            user_record[key] = value
+        v0044_openapi_users_resp = {'v0044_openapi_users_resp': user_record}
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0042_post_users,
+            self.slurmdb_api.slurmdb_v0044_post_users,
             noop=noop,
-            **user_dict
+            **v0044_openapi_users_resp
         )
         logger.info('updated user: %s', response)
         return response
@@ -266,14 +271,14 @@ class SlurmApiConnection():
     # qos methods
     def get_qos_list(self):
         """Get the list of QoS (Quality of Service) entries."""
-        qos_list = self.slurmdb_api.slurmdb_v0042_get_qos()
+        qos_list = self.slurmdb_api.slurmdb_v0044_get_qos()
         if qos_list.errors:
             raise Exception('error/s found in get_qos_list output: %s', qos_list.errors)
         return qos_list.to_dict()
 
     def get_qos(self, qos_name):
         """Get QoS entry by name."""
-        qos = self.slurmdb_api.slurmdb_v0042_get_single_qos(qos_name=qos_name)
+        qos = self.slurmdb_api.slurmdb_v0044_get_single_qos(qos=qos_name)
         if qos.errors:
             raise Exception('error/s found in get_qos output: %s', qos.errors)
         return qos.to_dict()
@@ -287,12 +292,12 @@ class SlurmApiConnection():
         if specs is None:
             specs = []
         qos_dict = {
-            'v0042_openapi_qos_resp': {
-                'qos': {'name': qos_name, 'specs': specs}
+            'v0044_openapi_slurmdbd_qos_resp': {
+                'qos': [{'name': qos_name, 'specs': specs}]
             }
         }
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0042_post_qos,
+            self.slurmdb_api.slurmdb_v0044_post_qos,
             noop=noop,
             **qos_dict
         )
@@ -301,7 +306,7 @@ class SlurmApiConnection():
 
     def remove_qos(self, qos_name, noop=SLURMREST_NOOP):
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0042_delete_qos,
+            self.slurmdb_api.slurmdb_v0044_delete_single_qos,
             noop=noop,
             **{'qos': qos_name}
         )
@@ -314,7 +319,7 @@ class SlurmApiConnection():
         accounts (string, default None): accounts for which to get shares
         users (string, default None): users for which to get shares
         """
-        shares = self.slurm_api.slurm_v0042_get_shares(accounts=accounts, users=users)
+        shares = self.slurm_api.slurm_v0044_get_shares(accounts=accounts, users=users)
         if shares.errors:
             raise Exception('error/s found in get_shares output: %s', shares.errors)
         return shares.to_dict()
@@ -322,7 +327,7 @@ class SlurmApiConnection():
 
     # wckey methods
     def get_wckeys(self):
-        wckeys = self.slurmdb_api.slurmdb_v0042_get_wckeys()
+        wckeys = self.slurmdb_api.slurmdb_v0044_get_wckeys()
         if wckeys.errors:
             raise Exception('error/s found in get_wckeys output: %s', wckeys.errors)
         return wckeys.to_dict()
