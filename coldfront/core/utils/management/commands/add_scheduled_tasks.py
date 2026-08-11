@@ -1,54 +1,46 @@
-from django.conf import settings
+import importlib
+
+from django.apps import apps
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django_q.models import Schedule
 from django_q.tasks import schedule
 
-base_dir = settings.BASE_DIR
-
 
 class Command(BaseCommand):
+    help = 'Register scheduled tasks declared by installed apps'
 
     def handle(self, *args, **options):
+        already_scheduled = set(Schedule.objects.values_list('func', flat=True))
 
-        date = timezone.now()# + datetime.timedelta(days=1)
-        date = date.replace(hour=0, minute=0, second=0, microsecond=0)
-        # Cammenting out tasks that handle expiration, as we don't use expirations or end_dates.
-        # schedule('coldfront.core.allocation.tasks.update_statuses',
-        #          schedule_type=Schedule.DAILY,
-        #          next_run=date)
+        for app_config in apps.get_app_configs():
+            if not app_config.name.startswith('coldfront'):
+                continue
+            try:
+                tasks_module = importlib.import_module(f'{app_config.name}.tasks')
+            except ModuleNotFoundError:
+                continue
+            for task in getattr(tasks_module, 'SCHEDULED_TASKS', []):
+                self.register_task(app_config.name, task, already_scheduled)
 
-        # schedule('coldfront.core.allocation.tasks.send_expiry_emails',
-        #          schedule_type=Schedule.DAILY,
-        #          next_run=date)
+    def register_task(self, app_name, task, already_scheduled):
+        func = f"{app_name}.tasks.{task['name']}"
+        if func in already_scheduled:
+            return
+        schedule(
+            func,
+            *task.get('args', ()),
+            name=task['name'],
+            schedule_type=task['schedule_type'],
+            next_run=self._next_run(task.get('time')),
+            cron=task.get('cron'),
+            repeats=task.get('repeats', -1),
+            **task.get('kwargs', {}),
+        )
 
-        # if plugins are installed, add their tasks
-        kwargs = {"repeats": -1,}
-        plugins_tasks = {
-            'fasrc': [
-                'id_import_allocations', 'import_quotas', 'pull_resource_data', 'run_ifx_updates'
-            ],
-            # 'sftocf': ['import_allocation_filepaths', 'pull_sf_push_cf', 'update_zones'],
-            'ldap': ['update_group_membership_ldap', 'id_add_projects'],
-            'slurmrest': ['slurmrest_sync'],
-            'xdmod': ['xdmod_usage'],
-        }
-        scheduled = [task.func for task in Schedule.objects.all()]
-
-        for plugin, tasks in plugins_tasks.items():
-            if f'coldfront.plugins.{plugin}' in settings.INSTALLED_APPS:
-                for tname in tasks:
-                    if f'coldfront.plugins.{plugin}.tasks.{tname}' not in scheduled:
-                        schedule(f'coldfront.plugins.{plugin}.tasks.{tname}',
-                            next_run=date,
-                            schedule_type=Schedule.DAILY,
-                            name=tname,
-                            **kwargs)
-
-        if 'coldfront.core.allocation.tasks.send_request_reminder_emails' not in scheduled:
-            schedule(
-                'coldfront.core.allocation.tasks.send_request_reminder_emails',
-                next_run=date,
-                schedule_type=Schedule.WEEKLY,
-                **kwargs
-            )
+    def _next_run(self, time_str):
+        run = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if time_str:
+            hour, minute = (int(part) for part in time_str.split(':'))
+            run = run.replace(hour=hour, minute=minute)
+        return run
