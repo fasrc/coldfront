@@ -254,10 +254,11 @@ class SlurmApiConnection():
         user_dict = self.get_user(user_name)
         for key, value in change_dict.items():
             user_dict[key] = value
+        v0044_openapi_users_resp = {'v0044_openapi_users_resp': {'users': [user_dict]}}
         response = self._call_api(
             self.slurmdb_api.slurmdb_v0044_post_users,
             noop=noop,
-            **user_dict
+            **v0044_openapi_users_resp
         )
         logger.info('updated user: %s', response)
         return response
