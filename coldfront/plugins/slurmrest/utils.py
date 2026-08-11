@@ -85,7 +85,7 @@ class SlurmApiConnection():
             specs = []
         account_dict = {
             'v0044_openapi_accounts_resp': {
-                'accounts': {'name': account_name, 'specs': specs}
+                'accounts': [{'name': account_name, 'specs': specs}]
             }
         }
         response = self._call_api(
@@ -178,7 +178,7 @@ class SlurmApiConnection():
         if assoc_id:
             if user_name or account_name:
                 raise ValueError("Either assoc_id OR user/account pair, not both.")
-            args = {'id': assoc_id}
+            args = {'id': str(assoc_id)}
         else:
             if not (user_name and account_name):
                 raise ValueError("Must supply assoc_id OR user_name/account_name.")
@@ -273,7 +273,7 @@ class SlurmApiConnection():
 
     def get_qos(self, qos_name):
         """Get QoS entry by name."""
-        qos = self.slurmdb_api.slurmdb_v0044_get_single_qos(qos_name=qos_name)
+        qos = self.slurmdb_api.slurmdb_v0044_get_single_qos(qos=qos_name)
         if qos.errors:
             raise Exception('error/s found in get_qos output: %s', qos.errors)
         return qos.to_dict()
@@ -288,7 +288,7 @@ class SlurmApiConnection():
             specs = []
         qos_dict = {
             'v0044_openapi_slurmdbd_qos_resp': {
-                'qos': {'name': qos_name, 'specs': specs}
+                'qos': [{'name': qos_name, 'specs': specs}]
             }
         }
         response = self._call_api(
