@@ -287,7 +287,7 @@ class SlurmApiConnection():
         if specs is None:
             specs = []
         qos_dict = {
-            'v0044_openapi_qos_resp': {
+            'v0044_openapi_slurmdbd_qos_resp': {
                 'qos': {'name': qos_name, 'specs': specs}
             }
         }
@@ -301,7 +301,7 @@ class SlurmApiConnection():
 
     def remove_qos(self, qos_name, noop=SLURMREST_NOOP):
         response = self._call_api(
-            self.slurmdb_api.slurmdb_v0044_delete_qos,
+            self.slurmdb_api.slurmdb_v0044_delete_single_qos,
             noop=noop,
             **{'qos': qos_name}
         )
