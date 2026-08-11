@@ -26,6 +26,7 @@ setup(
     install_requires=[
         'arrow==1.3.0',
         'asgiref==3.7.2',
+        'beautifulsoup4==4.12.3',
         'bibtexparser==1.4.1',
         'blessed==1.20.0',
         'certifi==2024.2.2',
@@ -79,8 +80,10 @@ setup(
         'xhtml2pdf==0.2.15',
         'XlsxWriter',
         'django-extensions==3.2.3',
-        'git+https://github.com/fasrc/slurmrest_python_sdk.git',
+        'git+https://github.com/coldfront/slurm-python-sdk.git',
         'git+https://github.com/fasrc/sftocf.git'
+        'git+https://github.com/theam/coldfront_notifications.git',
+        'vastpy',
     ],
     entry_points={
         'console_scripts': [
