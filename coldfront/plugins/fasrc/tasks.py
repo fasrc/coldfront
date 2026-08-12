@@ -6,10 +6,18 @@ import traceback
 from contextlib import redirect_stdout, redirect_stderr
 from django.core.management import call_command
 from django.core.mail import send_mail
+from django_q.models import Schedule
 
 from coldfront.core.utils.common import import_from_settings
 
 logger = logging.getLogger('coldfront.run_ifx_updates')
+
+SCHEDULED_TASKS = [
+    {'name': 'id_import_allocations', 'schedule_type': Schedule.DAILY},
+    {'name': 'import_quotas', 'schedule_type': Schedule.DAILY},
+    {'name': 'pull_resource_data', 'schedule_type': Schedule.DAILY},
+    {'name': 'run_ifx_updates', 'schedule_type': Schedule.DAILY},
+]
 
 def import_quotas(volumes=None):
     """

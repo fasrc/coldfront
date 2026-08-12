@@ -4,6 +4,7 @@ import logging
 
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django_q.models import Schedule
 
 from coldfront.core.allocation.models import (
     Allocation,
@@ -16,6 +17,12 @@ from coldfront.core.utils.mail import send_email_template
 
 # Get an instance of a logger
 logger = logging.getLogger(__name__)
+
+# update_statuses and send_expiry_emails are intentionally not scheduled - this
+# deployment doesn't use allocation expirations/end_dates.
+SCHEDULED_TASKS = [
+    {'name': 'send_request_reminder_emails', 'schedule_type': Schedule.WEEKLY},
+]
 
 
 CENTER_NAME = import_from_settings('CENTER_NAME')

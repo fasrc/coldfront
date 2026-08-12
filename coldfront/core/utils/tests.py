@@ -1,8 +1,12 @@
+from types import SimpleNamespace
+
 from django.core import mail
 from django.test import TestCase, override_settings
 from smtplib import SMTPException
 from unittest import mock, skip
 from unittest.mock import patch, MagicMock
+
+from django_q.models import Schedule
 
 from coldfront.core.utils.mail import (
     send_email,
@@ -14,6 +18,7 @@ from coldfront.core.utils.mail import (
     build_link,
     logger
 )
+from coldfront.core.utils.management.commands.add_scheduled_tasks import Command as AddScheduledTasksCommand
 
 @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
 @patch('coldfront.config.email.EMAIL_BACKEND', 'django.core.mail.backends.locmem.EmailBackend')
@@ -130,3 +135,74 @@ class EmailFunctionsTestCase(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('user@example.com', mail.outbox[0].to)
         mock_render.assert_called_once_with(self.template_name, mock.ANY)
+
+
+class AddScheduledTasksTests(TestCase):
+    """Tests for the SCHEDULED_TASKS discovery loop in add_scheduled_tasks.py"""
+
+    def make_app_config(self, name):
+        return SimpleNamespace(name=name)
+
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.importlib.import_module')
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.apps.get_app_configs')
+    def test_registers_declared_task_with_time(self, mock_get_app_configs, mock_import_module):
+        mock_get_app_configs.return_value = [self.make_app_config('coldfront.plugins.fake')]
+        mock_tasks_module = MagicMock()
+        mock_tasks_module.SCHEDULED_TASKS = [
+            {'name': 'do_thing', 'schedule_type': Schedule.DAILY, 'time': '02:30'},
+        ]
+        mock_import_module.return_value = mock_tasks_module
+
+        AddScheduledTasksCommand().handle()
+
+        sched = Schedule.objects.get(func='coldfront.plugins.fake.tasks.do_thing')
+        self.assertEqual(sched.name, 'do_thing')
+        self.assertEqual(sched.schedule_type, Schedule.DAILY)
+        self.assertEqual(sched.repeats, -1)
+        self.assertEqual((sched.next_run.hour, sched.next_run.minute), (2, 30))
+
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.importlib.import_module')
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.apps.get_app_configs')
+    def test_does_not_duplicate_already_scheduled_task(self, mock_get_app_configs, mock_import_module):
+        mock_get_app_configs.return_value = [self.make_app_config('coldfront.plugins.fake')]
+        mock_tasks_module = MagicMock()
+        mock_tasks_module.SCHEDULED_TASKS = [
+            {'name': 'do_thing', 'schedule_type': Schedule.DAILY},
+        ]
+        mock_import_module.return_value = mock_tasks_module
+
+        AddScheduledTasksCommand().handle()
+        AddScheduledTasksCommand().handle()
+
+        self.assertEqual(
+            Schedule.objects.filter(func='coldfront.plugins.fake.tasks.do_thing').count(), 1
+        )
+
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.importlib.import_module')
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.apps.get_app_configs')
+    def test_app_without_tasks_module_is_skipped(self, mock_get_app_configs, mock_import_module):
+        mock_get_app_configs.return_value = [self.make_app_config('coldfront.plugins.notasks')]
+        mock_import_module.side_effect = ModuleNotFoundError
+
+        AddScheduledTasksCommand().handle()  # must not raise
+
+        self.assertEqual(Schedule.objects.count(), 0)
+
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.importlib.import_module')
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.apps.get_app_configs')
+    def test_tasks_module_without_scheduled_tasks_attr_is_skipped(self, mock_get_app_configs, mock_import_module):
+        mock_get_app_configs.return_value = [self.make_app_config('coldfront.plugins.notasks')]
+        mock_import_module.return_value = MagicMock(spec=[])  # no SCHEDULED_TASKS attribute
+
+        AddScheduledTasksCommand().handle()
+
+        self.assertEqual(Schedule.objects.count(), 0)
+
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.importlib.import_module')
+    @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.apps.get_app_configs')
+    def test_non_coldfront_app_is_ignored(self, mock_get_app_configs, mock_import_module):
+        mock_get_app_configs.return_value = [self.make_app_config('django.contrib.admin')]
+
+        AddScheduledTasksCommand().handle()
+
+        mock_import_module.assert_not_called()
