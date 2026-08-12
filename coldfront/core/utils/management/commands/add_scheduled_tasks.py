@@ -26,6 +26,7 @@ class Command(BaseCommand):
     def register_task(self, app_name, task, already_scheduled):
         func = f"{app_name}.tasks.{task['name']}"
         if func in already_scheduled:
+            print(f"Task {func} is already scheduled, skipping.")
             return
         schedule(
             func,
@@ -37,6 +38,7 @@ class Command(BaseCommand):
             repeats=task.get('repeats', -1),
             **task.get('kwargs', {}),
         )
+        print(f"Registered task {func} with schedule type {task['schedule_type']}.")
 
     def _next_run(self, time_str):
         run = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
