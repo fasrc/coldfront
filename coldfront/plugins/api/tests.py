@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.utils import timezone
 from rest_framework import status
@@ -7,6 +8,7 @@ from rest_framework.test import APITestCase, APIRequestFactory
 from coldfront.core.test_helpers.factories import setup_models, AllocationFactory
 from coldfront.core.allocation.models import Allocation
 from coldfront.core.project.models import Project
+from coldfront.plugins.api.management_commands import ALLOWED_MANAGEMENT_COMMANDS
 
 
 class ColdfrontAPI(APITestCase):
@@ -124,3 +126,60 @@ class ColdfrontAPIUnusedAllocations(APITestCase):
         greater than/less than/equal options for Quota_In_Bytes usage value
         """
         response = self.client.get('/api/unused-allocations/', format='json')
+
+
+class ManagementCommandAPITests(APITestCase):
+    """Tests for the management-commands API view"""
+
+    fixtures = [
+        "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
+    ]
+
+    @classmethod
+    def setUpTestData(cls):
+        setup_models(cls)
+
+    def test_requires_superuser(self):
+        """Non-superusers are forbidden from listing or running commands"""
+        self.client.force_login(self.pi_user)
+
+        response = self.client.get('/api/management-commands/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        response = self.client.post(
+            '/api/management-commands/', {'command': 'pruneOrganizations'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_list_returns_allowlist(self):
+        """Superusers can list the allowlisted command names"""
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/management-commands/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(set(response.data['commands']), set(ALLOWED_MANAGEMENT_COMMANDS))
+
+    def test_run_allowed_command(self):
+        """Superusers can run an allowlisted command and get its captured output back"""
+        self.client.force_login(self.admin_user)
+        response = self.client.post(
+            '/api/management-commands/', {'command': 'pruneOrganizations'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertIn('organizations removed', response.data['output'])
+
+    def test_rejects_disallowed_command(self):
+        """Commands not on the allowlist are rejected without being run"""
+        self.client.force_login(self.admin_user)
+        with patch('coldfront.plugins.api.views.call_command') as mock_call_command:
+            response = self.client.post(
+                '/api/management-commands/', {'command': 'migrate'}, format='json'
+            )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_call_command.assert_not_called()
+
+    def test_rejects_missing_command_field(self):
+        """A request with no command name is rejected"""
+        self.client.force_login(self.admin_user)
+        response = self.client.post('/api/management-commands/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

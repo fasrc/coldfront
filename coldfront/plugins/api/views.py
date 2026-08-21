@@ -1,18 +1,21 @@
 import csv
 import logging
 from datetime import timedelta
+from io import StringIO
 
 from django.contrib.auth import get_user_model
 
+from django.core.management import call_command
 from django.db.models import OuterRef, Subquery, Q, F, ExpressionWrapper, Case, When, Value, fields
 from django.db.models.functions import Cast
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
 from django.utils import timezone
 from ifxuser.models import Organization
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework import status, viewsets
+from rest_framework.permissions import BasePermission, IsAuthenticated, IsAdminUser
 from rest_framework.renderers import AdminRenderer, JSONRenderer
+from rest_framework.response import Response
 
 from simple_history.utils import get_history_model_for_model
 
@@ -26,6 +29,7 @@ from coldfront.core.allocation.models import (
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
 from coldfront.plugins.api import serializers
+from coldfront.plugins.api.management_commands import ALLOWED_MANAGEMENT_COMMANDS
 
 logger = logging.getLogger(__name__)
 
@@ -626,3 +630,65 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
             writer.writerow(row)
 
         return response
+
+
+class IsSuperUser(BasePermission):
+    '''Allows access only to superusers.'''
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_superuser)
+
+
+class ManagementCommandViewSet(viewsets.ViewSet):
+    '''Superuser-only endpoint for running allowlisted Django management commands.
+
+    GET /api/management-commands/
+        List the names of runnable commands.
+
+    POST /api/management-commands/
+        Body: {"command": "<name>"}
+        Runs the named command with no arguments and returns its captured output.
+    '''
+    permission_classes = [IsAuthenticated, IsSuperUser]
+
+    def list(self, request):
+        return Response({'commands': sorted(ALLOWED_MANAGEMENT_COMMANDS)})
+
+    def create(self, request):
+        command_name = request.data.get('command')
+
+        if not command_name:
+            return Response(
+                {'error': 'Missing required field "command".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if command_name not in ALLOWED_MANAGEMENT_COMMANDS:
+            return Response(
+                {'error': f'"{command_name}" is not an allowlisted management command.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        logger.info('User %s running management command "%s" via API', request.user.username, command_name)
+
+        stdout, stderr = StringIO(), StringIO()
+        try:
+            call_command(ALLOWED_MANAGEMENT_COMMANDS[command_name], stdout=stdout, stderr=stderr)
+        except Exception as e:
+            logger.exception('Management command "%s" failed via API', command_name)
+            return Response(
+                {
+                    'command': command_name,
+                    'success': False,
+                    'output': stdout.getvalue(),
+                    'error': str(e),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({
+            'command': command_name,
+            'success': True,
+            'output': stdout.getvalue(),
+            'error': stderr.getvalue(),
+        })
