@@ -126,7 +126,13 @@ def get_resource_rate(resource):
         return None
     if resource_obj.resource_type.name == 'Storage Tier':
         return None
-    prod_obj = Product.objects.get(product_name=resource)
+    if not resource_obj.requires_payment:
+        return 0
+    try:
+        prod_obj = Product.objects.get(product_name=resource)
+    except Exception:
+        logger.exception("product missing for resource %s", resource)
+        return None
     rate_obj = prod_obj.rate_set.get(is_active=True)
     if resource_obj.resource_type.name == "Cluster":
         return rate_obj.decimal_price
