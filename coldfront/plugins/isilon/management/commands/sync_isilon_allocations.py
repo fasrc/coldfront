@@ -19,6 +19,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        reports = []
         isilon_resources = Resource.objects.filter(
             resourceattribute__value__in=('isilon', 'powerscale'),
             is_available=True,
@@ -39,9 +40,13 @@ class Command(BaseCommand):
                 continue
             all_missing_projects.extend(report['missing_projects'])
             logger.info('isilon allocation sync report for %s: %s', resource.name, report)
+            report.pop('updated', None)
+            reports.append(report)
 
         if all_missing_projects:
             logger.warning(
                 'sync_isilon_allocations: no matching ColdFront Project found for groups: %s',
                 sorted(set(all_missing_projects)),
             )
+        for r in reports:
+            self.stdout.write(str(r))
