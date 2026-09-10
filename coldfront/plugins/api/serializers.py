@@ -70,7 +70,8 @@ class AllocationPctUsageField(serializers.Field):
 
 
 class AllocationSerializer(serializers.ModelSerializer):
-    resource = serializers.ReadOnlyField(source='get_resources_as_string')
+    resource = serializers.SerializerMethodField()
+    path = serializers.SerializerMethodField()
     project = serializers.SlugRelatedField(slug_field='title', read_only=True)
     status = serializers.SlugRelatedField(slug_field='name', read_only=True)
     size = serializers.FloatField()
@@ -90,6 +91,21 @@ class AllocationSerializer(serializers.ModelSerializer):
             'cost',
             'created',
         )
+
+    def get_resource(self, obj):
+        # Equivalent to Allocation.get_resources_as_string, but reads obj.resources.all()
+        # with no further chaining so it can reuse the view's prefetch cache (which
+        # already applies the same ordering) instead of re-querying per row.
+        return ', '.join(resource.name for resource in obj.resources.all())
+
+    def get_path(self, obj):
+        # Equivalent to Allocation.path, but reads from the prefetched
+        # allocationattribute_set instead of querying AllocationAttributeType and
+        # AllocationAttribute fresh for every row.
+        for attribute in obj.allocationattribute_set.all():
+            if attribute.allocation_attribute_type.name == 'Subdirectory':
+                return attribute.value
+        return ''
 
     def get_type(self, obj):
         resource = obj.get_parent_resource

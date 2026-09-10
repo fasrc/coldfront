@@ -7,7 +7,7 @@ from io import StringIO
 from django.contrib.auth import get_user_model
 
 from django.core.management import call_command
-from django.db.models import OuterRef, Subquery, Q, F, ExpressionWrapper, Case, When, Value, fields
+from django.db.models import OuterRef, Prefetch, Subquery, Q, F, ExpressionWrapper, Case, When, Value, fields
 from django.db.models.functions import Cast
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
@@ -22,6 +22,7 @@ from simple_history.utils import get_history_model_for_model
 
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.allocation.models import (
+    ALLOCATION_RESOURCE_ORDERING,
     Allocation,
     AllocationAttributeUsage,
     AllocationAttributeType,
@@ -89,6 +90,11 @@ class AllocationFilter(filters.FilterSet):
     created_after is the date the request was created after.
     '''
     created = filters.DateFromToRangeFilter()
+    status = filters.CharFilter(label='Status', field_name='status__name', lookup_expr='icontains')
+    project = filters.CharFilter(label='Project', field_name='project__title', lookup_expr='icontains')
+    resource_type = filters.CharFilter(
+        label='Resource Type', field_name='resources__resource_type__name', lookup_expr='icontains'
+    )
 
     class Meta:
         model = Allocation
@@ -98,13 +104,50 @@ class AllocationFilter(filters.FilterSet):
 
 
 class AllocationViewSet(viewsets.ReadOnlyModelViewSet):
+    '''Read-only view of allocations.
+
+    Fetch a single allocation by appending its id to the URL, e.g. /api/allocations/123/.
+
+    Access:
+    - Superusers and users with the 'allocation.can_view_all_allocations' permission see
+      all allocations.
+    - All other users see only allocations belonging to 'New' or 'Active' projects where
+      they are the PI or hold a role containing 'Manager'.
+
+    Data:
+    - id: allocation id
+    - project: project title
+    - resource: comma-separated string of the allocation's resource(s)
+    - status: allocation status name
+    - path: path to the allocation on the resource
+    - size: allocation size
+    - usage: current usage
+    - pct_full: usage as a percentage of size, rounded to 2 decimals (0 if usage is exactly
+      0; null if usage or size is unavailable)
+    - cost: allocation cost
+    - created: date created
+
+    Filters:
+    - created_before/created_after (structure date as 'YYYY-MM-DD')
+    - status (case-insensitive partial match on allocation status name)
+    - project (case-insensitive partial match on project title)
+    - resource_type (case-insensitive partial match on resource type name)
+    '''
     serializer_class = serializers.AllocationSerializer
     filterset_class = AllocationFilter
     # permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
 
     def get_queryset(self):
-        allocations = Allocation.objects.prefetch_related(
+        # select_related for the single-valued FKs (one JOIN instead of separate
+        # queries), and prefetch what the serializer's 'resource'/'path' fields need
+        # so they can read from the cache instead of querying per row. The Prefetch
+        # queryset for 'resources' matches Allocation.get_resources_as_string's own
+        # ordering, so the serializer's plain `.all()` call reuses this cache.
+        allocations = Allocation.objects.select_related(
             'project', 'project__pi', 'status'
+        ).prefetch_related(
+            Prefetch('resources', queryset=Resource.objects.order_by(*ALLOCATION_RESOURCE_ORDERING)),
+            'allocationattribute_set__allocation_attribute_type',
         )
 
         if not (self.request.user.is_superuser or self.request.user.has_perm(
