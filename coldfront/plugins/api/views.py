@@ -129,7 +129,11 @@ class AllocationViewSet(viewsets.ReadOnlyModelViewSet):
 
     Filters:
     - created_before/created_after (structure date as 'YYYY-MM-DD')
-    - status (case-insensitive partial match on allocation status name)
+    - status (case-insensitive partial match on allocation status name). On the list
+      endpoint, defaults to 'Active' only when omitted; pass status=<value> for a
+      different status, or status= (empty) to return allocations in any status. This
+      default does not apply when fetching a single allocation by id - that always
+      returns the allocation regardless of its status.
     - project (case-insensitive partial match on project title)
     - resource_type (case-insensitive partial match on resource type name)
     '''
@@ -163,6 +167,14 @@ class AllocationViewSet(viewsets.ReadOnlyModelViewSet):
                     | Q(project__pi=self.request.user)
                 )
             ).distinct()
+
+        # Default to only 'Active' allocations on the list endpoint, unless the caller
+        # explicitly asks for a status (including ?status= for all statuses, or
+        # ?status=<other value>). Does not apply to retrieve (fetching by id) - a
+        # direct lookup of a known allocation shouldn't 404 just because its status
+        # isn't 'Active'.
+        if self.action == 'list' and 'status' not in self.request.query_params:
+            allocations = allocations.filter(status__name='Active')
 
         allocations = allocations.order_by('project')
 

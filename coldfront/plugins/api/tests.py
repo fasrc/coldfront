@@ -5,7 +5,14 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase, APIRequestFactory
 
-from coldfront.core.test_helpers.factories import setup_models, AllocationFactory
+from coldfront.core.test_helpers.factories import (
+    setup_models,
+    AllocationAttributeFactory,
+    AllocationAttributeTypeFactory,
+    AllocationFactory,
+    AllocationStatusChoiceFactory,
+    ResourceFactory,
+)
 from coldfront.core.allocation.models import Allocation
 from coldfront.core.project.models import Project
 from coldfront.plugins.api.management_commands import ALLOWED_MANAGEMENT_COMMANDS
@@ -85,6 +92,89 @@ class ColdfrontAPI(APITestCase):
         self.client.force_login(self.pi_user)
         response = self.client.get('/api/users/', format='json')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class AllocationSerializerOptimizationTests(APITestCase):
+    """Regression tests for AllocationViewSet's prefetch-based 'resource'/'path' fields.
+
+    These fields are computed in the serializer from prefetched data instead of via
+    Allocation.get_resources_as_string / Allocation.path directly (see
+    quality_reports/plans/lovely-prancing-toast.md), so this confirms the values still
+    match what those model properties themselves return.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        setup_models(cls)
+        cls.resource_1 = ResourceFactory(name='Test Resource A')
+        cls.resource_2 = ResourceFactory(name='Test Resource B')
+        cls.allocation = AllocationFactory(project=cls.project)
+        cls.allocation.resources.set([cls.resource_1, cls.resource_2])
+
+        subdirectory_type = AllocationAttributeTypeFactory(name='Subdirectory')
+        AllocationAttributeFactory(
+            allocation=cls.allocation,
+            allocation_attribute_type=subdirectory_type,
+            value='/some/subdirectory',
+        )
+
+    def test_resource_field_matches_model_property(self):
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/allocations/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        result = next(row for row in response.data if row['id'] == self.allocation.id)
+        self.assertEqual(result['resource'], self.allocation.get_resources_as_string)
+
+    def test_path_field_matches_model_property(self):
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/allocations/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        result = next(row for row in response.data if row['id'] == self.allocation.id)
+        self.assertEqual(result['path'], self.allocation.path)
+        self.assertEqual(result['path'], '/some/subdirectory')
+
+
+class AllocationDefaultStatusFilterTests(APITestCase):
+    """AllocationViewSet defaults to 'Active' allocations unless status is specified."""
+
+    @classmethod
+    def setUpTestData(cls):
+        setup_models(cls)
+        cls.expired_allocation = AllocationFactory(
+            project=cls.project, status=AllocationStatusChoiceFactory(name='Expired')
+        )
+
+    def test_default_excludes_non_active(self):
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/allocations/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = [row['id'] for row in response.data]
+        self.assertNotIn(self.expired_allocation.id, returned_ids)
+        self.assertTrue(all(row['status'] == 'Active' for row in response.data))
+
+    def test_explicit_status_overrides_default(self):
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/allocations/', {'status': 'Expired'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = [row['id'] for row in response.data]
+        self.assertIn(self.expired_allocation.id, returned_ids)
+
+    def test_empty_status_returns_all(self):
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/allocations/', {'status': ''}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = [row['id'] for row in response.data]
+        self.assertIn(self.expired_allocation.id, returned_ids)
+
+    def test_retrieve_by_id_ignores_default_status_filter(self):
+        """Fetching a non-Active allocation directly by id should not 404."""
+        self.client.force_login(self.admin_user)
+        response = self.client.get(f'/api/allocations/{self.expired_allocation.id}/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], self.expired_allocation.id)
+
 
 class ColdfrontAPIUnusedAllocations(APITestCase):
     """Tests for unused allocations report API view"""
