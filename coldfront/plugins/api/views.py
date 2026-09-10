@@ -1,23 +1,29 @@
 import csv
 import logging
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import timedelta
+from io import StringIO
 
 from django.contrib.auth import get_user_model
 
-from django.db.models import OuterRef, Subquery, Q, F, ExpressionWrapper, Case, When, Value, fields
+from django.core.management import call_command
+from django.db.models import OuterRef, Prefetch, Subquery, Q, F, ExpressionWrapper, Case, When, Value, fields
 from django.db.models.functions import Cast
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
 from django.utils import timezone
 from ifxuser.models import Organization
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import BasePermission, IsAuthenticated, IsAdminUser
 from rest_framework.renderers import AdminRenderer, JSONRenderer
+from rest_framework.response import Response
 
 from simple_history.utils import get_history_model_for_model
 
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.allocation.models import (
+    ALLOCATION_RESOURCE_ORDERING,
     Allocation,
     AllocationAttributeUsage,
     AllocationAttributeType,
@@ -26,6 +32,7 @@ from coldfront.core.allocation.models import (
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
 from coldfront.plugins.api import serializers
+from coldfront.plugins.api.management_commands import ALLOWED_MANAGEMENT_COMMANDS
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +91,11 @@ class AllocationFilter(filters.FilterSet):
     created_after is the date the request was created after.
     '''
     created = filters.DateFromToRangeFilter()
+    status = filters.CharFilter(label='Status', field_name='status__name', lookup_expr='icontains')
+    project = filters.CharFilter(label='Project', field_name='project__title', lookup_expr='icontains')
+    resource_type = filters.CharFilter(
+        label='Resource Type', field_name='resources__resource_type__name', lookup_expr='icontains'
+    )
 
     class Meta:
         model = Allocation
@@ -93,13 +105,58 @@ class AllocationFilter(filters.FilterSet):
 
 
 class AllocationViewSet(viewsets.ReadOnlyModelViewSet):
+    '''Read-only view of allocations.
+
+    Fetch a single allocation by appending its id to the URL, e.g. /api/allocations/123/.
+
+    For billing troubleshooting on a specific allocation, GET /api/allocations/<id>/billing-detail/
+    returns this same data plus the allocation's full attribute list and per-user usage
+    (staff/superuser only - see billing_detail below).
+
+    Access:
+    - Superusers and users with the 'allocation.can_view_all_allocations' permission see
+      all allocations.
+    - All other users see only allocations belonging to 'New' or 'Active' projects where
+      they are the PI or hold a role containing 'Manager'.
+
+    Data:
+    - id: allocation id
+    - project: project title
+    - resource: comma-separated string of the allocation's resource(s)
+    - status: allocation status name
+    - path: path to the allocation on the resource
+    - size: allocation size
+    - usage: current usage
+    - pct_full: usage as a percentage of size, rounded to 2 decimals (0 if usage is exactly
+      0; null if usage or size is unavailable)
+    - cost: allocation cost
+    - created: date created
+
+    Filters:
+    - created_before/created_after (structure date as 'YYYY-MM-DD')
+    - status (case-insensitive partial match on allocation status name). On the list
+      endpoint, defaults to 'Active' only when omitted; pass status=<value> for a
+      different status, or status= (empty) to return allocations in any status. This
+      default does not apply when fetching a single allocation by id - that always
+      returns the allocation regardless of its status.
+    - project (case-insensitive partial match on project title)
+    - resource_type (case-insensitive partial match on resource type name)
+    '''
     serializer_class = serializers.AllocationSerializer
     filterset_class = AllocationFilter
     # permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
 
     def get_queryset(self):
-        allocations = Allocation.objects.prefetch_related(
+        # select_related for the single-valued FKs (one JOIN instead of separate
+        # queries), and prefetch what the serializer's 'resource'/'path' fields need
+        # so they can read from the cache instead of querying per row. The Prefetch
+        # queryset for 'resources' matches Allocation.get_resources_as_string's own
+        # ordering, so the serializer's plain `.all()` call reuses this cache.
+        allocations = Allocation.objects.select_related(
             'project', 'project__pi', 'status'
+        ).prefetch_related(
+            Prefetch('resources', queryset=Resource.objects.order_by(*ALLOCATION_RESOURCE_ORDERING)),
+            'allocationattribute_set__allocation_attribute_type',
         )
 
         if not (self.request.user.is_superuser or self.request.user.has_perm(
@@ -116,9 +173,31 @@ class AllocationViewSet(viewsets.ReadOnlyModelViewSet):
                 )
             ).distinct()
 
+        # Default to only 'Active' allocations on the list endpoint, unless the caller
+        # explicitly asks for a status (including ?status= for all statuses, or
+        # ?status=<other value>). Does not apply to retrieve (fetching by id) - a
+        # direct lookup of a known allocation shouldn't 404 just because its status
+        # isn't 'Active'.
+        if self.action == 'list' and 'status' not in self.request.query_params:
+            allocations = allocations.filter(status__name='Active')
+
         allocations = allocations.order_by('project')
 
         return allocations
+
+    @action(detail=True, methods=['get'], url_path='billing-detail', permission_classes=[IsAuthenticated, IsAdminUser])
+    def billing_detail(self, request, pk=None):
+        '''GET /api/allocations/<id>/billing-detail/ - staff/superuser only.
+
+        The usual allocation information (see AllocationSerializer) plus:
+        - attributes: every AllocationAttribute on this allocation (name, value, and
+          usage if the attribute type tracks usage)
+        - users: every AllocationUser on this allocation (username, status, usage,
+          usage_bytes, unit)
+        '''
+        allocation = self.get_object()
+        serializer = serializers.AllocationBillingDetailSerializer(allocation, context={'request': request})
+        return Response(serializer.data)
 
 
 class AllocationRequestFilter(filters.FilterSet):
@@ -626,3 +705,105 @@ class UnusedStorageAllocationViewSet(viewsets.ReadOnlyModelViewSet):
             writer.writerow(row)
 
         return response
+
+
+class IsSuperUser(BasePermission):
+    '''Allows access only to superusers.'''
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_superuser)
+
+
+def _coerce_command_arg(value, arg_type):
+    '''Coerce a caller-supplied value to arg_type, raising ValueError on failure.'''
+    if arg_type is bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.lower() in ('true', 'false', '1', '0', 'yes', 'no'):
+            return value.lower() in ('true', '1', 'yes')
+        raise ValueError(f'expected a boolean, got {value!r}')
+    return arg_type(value)
+
+
+class ManagementCommandViewSet(viewsets.ViewSet):
+    '''Superuser-only endpoint for running allowlisted Django management commands.
+
+    GET /api/management-commands/
+        List the names of runnable commands.
+
+    POST /api/management-commands/
+        Body: {"command": "<name>", ...args}
+        Runs the named command and returns its captured output. Only args
+        declared in ALLOWED_MANAGEMENT_COMMANDS[<name>]['args'] are accepted;
+        anything else in the body is rejected.
+    '''
+    permission_classes = [IsAuthenticated, IsSuperUser]
+
+    def list(self, request):
+        return Response({'commands': sorted(ALLOWED_MANAGEMENT_COMMANDS)})
+
+    def create(self, request):
+        command_name = request.data.get('command')
+
+        if not command_name:
+            return Response(
+                {'error': 'Missing required field "command".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if command_name not in ALLOWED_MANAGEMENT_COMMANDS:
+            return Response(
+                {'error': f'"{command_name}" is not an allowlisted management command.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        command_config = ALLOWED_MANAGEMENT_COMMANDS[command_name]
+        allowed_args = command_config['args']
+
+        call_kwargs = {}
+        for key, value in request.data.items():
+            if key == 'command':
+                continue
+            if key not in allowed_args:
+                return Response(
+                    {'error': f'"{key}" is not an accepted argument for "{command_name}".'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                call_kwargs[key] = _coerce_command_arg(value, allowed_args[key])
+            except (TypeError, ValueError) as e:
+                return Response(
+                    {'error': f'Invalid value for "{key}": {e}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        logger.info(
+            'User %s running management command "%s" via API with args %s',
+            request.user.username, command_name, call_kwargs,
+        )
+
+        stdout, stderr = StringIO(), StringIO()
+        try:
+            # Some management commands write with print() instead of self.stdout.write(),
+            # so redirect real stdout/stderr in addition to passing stdout=/stderr= to
+            # call_command (which only catches the latter style).
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                call_command(command_config['command'], stdout=stdout, stderr=stderr, **call_kwargs)
+        except Exception as e:
+            logger.exception('Management command "%s" failed via API', command_name)
+            return Response(
+                {
+                    'command': command_name,
+                    'success': False,
+                    'output': stdout.getvalue(),
+                    'error': str(e),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({
+            'command': command_name,
+            'success': True,
+            'output': stdout.getvalue(),
+            'error': stderr.getvalue(),
+        })

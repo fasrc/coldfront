@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project, ProjectUser
-from coldfront.core.allocation.models import Allocation, AllocationChangeRequest
+from coldfront.core.allocation.models import Allocation, AllocationAttribute, AllocationChangeRequest, AllocationUser
 from coldfront.plugins.ifx.models import ProjectOrganization
 
 
@@ -70,7 +70,8 @@ class AllocationPctUsageField(serializers.Field):
 
 
 class AllocationSerializer(serializers.ModelSerializer):
-    resource = serializers.ReadOnlyField(source='get_resources_as_string')
+    resource = serializers.SerializerMethodField()
+    path = serializers.SerializerMethodField()
     project = serializers.SlugRelatedField(slug_field='title', read_only=True)
     status = serializers.SlugRelatedField(slug_field='name', read_only=True)
     size = serializers.FloatField()
@@ -91,11 +92,59 @@ class AllocationSerializer(serializers.ModelSerializer):
             'created',
         )
 
+    def get_resource(self, obj):
+        # Equivalent to Allocation.get_resources_as_string, but reads obj.resources.all()
+        # with no further chaining so it can reuse the view's prefetch cache (which
+        # already applies the same ordering) instead of re-querying per row.
+        return ', '.join(resource.name for resource in obj.resources.all())
+
+    def get_path(self, obj):
+        # Equivalent to Allocation.path, but reads from the prefetched
+        # allocationattribute_set instead of querying AllocationAttributeType and
+        # AllocationAttribute fresh for every row.
+        for attribute in obj.allocationattribute_set.all():
+            if attribute.allocation_attribute_type.name == 'Subdirectory':
+                return attribute.value
+        return ''
+
     def get_type(self, obj):
         resource = obj.get_parent_resource
         if resource:
             return resource.resource_type.name
         return None
+
+
+class AllocationAttributeSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='allocation_attribute_type.name', read_only=True)
+    usage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AllocationAttribute
+        fields = ('name', 'value', 'usage')
+
+    def get_usage(self, obj):
+        usage = getattr(obj, 'allocationattributeusage', None)
+        return usage.value if usage else None
+
+
+class AllocationUserUsageSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    status = serializers.SlugRelatedField(slug_field='name', read_only=True)
+
+    class Meta:
+        model = AllocationUser
+        fields = ('username', 'status', 'usage', 'usage_bytes', 'unit')
+
+
+class AllocationBillingDetailSerializer(AllocationSerializer):
+    '''AllocationSerializer plus the allocation's full attribute list and per-user
+    usage, for troubleshooting bills on a specific allocation.
+    '''
+    attributes = AllocationAttributeSerializer(source='allocationattribute_set', many=True, read_only=True)
+    users = AllocationUserUsageSerializer(source='allocationuser_set', many=True, read_only=True)
+
+    class Meta(AllocationSerializer.Meta):
+        fields = AllocationSerializer.Meta.fields + ('attributes', 'users')
 
 
 class AllocationRequestSerializer(serializers.ModelSerializer):
