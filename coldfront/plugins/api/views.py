@@ -1,5 +1,6 @@
 import csv
 import logging
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import timedelta
 from io import StringIO
 
@@ -673,7 +674,11 @@ class ManagementCommandViewSet(viewsets.ViewSet):
 
         stdout, stderr = StringIO(), StringIO()
         try:
-            call_command(ALLOWED_MANAGEMENT_COMMANDS[command_name], stdout=stdout, stderr=stderr)
+            # Some management commands write with print() instead of self.stdout.write(),
+            # so redirect real stdout/stderr in addition to passing stdout=/stderr= to
+            # call_command (which only catches the latter style).
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                call_command(ALLOWED_MANAGEMENT_COMMANDS[command_name], stdout=stdout, stderr=stderr)
         except Exception as e:
             logger.exception('Management command "%s" failed via API', command_name)
             return Response(
