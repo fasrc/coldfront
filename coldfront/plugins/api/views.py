@@ -14,6 +14,7 @@ from django_filters import rest_framework as filters
 from django.utils import timezone
 from ifxuser.models import Organization
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, IsAuthenticated, IsAdminUser
 from rest_framework.renderers import AdminRenderer, JSONRenderer
 from rest_framework.response import Response
@@ -108,6 +109,10 @@ class AllocationViewSet(viewsets.ReadOnlyModelViewSet):
 
     Fetch a single allocation by appending its id to the URL, e.g. /api/allocations/123/.
 
+    For billing troubleshooting on a specific allocation, GET /api/allocations/<id>/billing-detail/
+    returns this same data plus the allocation's full attribute list and per-user usage
+    (staff/superuser only - see billing_detail below).
+
     Access:
     - Superusers and users with the 'allocation.can_view_all_allocations' permission see
       all allocations.
@@ -179,6 +184,20 @@ class AllocationViewSet(viewsets.ReadOnlyModelViewSet):
         allocations = allocations.order_by('project')
 
         return allocations
+
+    @action(detail=True, methods=['get'], url_path='billing-detail', permission_classes=[IsAuthenticated, IsAdminUser])
+    def billing_detail(self, request, pk=None):
+        '''GET /api/allocations/<id>/billing-detail/ - staff/superuser only.
+
+        The usual allocation information (see AllocationSerializer) plus:
+        - attributes: every AllocationAttribute on this allocation (name, value, and
+          usage if the attribute type tracks usage)
+        - users: every AllocationUser on this allocation (username, status, usage,
+          usage_bytes, unit)
+        '''
+        allocation = self.get_object()
+        serializer = serializers.AllocationBillingDetailSerializer(allocation, context={'request': request})
+        return Response(serializer.data)
 
 
 class AllocationRequestFilter(filters.FilterSet):

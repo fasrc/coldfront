@@ -9,8 +9,10 @@ from coldfront.core.test_helpers.factories import (
     setup_models,
     AllocationAttributeFactory,
     AllocationAttributeTypeFactory,
+    AllocationAttributeUsageFactory,
     AllocationFactory,
     AllocationStatusChoiceFactory,
+    AllocationUserFactory,
     ResourceFactory,
 )
 from coldfront.core.allocation.models import Allocation
@@ -174,6 +176,55 @@ class AllocationDefaultStatusFilterTests(APITestCase):
         response = self.client.get(f'/api/allocations/{self.expired_allocation.id}/', format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['id'], self.expired_allocation.id)
+
+
+class AllocationBillingDetailTests(APITestCase):
+    """Tests for the billing-detail action on AllocationViewSet."""
+
+    @classmethod
+    def setUpTestData(cls):
+        setup_models(cls)
+        cls.allocation = AllocationFactory(project=cls.project)
+
+        plain_type = AllocationAttributeTypeFactory(name='Test attribute type')
+        AllocationAttributeFactory(
+            allocation=cls.allocation, allocation_attribute_type=plain_type, value='some value'
+        )
+
+        metered_type = AllocationAttributeTypeFactory(name='Storage Quota (TB)', has_usage=True)
+        metered_attribute = AllocationAttributeFactory(
+            allocation=cls.allocation, allocation_attribute_type=metered_type, value='10'
+        )
+        AllocationAttributeUsageFactory(allocation_attribute=metered_attribute, value=7.5)
+
+        cls.allocation_user = AllocationUserFactory(allocation=cls.allocation, usage=42, usage_bytes=42000, unit='GB')
+
+    def test_staff_can_view_billing_detail(self):
+        self.client.force_login(self.admin_user)
+        response = self.client.get(f'/api/allocations/{self.allocation.id}/billing-detail/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        attributes = {attr['name']: attr for attr in response.data['attributes']}
+        self.assertEqual(attributes['Test attribute type']['value'], 'some value')
+        self.assertIsNone(attributes['Test attribute type']['usage'])
+        self.assertEqual(attributes['Storage Quota (TB)']['value'], '10')
+        self.assertEqual(float(attributes['Storage Quota (TB)']['usage']), 7.5)
+
+        users = {u['username']: u for u in response.data['users']}
+        self.assertEqual(users[self.allocation_user.user.username]['usage'], 42)
+        self.assertEqual(users[self.allocation_user.user.username]['usage_bytes'], 42000)
+        self.assertEqual(users[self.allocation_user.user.username]['unit'], 'GB')
+
+    def test_non_staff_pi_forbidden(self):
+        """Even the PI who owns the allocation cannot use this staff-only endpoint."""
+        self.client.force_login(self.pi_user)
+        response = self.client.get(f'/api/allocations/{self.allocation.id}/billing-detail/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_nonexistent_allocation_404s(self):
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/allocations/999999/billing-detail/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 class ColdfrontAPIUnusedAllocations(APITestCase):

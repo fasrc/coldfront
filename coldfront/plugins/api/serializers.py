@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project, ProjectUser
-from coldfront.core.allocation.models import Allocation, AllocationChangeRequest
+from coldfront.core.allocation.models import Allocation, AllocationAttribute, AllocationChangeRequest, AllocationUser
 from coldfront.plugins.ifx.models import ProjectOrganization
 
 
@@ -112,6 +112,39 @@ class AllocationSerializer(serializers.ModelSerializer):
         if resource:
             return resource.resource_type.name
         return None
+
+
+class AllocationAttributeSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='allocation_attribute_type.name', read_only=True)
+    usage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AllocationAttribute
+        fields = ('name', 'value', 'usage')
+
+    def get_usage(self, obj):
+        usage = getattr(obj, 'allocationattributeusage', None)
+        return usage.value if usage else None
+
+
+class AllocationUserUsageSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    status = serializers.SlugRelatedField(slug_field='name', read_only=True)
+
+    class Meta:
+        model = AllocationUser
+        fields = ('username', 'status', 'usage', 'usage_bytes', 'unit')
+
+
+class AllocationBillingDetailSerializer(AllocationSerializer):
+    '''AllocationSerializer plus the allocation's full attribute list and per-user
+    usage, for troubleshooting bills on a specific allocation.
+    '''
+    attributes = AllocationAttributeSerializer(source='allocationattribute_set', many=True, read_only=True)
+    users = AllocationUserUsageSerializer(source='allocationuser_set', many=True, read_only=True)
+
+    class Meta(AllocationSerializer.Meta):
+        fields = AllocationSerializer.Meta.fields + ('attributes', 'users')
 
 
 class AllocationRequestSerializer(serializers.ModelSerializer):
