@@ -640,6 +640,17 @@ class IsSuperUser(BasePermission):
         return bool(request.user and request.user.is_superuser)
 
 
+def _coerce_command_arg(value, arg_type):
+    '''Coerce a caller-supplied value to arg_type, raising ValueError on failure.'''
+    if arg_type is bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.lower() in ('true', 'false', '1', '0', 'yes', 'no'):
+            return value.lower() in ('true', '1', 'yes')
+        raise ValueError(f'expected a boolean, got {value!r}')
+    return arg_type(value)
+
+
 class ManagementCommandViewSet(viewsets.ViewSet):
     '''Superuser-only endpoint for running allowlisted Django management commands.
 
@@ -647,8 +658,10 @@ class ManagementCommandViewSet(viewsets.ViewSet):
         List the names of runnable commands.
 
     POST /api/management-commands/
-        Body: {"command": "<name>"}
-        Runs the named command with no arguments and returns its captured output.
+        Body: {"command": "<name>", ...args}
+        Runs the named command and returns its captured output. Only args
+        declared in ALLOWED_MANAGEMENT_COMMANDS[<name>]['args'] are accepted;
+        anything else in the body is rejected.
     '''
     permission_classes = [IsAuthenticated, IsSuperUser]
 
@@ -670,7 +683,30 @@ class ManagementCommandViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        logger.info('User %s running management command "%s" via API', request.user.username, command_name)
+        command_config = ALLOWED_MANAGEMENT_COMMANDS[command_name]
+        allowed_args = command_config['args']
+
+        call_kwargs = {}
+        for key, value in request.data.items():
+            if key == 'command':
+                continue
+            if key not in allowed_args:
+                return Response(
+                    {'error': f'"{key}" is not an accepted argument for "{command_name}".'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                call_kwargs[key] = _coerce_command_arg(value, allowed_args[key])
+            except (TypeError, ValueError) as e:
+                return Response(
+                    {'error': f'Invalid value for "{key}": {e}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        logger.info(
+            'User %s running management command "%s" via API with args %s',
+            request.user.username, command_name, call_kwargs,
+        )
 
         stdout, stderr = StringIO(), StringIO()
         try:
@@ -678,7 +714,7 @@ class ManagementCommandViewSet(viewsets.ViewSet):
             # so redirect real stdout/stderr in addition to passing stdout=/stderr= to
             # call_command (which only catches the latter style).
             with redirect_stdout(stdout), redirect_stderr(stderr):
-                call_command(ALLOWED_MANAGEMENT_COMMANDS[command_name], stdout=stdout, stderr=stderr)
+                call_command(command_config['command'], stdout=stdout, stderr=stderr, **call_kwargs)
         except Exception as e:
             logger.exception('Management command "%s" failed via API', command_name)
             return Response(

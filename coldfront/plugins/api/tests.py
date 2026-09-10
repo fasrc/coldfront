@@ -183,3 +183,37 @@ class ManagementCommandAPITests(APITestCase):
         self.client.force_login(self.admin_user)
         response = self.client.post('/api/management-commands/', {}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_run_command_with_allowed_args(self):
+        """Superusers can pass declared args through to an allowlisted command"""
+        self.client.force_login(self.admin_user)
+        response = self.client.post(
+            '/api/management-commands/',
+            {'command': 'createProductUsages', 'year': 2024, 'month': 3, 'overwrite': True},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+        self.assertIn('records successfully created', response.data['output'])
+
+    def test_rejects_undeclared_arg(self):
+        """Args not declared for a command are rejected without running it"""
+        self.client.force_login(self.admin_user)
+        with patch('coldfront.plugins.api.views.call_command') as mock_call_command:
+            response = self.client.post(
+                '/api/management-commands/', {'command': 'pruneOrganizations', 'year': 2024}, format='json'
+            )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_call_command.assert_not_called()
+
+    def test_rejects_invalid_arg_type(self):
+        """An arg value that can't be coerced to its declared type is rejected"""
+        self.client.force_login(self.admin_user)
+        with patch('coldfront.plugins.api.views.call_command') as mock_call_command:
+            response = self.client.post(
+                '/api/management-commands/',
+                {'command': 'createProductUsages', 'year': 'not-a-year'},
+                format='json',
+            )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_call_command.assert_not_called()
