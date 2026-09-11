@@ -2,7 +2,12 @@ from django.urls import reverse
 
 from coldfront.core.project.tests.test_views import ProjectViewTestBase
 from coldfront.core.test_helpers import utils
-from coldfront.core.test_helpers.factories import ProjectAttributeFactory
+from coldfront.core.test_helpers.factories import (
+    ProjectAttributeFactory,
+    ProjectUserFactory,
+    ProjectUserStatusChoiceFactory,
+    UserFactory,
+)
 from coldfront.core.test_helpers.fasrc_factories import (
     OrganizationFactory,
     OrgRelationFactory,
@@ -171,3 +176,54 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         soup = utils.login_and_get_soup(self.client, self.proj_nonallocationuser, self.url)
         allocations_table = soup.find('table', {'id': 'allocation_history'})
         self.assertIn("holylfs10/tier1", allocations_table.get_text())
+
+
+class ProjectDetailViewDeactivatedUsersTest(ProjectViewTestBase):
+    """Test how ProjectDetailView displays Active/Deactivated/Removed ProjectUsers.
+
+    Deactivated means: still an AD group member, but the AD account is disabled -
+    these should be shown (grayed out). Removed means: no longer a group member -
+    these should not be shown at all.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        super(ProjectDetailViewDeactivatedUsersTest, cls).setUpTestData()
+        cls.url = f'/project/{cls.project.pk}/'
+
+        cls.deactivated_user = UserFactory(username='deactivated_user')
+        cls.deactivated_projectuser = ProjectUserFactory(
+            user=cls.deactivated_user, project=cls.project,
+            status=ProjectUserStatusChoiceFactory(name='Deactivated'),
+        )
+        cls.removed_user = UserFactory(username='removed_user')
+        cls.removed_projectuser = ProjectUserFactory(
+            user=cls.removed_user, project=cls.project,
+            status=ProjectUserStatusChoiceFactory(name='Removed'),
+        )
+
+    def test_deactivated_user_shown_removed_user_not_shown(self):
+        response = utils.login_and_get_page(self.client, self.pi_user, self.url)
+        project_user_usernames = [pu.user.username for pu in response.context['project_users']]
+        self.assertIn(self.deactivated_user.username, project_user_usernames)
+        self.assertNotIn(self.removed_user.username, project_user_usernames)
+
+    def test_deactivated_user_row_is_grayed_out_with_badge(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        table = soup.find('table', {'id': 'projectuser_table'})
+        row = next(
+            tr for tr in table.find_all('tr')
+            if self.deactivated_user.username in tr.get_text()
+        )
+        self.assertIn('text-muted', row.get('class', []))
+        self.assertIn('Disabled', row.get_text())
+
+    def test_removed_user_row_absent_from_table(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        table = soup.find('table', {'id': 'projectuser_table'})
+        self.assertNotIn(self.removed_user.username, table.get_text())
+
+    def test_mailto_excludes_deactivated_user_email(self):
+        response = utils.login_and_get_page(self.client, self.pi_user, self.url)
+        self.assertNotIn(self.deactivated_user.email, response.context['mailto'])
+        self.assertIn(self.pi_user.email, response.context['mailto'])

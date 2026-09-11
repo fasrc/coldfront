@@ -8,6 +8,7 @@ from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import (
     setup_models,
     ProjectFactory,
+    ProjectUserFactory,
     PAttributeTypeFactory,
     ProjectAttributeFactory,
     ProjectStatusChoiceFactory,
@@ -422,6 +423,60 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         self.client.post(self.url, data=post_data, follow=True)
         project_user_obj.refresh_from_db()
         self.assertEqual(project_user_obj.status.name, 'Deactivated')
+
+    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_primary_group_removal_deactivates_secondary_projects_not_removes(
+        self, mock_filter_users_to_remove, mock_project_preremove
+    ):
+        """Deactivating a user's primary AD group disables their whole AD account,
+        but doesn't remove them from their other AD groups - so their membership
+        in other active projects should become Deactivated, not Removed."""
+        primary_user = self.project_user
+        project_user_obj = self.project.projectuser_set.get(user=primary_user)
+        project_user_obj.status = ProjectUserStatusChoice.objects.get(name='Active')
+        project_user_obj.save()
+
+        other_project = ProjectFactory(
+            title='other_lab', status=ProjectStatusChoiceFactory(name='Active')
+        )
+        other_projectuser = ProjectUserFactory(
+            project=other_project, user=primary_user,
+            status=ProjectUserStatusChoice.objects.get(name='Active'),
+        )
+
+        mock_filter_users_to_remove.return_value = [(
+            None,
+            [{
+                'username': primary_user.username,
+                'first_name': primary_user.first_name,
+                'last_name': primary_user.last_name,
+                'email': primary_user.email,
+                'role': 'User',
+                'primary_group': True,
+            }]
+        )]
+        mock_project_preremove.return_value = None
+
+        post_data = {
+            'userform-TOTAL_FORMS': '1',
+            'userform-INITIAL_FORMS': '1',
+            'userform-MIN_NUM_FORMS': '0',
+            'userform-MAX_NUM_FORMS': '1',
+            'userform-0-selected': 'on',
+            'userform-0-username': primary_user.username,
+            'userform-0-first_name': primary_user.first_name,
+            'userform-0-last_name': primary_user.last_name,
+            'userform-0-email': primary_user.email,
+            'userform-0-role': 'User',
+            'userform-0-primary_group': 'on',
+        }
+
+        self.client.force_login(self.proj_generalmanager)
+        self.client.post(self.url, data=post_data, follow=True)
+
+        other_projectuser.refresh_from_db()
+        self.assertEqual(other_projectuser.status.name, 'Deactivated')
 
 
 class ProjectUpdateViewTest(ProjectViewTestBase):
