@@ -148,8 +148,10 @@ class ProjectStorageReportView(LoginRequiredMixin, UserPassesTestMixin, PDFView)
         context = super().get_context_data(**kwargs)
 
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
+        # Show Active users and Deactivated users (still an AD group member, but
+        # their AD account is disabled) - Removed users are no longer group members.
         project_users = project_obj.projectuser_set.filter(
-                    status__name='Active').order_by('user__username')
+                    status__name__in=['Active', 'Deactivated']).order_by('user__username')
 
         storage_allocations = project_obj.allocation_set.filter(
             status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested'],
@@ -262,11 +264,14 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         for a in invalid_attributes:
             attributes_with_usage.remove(a)
 
-        # Only show 'Active Users'
+        # Show Active users and Deactivated users (still an AD group member, but
+        # their AD account is disabled) - Removed users are no longer group members.
         project_users = self.object.projectuser_set.filter(
-                    status__name='Active').order_by('user__username')
+                    status__name__in=['Active', 'Deactivated']).order_by('user__username')
 
-        context['mailto'] = 'mailto:' + ','.join([u.user.email for u in project_users])
+        # Don't email accounts that are disabled in AD, even though they're shown above.
+        active_project_users = project_users.filter(status__name='Active')
+        context['mailto'] = 'mailto:' + ','.join([u.user.email for u in active_project_users])
 
         allocations = self.object.allocation_set.exclude(status__name='Merged').prefetch_related('resources').order_by('-pk')
         allocation_history_records = self.return_status_change_records(allocations)
@@ -1158,13 +1163,15 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     project_user_obj.status = projectuser_status_deactivated
                     project_user_obj.save()
                     action = 'deactivated'
-                    # change status to "removed" for all other projectusers with this user
+                    # deactivating the primary group disables the user's whole AD
+                    # account, but doesn't remove them from their other AD groups -
+                    # so other projects' memberships become Deactivated, not Removed
                     secondary_projectusers = ProjectUser.objects.filter(
                         user=user_obj,
                         status__name='Active',
                         project__status__name__in=['Active', 'New'],
                     ).exclude(project=project_obj)
-                    secondary_projectusers.update(status=projectuser_status_removed)
+                    secondary_projectusers.update(status=projectuser_status_deactivated)
                     # get allocations to remove user from in projects where they have been removed
                     allocations_to_remove_user_from = Allocation.objects.filter(
                         allocationuser__user=user_obj,
