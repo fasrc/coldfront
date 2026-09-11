@@ -179,8 +179,13 @@ Project Detail
       </thead>
       <tbody>
         {% for user in project_users %}
-          <tr status="{{ user.status }}">
-            <td>{{ user.user.username }}</td>
+          <tr status="{{ user.status }}" {% if user.status.name == 'Deactivated' %}class="text-muted"{% endif %}>
+            <td>
+              {{ user.user.username }}
+              {% if user.status.name == 'Deactivated' %}
+                <span class="badge badge-secondary">Disabled</span>
+              {% endif %}
+            </td>
             <td>{{ user.user.first_name }} {{ user.user.last_name }}</td>
             <td>{{ user.user.email }}</td>
             <td>{{ user.role.name }}</td>
