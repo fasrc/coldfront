@@ -7,12 +7,14 @@ from django.contrib.auth import get_user_model
 from django.db.models import OuterRef, Subquery, Q, F, ExpressionWrapper, Case, When, Value, fields
 from django.db.models.functions import Cast
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django_filters import rest_framework as filters
 from django.utils import timezone
 from ifxuser.models import Organization
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.renderers import AdminRenderer, JSONRenderer
+from rest_framework.response import Response
 
 from simple_history.utils import get_history_model_for_model
 
@@ -480,6 +482,38 @@ class ProjectViewSet(viewsets.ReadOnlyModelViewSet):
             projects = projects.prefetch_related('allocation_set')
 
         return projects.order_by('pi')
+
+
+class ProjectApproversViewSet(viewsets.ViewSet):
+    '''Staff and superuser-only view returning the PI, General Managers, and
+    Access Managers for a project.
+
+    Query parameters:
+    - project (required): exact project title
+    '''
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def list(self, request):
+        title = request.query_params.get('project')
+        if not title:
+            return Response(
+                {'detail': "'project' query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        project = get_object_or_404(Project, title=title)
+
+        approvers = []
+        if project.pi:
+            approvers.append({'user': project.pi, 'role': 'PI'})
+
+        managers = project.projectuser_set.filter(
+            role__name__in=['General Manager', 'Access Manager'],
+            status__name='Active',
+        ).select_related('user', 'role')
+        approvers.extend({'user': pu.user, 'role': pu.role.name} for pu in managers)
+
+        serializer = serializers.ApproverSerializer(approvers, many=True)
+        return Response(serializer.data)
 
 
 class UserFilter(filters.FilterSet):

@@ -268,6 +268,13 @@ class ProjectSerializer(serializers.ModelSerializer):
         return None
 
 
+class ApproverSerializer(serializers.Serializer):
+    first_name = serializers.CharField(source='user.first_name')
+    last_name = serializers.CharField(source='user.last_name')
+    username = serializers.CharField(source='user.username')
+    role = serializers.CharField()
+
+
 class UnusedStorageAllocationSerializer(serializers.ModelSerializer):
     project = serializers.CharField(source='project.title', read_only=True)
     path = serializers.CharField(read_only=True)

@@ -8,6 +8,7 @@ router.register(r'allocation-requests', views.AllocationRequestViewSet, basename
 router.register(r'allocation-change-requests', views.AllocationChangeRequestViewSet, basename='allocation-change-requests')
 router.register(r'departments', views.DepartmentViewSet, basename='departments')
 router.register(r'organizations', views.OrganizationViewSet, basename='organizations')
+router.register(r'project-approvers', views.ProjectApproversViewSet, basename='project-approvers')
 router.register(r'projects', views.ProjectViewSet, basename='projects')
 router.register(r'resources', views.ResourceViewSet, basename='resources')
 router.register(r'users', views.UserViewSet, basename='users')
