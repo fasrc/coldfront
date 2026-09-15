@@ -7,6 +7,7 @@ from rest_framework import serializers
 from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project, ProjectUser
 from coldfront.core.allocation.models import Allocation, AllocationChangeRequest
+from coldfront.core.department.models import Department
 from coldfront.plugins.ifx.models import ProjectOrganization
 
 
@@ -33,6 +34,28 @@ class OrganizationSerializer(serializers.ModelSerializer):
             'rank',
             'org_tree',
             'project'
+        )
+
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    project_count = serializers.ReadOnlyField()
+    approvers = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Department
+        fields = (
+            'id',
+            'ifxorg',
+            'name',
+            'rank',
+            'org_tree',
+            'project_count',
+            'approvers',
+        )
+
+    def get_approvers(self, obj):
+        return list(
+            obj.members.filter(active=1, role='approver').values_list('user__username', flat=True)
         )
 
 
@@ -243,6 +266,13 @@ class ProjectSerializer(serializers.ModelSerializer):
         if request and request.query_params.get('allocations') in ['true','True']:
             return ProjAllocationSerializer(obj.allocation_set, many=True, read_only=True).data
         return None
+
+
+class ApproverSerializer(serializers.Serializer):
+    first_name = serializers.CharField(source='user.first_name')
+    last_name = serializers.CharField(source='user.last_name')
+    username = serializers.CharField(source='user.username')
+    role = serializers.CharField()
 
 
 class UnusedStorageAllocationSerializer(serializers.ModelSerializer):
