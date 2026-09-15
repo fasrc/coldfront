@@ -116,18 +116,21 @@ class GroupUserCollectionTests(TestCase):
                 'department': ['Statistics and Probability'],
                 'userAccountControl': [512],
                 'accountExpires': self.currentuser_accountExpires,
+                'gidNumber': [5001],
             },
             {
                 'sAMAccountName': ['sdpoisson'],
                 'department': ['Statistics and Probability'],
                 'userAccountControl': [512],
                 'accountExpires': self.currentuser_accountExpires,
+                'gidNumber': [5001],
             },
             {
                 'sAMAccountName': ['snewcomb'],
                 'department': ['Statistics and Probability'],
                 'userAccountControl': [512],
                 'accountExpires': self.currentuser_accountExpires,
+                'gidNumber': [9999],
             },
         ]
         pi = {
@@ -167,6 +170,21 @@ class GroupUserCollectionTests(TestCase):
         self.disable_pi()
         self.assertEqual(self.guc.pi_is_active, False)
 
+    def test_primary_member_usernames_no_group_gid(self):
+        """group_gid_number unset -> no members are ever identified as primary"""
+        self.assertEqual(self.guc.primary_member_usernames, set())
+
+    def test_primary_member_usernames_matching(self):
+        self.guc.group_gid_number = 5001
+        self.assertEqual(self.guc.primary_member_usernames, {'ljbortkiewicz', 'sdpoisson'})
+
+    def test_primary_member_usernames_member_missing_gid(self):
+        """a member with no gidNumber attribute at all is never primary, and
+        doesn't raise"""
+        self.guc.group_gid_number = 5001
+        del self.guc.members[0]['gidNumber']
+        self.assertEqual(self.guc.primary_member_usernames, {'sdpoisson'})
+
     def test_add_new_projects(self):
         """unexpired pi group is added"""
         added_projects, _ = add_new_projects([self.guc], { 'no_pi': [], 'not_found': [] })
@@ -196,8 +214,11 @@ class GroupUserCollectionTests(TestCase):
         missing_df.to_csv(missing_users_csv, index=False)
 
 
-def ad_user(username, enabled=True):
-    return {'sAMAccountName': [username], 'userAccountControl': [512] if enabled else [514]}
+def ad_user(username, enabled=True, gid_number=None):
+    user = {'sAMAccountName': [username], 'userAccountControl': [512] if enabled else [514]}
+    if gid_number is not None:
+        user['gidNumber'] = [gid_number]
+    return user
 
 
 class CollectUpdateProjectStatusMembershipTests(TestCase):
@@ -213,6 +234,8 @@ class CollectUpdateProjectStatusMembershipTests(TestCase):
         ProjectUserStatusChoiceFactory(name='Removed')
         AllocationUserStatusChoiceFactory(name='Active')
         AllocationUserStatusChoiceFactory(name='Removed')
+
+        ProjectStatusChoiceFactory(name='Archived')
 
         self.pi_user = UserFactory(username='pi_user')
         self.project = ProjectFactory(
@@ -243,19 +266,46 @@ class CollectUpdateProjectStatusMembershipTests(TestCase):
         # not yet a ProjectUser at all - a disabled account newly seen in the group
         self.user_new_disabled = UserFactory(username='user_new_disabled')
 
+        # the project's AD group's own gidNumber, used to determine primary-group membership
+        self.group_gid_number = 5001
+
+        self.user_primary_member = UserFactory(username='user_primary_member')
+        self.pu_primary_member = ProjectUserFactory(
+            project=self.project, user=self.user_primary_member,
+            role=self.role_user, status=self.status_active, primary_group=False,
+        )
+
+        self.user_secondary_member = UserFactory(username='user_secondary_member')
+        self.pu_secondary_member = ProjectUserFactory(
+            project=self.project, user=self.user_secondary_member,
+            role=self.role_user, status=self.status_active, primary_group=True,
+        )
+
         self.ad_members = [
             ad_user(self.pi_user.username, enabled=True),
             ad_user(self.user_becomes_disabled.username, enabled=False),
             ad_user(self.user_becomes_enabled.username, enabled=True),
             ad_user(self.user_new_disabled.username, enabled=False),
+            ad_user(
+                self.user_primary_member.username, enabled=True,
+                gid_number=self.group_gid_number,
+            ),
+            # secondary member's own primary AD group is a different one (9999)
+            ad_user(self.user_secondary_member.username, enabled=True, gid_number=9999),
             # user_left_group is intentionally absent - no longer an AD member
         ]
         self.ad_manager = ad_user(self.pi_user.username, enabled=True)
+        self.ad_group_entry = {
+            'sAMAccountName': [self.project.title], 'gidNumber': [self.group_gid_number],
+        }
 
     def run_sync(self):
-        with patch(
+        with patch('coldfront.plugins.ldap.utils.Connection'), patch(
             'coldfront.plugins.ldap.utils.LDAPConn.return_group_members_manager',
             return_value=(self.ad_members, self.ad_manager),
+        ), patch(
+            'coldfront.plugins.ldap.utils.LDAPConn.return_group_by_name',
+            return_value=self.ad_group_entry,
         ):
             collect_update_project_status_membership()
 
@@ -286,6 +336,20 @@ class CollectUpdateProjectStatusMembershipTests(TestCase):
         self.run_sync()
         self.pu_left_group.refresh_from_db()
         self.assertEqual(self.pu_left_group.status.name, 'Removed')
+
+    def test_member_with_matching_gid_becomes_primary_group(self):
+        """A member whose AD gidNumber matches the project's AD group's own
+        gidNumber should end up primary_group=True."""
+        self.run_sync()
+        self.pu_primary_member.refresh_from_db()
+        self.assertTrue(self.pu_primary_member.primary_group)
+
+    def test_member_with_different_gid_is_not_primary_group(self):
+        """A member whose primary AD group is not this project's AD group
+        should be (re)set to primary_group=False, even if it was True before."""
+        self.run_sync()
+        self.pu_secondary_member.refresh_from_db()
+        self.assertFalse(self.pu_secondary_member.primary_group)
 
     def test_pi_unaffected_when_active_and_enabled(self):
         self.run_sync()
