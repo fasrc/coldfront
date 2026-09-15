@@ -7,6 +7,7 @@ from rest_framework import serializers
 from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project, ProjectUser
 from coldfront.core.allocation.models import Allocation, AllocationChangeRequest
+from coldfront.core.department.models import Department
 from coldfront.plugins.ifx.models import ProjectOrganization
 
 
@@ -33,6 +34,28 @@ class OrganizationSerializer(serializers.ModelSerializer):
             'rank',
             'org_tree',
             'project'
+        )
+
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    project_count = serializers.ReadOnlyField()
+    approvers = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Department
+        fields = (
+            'id',
+            'ifxorg',
+            'name',
+            'rank',
+            'org_tree',
+            'project_count',
+            'approvers',
+        )
+
+    def get_approvers(self, obj):
+        return list(
+            obj.members.filter(active=1, role='approver').values_list('user__username', flat=True)
         )
 
 

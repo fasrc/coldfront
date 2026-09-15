@@ -25,6 +25,7 @@ from coldfront.core.allocation.models import (
 )
 from coldfront.core.project.models import Project
 from coldfront.core.resource.models import Resource
+from coldfront.core.department.models import Department
 from coldfront.plugins.api import serializers
 
 logger = logging.getLogger(__name__)
@@ -501,6 +502,15 @@ class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = Organization.objects.all()
         queryset = queryset.annotate(project=F('projectorganization__project__title'))
         return queryset
+
+class DepartmentViewSet(viewsets.ReadOnlyModelViewSet):
+    '''Staff and superuser-only view for department data.'''
+    serializer_class = serializers.DepartmentSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get_queryset(self):
+        return Department.objects.prefetch_related('useraffiliation_set__user')
+
 
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
     '''Staff and superuser-only view for user data.

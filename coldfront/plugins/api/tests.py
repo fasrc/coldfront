@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase, APIRequestFactory
 
 from coldfront.core.test_helpers.factories import setup_models, AllocationFactory
+from coldfront.core.test_helpers.fasrc_factories import setup_departments, UserAffiliationFactory
 from coldfront.core.allocation.models import Allocation
 from coldfront.core.project.models import Project
 
@@ -124,3 +125,45 @@ class ColdfrontAPIUnusedAllocations(APITestCase):
         greater than/less than/equal options for Quota_In_Bytes usage value
         """
         response = self.client.get('/api/unused-allocations/', format='json')
+
+
+class ColdfrontAPIDepartment(APITestCase):
+    """Tests for the department API view"""
+
+    fixtures = [
+        "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
+    ]
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create some test data"""
+        setup_models(cls)
+        setup_departments(cls)
+        UserAffiliationFactory(
+            user=cls.dept_manager_user, organization=cls.dept, role='approver'
+        )
+
+    def test_department_api_requires_admin(self):
+        """Non-admin users are forbidden; admins can access the endpoint"""
+        self.client.force_login(self.pi_user)
+        response = self.client.get('/api/departments/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/departments/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_department_api_fields(self):
+        """Department API returns expected fields, including project_count and approvers"""
+        self.client.force_login(self.admin_user)
+        response = self.client.get('/api/departments/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        dept_data = next(item for item in response.data if item['id'] == self.dept.id)
+
+        self.assertEqual(
+            set(dept_data.keys()),
+            {'id', 'ifxorg', 'name', 'rank', 'org_tree', 'project_count', 'approvers'},
+        )
+        self.assertEqual(dept_data['name'], 'Computational Chemistry')
+        self.assertEqual(dept_data['approvers'], [self.dept_manager_user.username])
