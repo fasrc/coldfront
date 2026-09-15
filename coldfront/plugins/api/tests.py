@@ -204,6 +204,7 @@ class ColdfrontAPIProjectApprovers(APITestCase):
         self.assertEqual(pi_entry['role'], 'PI')
         self.assertEqual(pi_entry['first_name'], self.pi_user.first_name)
         self.assertEqual(pi_entry['last_name'], self.pi_user.last_name)
+        self.assertEqual(pi_entry['email'], self.pi_user.email)
 
         gm_entry = results_by_username[self.proj_generalmanager.username]
         self.assertEqual(gm_entry['role'], 'General Manager')
