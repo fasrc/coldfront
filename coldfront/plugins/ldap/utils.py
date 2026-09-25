@@ -899,7 +899,7 @@ def add_new_projects(groupusercollections, errortracker):
         g for g in active_pi_groups
         if any(any(string in m for string in pi_groups) for m in g.pi['memberOf'])
     ]
-    active_invalid_pi_groups = set(active_valid_pi_groups) - set(active_pi_groups)
+    active_invalid_pi_groups = set(active_pi_groups) - set(active_valid_pi_groups)
     errortracker['pi_active_invalid'] = [group.name for group in active_invalid_pi_groups]
 
     # identify all users not in ifx
