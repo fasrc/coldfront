@@ -1,3 +1,5 @@
+from django.urls import reverse
+
 from coldfront.core.project.tests.test_views import ProjectViewTestBase
 from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import ProjectAttributeFactory
@@ -5,6 +7,7 @@ from coldfront.core.test_helpers.fasrc_factories import (
     OrganizationFactory,
     OrgRelationFactory,
     ProjectOrganizationFactory,
+    UserAffiliationFactory,
 )
 
 
@@ -130,6 +133,29 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         card_text = soup.find('div', {'class': 'card-body'}).get_text()
         self.assertIn('Department: Computational Chemistry', card_text)
         self.assertNotIn('Not A Department', card_text)
+
+    def test_projectdetail_department_link_only_if_viewable(self):
+        """Test ProjectDetail links a department only for users who can view its detail page"""
+        lab = OrganizationFactory(name=self.project.title, rank='lab', org_tree='Harvard')
+        ProjectOrganizationFactory(project=self.project, organization=lab)
+        dept = OrganizationFactory(
+            name='Computational Chemistry',
+            rank='department',
+            org_tree='Research Computing Storage Billing',
+        )
+        OrgRelationFactory(parent=dept, child=lab)
+        dept_url = reverse('department-detail', kwargs={'pk': dept.pk})
+
+        # non-member sees the name without a link
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        self.assertIn('Computational Chemistry', soup.find('div', {'class': 'card-body'}).get_text())
+        self.assertIsNone(soup.find('a', href=dept_url))
+
+        # department member and superuser see a link
+        UserAffiliationFactory(user=self.pi_user, organization=dept)
+        for user in (self.pi_user, self.admin_user):
+            soup = utils.login_and_get_soup(self.client, user, self.url)
+            self.assertIsNotNone(soup.find('a', href=dept_url))
 
     def test_projectdetail_allocation_history_table(self):
         """Test ProjectDetail page storage allocation history table"""
