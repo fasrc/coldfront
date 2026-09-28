@@ -18,6 +18,7 @@ from django.views.generic import CreateView, DetailView, ListView, UpdateView
 from django.views.generic.base import TemplateView
 from django.views.generic.edit import FormView
 from django_renderpdf.views import PDFView
+from ifxuser.models import OrgRelation, UserAffiliation
 
 from coldfront.core.allocation.utils import generate_guauge_data_from_usage
 from coldfront.core.allocation.models import (
@@ -39,6 +40,7 @@ from coldfront.core.project.signals import (
     project_create,
     project_post_create
 )
+from coldfront.core.department.models import Department
 from coldfront.core.grant.models import Grant
 from coldfront.core.project.forms import (
     ProjectReviewForm,
@@ -80,6 +82,7 @@ from coldfront.core.utils.mail import (
     send_email_template,
     email_template_context,
 )
+from coldfront.plugins.ifx.models import ProjectOrganization
 
 if 'django_q' in settings.INSTALLED_APPS:
     from django_q.tasks import Task
@@ -328,6 +331,26 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         context['grants'] = Grant.objects.filter(
             project=self.object, status__name__in=['Active', 'Pending', 'Archived']
         )
+        # Departments are direct parents of the project's lab organization(s)
+        project_lab_ids = ProjectOrganization.objects.filter(
+            project=self.object
+        ).values_list('organization_id', flat=True)
+        departments = list(Department.objects.filter(
+            pk__in=OrgRelation.objects.filter(
+                child_id__in=project_lab_ids, child__rank='lab'
+            ).values_list('parent_id', flat=True)
+        ).order_by('name'))
+        # Mirror DepartmentDetailView.test_func: superusers and department members
+        # can view the department detail page.
+        if self.request.user.is_superuser:
+            viewable_department_ids = {department.pk for department in departments}
+        else:
+            viewable_department_ids = set(UserAffiliation.objects.filter(
+                user=self.request.user, organization_id__in=[department.pk for department in departments]
+            ).values_list('organization_id', flat=True))
+        for department in departments:
+            department.user_can_view = department.pk in viewable_department_ids
+        context['departments'] = departments
         context['storage_allocations'] = storage_allocations
         context['compute_allocations'] = compute_allocations
         context['allocation_total'] = allocation_total

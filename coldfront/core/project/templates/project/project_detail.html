@@ -75,6 +75,9 @@ Project Detail
     </h3>
     <p class="card-text text-justify"><strong>Description: </strong>{{ project.description }}</p>
     <p class="card-text text-justify"><strong>Field of Science: </strong>{{ project.field_of_science }}</p>
+    {% if departments %}
+      <p class="card-text text-justify"><strong>Department{{ departments|pluralize }}: </strong>{% for department in departments %}{% if department.user_can_view %}<a href="{% url 'department-detail' department.pk %}">{{ department.name }}</a>{% else %}{{ department.name }}{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
     <p class="card-text text-justify"><strong>Project Status: </strong>{{ project.status }}
       {% if project.last_project_review and project.last_project_review.status.name == 'Pending' %}
         <span class="badge badge-pill badge-info">project review pending</span>
