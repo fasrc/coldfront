@@ -1,5 +1,6 @@
 import logging
 
+from django.core import mail
 from django.test import TestCase, tag, override_settings
 from django.urls import reverse
 from unittest.mock import patch
@@ -581,6 +582,69 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         response = self.client.post(self.url, data=self.form_data, follow=True)
         # self.assertContains(response, 'LDAP error occurred')
         self.assertContains(response, 'Added 0 users')
+
+    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
+    @patch('coldfront.core.project.signals.project_make_projectuser.send')
+    def test_projectaddusers_new_user_sends_added_email(self, mock_signal):
+        """Adding a brand-new user sends a projectuser_added email to the
+        user, cc'd to the PI."""
+        self.client.force_login(self.proj_accessmanager)
+        mock_signal.return_value = None
+        self.client.post(self.url, data=self.form_data)
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertIn(self.nonproj_allocationuser.email, sent.to)
+        self.assertIn(self.pi_user.email, sent.cc)
+        self.assertIn(self.nonproj_allocationuser.username, sent.subject)
+
+    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
+    @patch('coldfront.core.project.signals.project_make_projectuser.send')
+    def test_projectaddusers_readd_removed_user_sends_added_email(self, mock_signal):
+        """Re-adding a previously-Removed user also sends the added email,
+        not just brand-new additions."""
+        ProjectUserFactory(
+            project=self.project, user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Removed'),
+        )
+        self.client.force_login(self.proj_accessmanager)
+        mock_signal.return_value = None
+        self.client.post(self.url, data=self.form_data)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(self.nonproj_allocationuser.email, mail.outbox[0].to)
+
+    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
+    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
+    def test_projectaddusers_reactivate_sends_reactivated_email(self, mock_signal):
+        """Reactivating a Deactivated user sends a projectuser_reactivated
+        email to the user, cc'd to the PI."""
+        ProjectUserFactory(
+            project=self.project, user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Deactivated'),
+        )
+        mock_signal.return_value = None
+        form_data = {
+            'q': 'no_such_user_xyz',
+            'search_by': 'username_only',
+            'userform-TOTAL_FORMS': '0',
+            'userform-INITIAL_FORMS': '0',
+            'userform-MIN_NUM_FORMS': '0',
+            'userform-MAX_NUM_FORMS': '0',
+            'allocationform-allocation': [],
+            'reactivateuserform-TOTAL_FORMS': '1',
+            'reactivateuserform-INITIAL_FORMS': '1',
+            'reactivateuserform-MIN_NUM_FORMS': '0',
+            'reactivateuserform-MAX_NUM_FORMS': '1',
+            'reactivateuserform-0-username': self.nonproj_allocationuser.username,
+            'reactivateuserform-0-role': ProjectUserRoleChoice.objects.get(name='User').pk,
+            'reactivateuserform-0-selected': 'on',
+        }
+        self.client.force_login(self.proj_accessmanager)
+        self.client.post(self.url, data=form_data)
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertIn(self.nonproj_allocationuser.email, sent.to)
+        self.assertIn(self.pi_user.email, sent.cc)
+        self.assertIn(self.nonproj_allocationuser.username, sent.subject)
 
 
 class ProjectUserDetailViewTest(ProjectViewTestBase):

@@ -1,0 +1,8 @@
+Dear {{user_full_name}},
+
+Your FASRC user account with username {{user_username}} has been reactivated by your sponsoring lab, {{project_title}}. You will regain access to FASRC services and infrastructure.
+
+If your account has been reactivated in error, please contact your lab's PI. Their email is {{pi_email}}.
+
+Thank you,
+{{signature}}

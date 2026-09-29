@@ -771,6 +771,19 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         ).distinct().update(
             status=AllocationUserStatusChoice.objects.get(name='Active')
         )
+        send_email_template(
+            subject=f'FASRC account for {user_obj.username} Reactivated',
+            template_name='email/projectuser_reactivated.txt',
+            template_context=email_template_context(extra_context={
+                'project_title': project_obj.title,
+                'pi_email': project_obj.pi.email,
+                'user_full_name': f"{user_obj.first_name} {user_obj.last_name}",
+                'user_username': user_obj.username,
+            }),
+            sender=EMAIL_SENDER,
+            receiver_list=[user_obj.email],
+            cc=[project_obj.pi.email],
+        )
 
     def post(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
@@ -865,6 +878,9 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         user=user_obj
                     ).first()
                     old_role = existing_pu.role.name if existing_pu else 'None (added user)'
+                    was_active_before = (
+                        existing_pu is not None and existing_pu.status.name == 'Active'
+                    )
 
                     try:
                         project_make_projectuser.send(
@@ -923,6 +939,20 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             'project': project_obj.title,
                         }
                     )
+                    if not was_active_before:
+                        send_email_template(
+                            subject=f'Added {user_obj.username} to {project_obj.title}',
+                            template_name='email/projectuser_added.txt',
+                            template_context=email_template_context(extra_context={
+                                'project_title': project_obj.title,
+                                'pi_email': project_obj.pi.email,
+                                'user_full_name': f"{user_obj.first_name} {user_obj.last_name}",
+                                'user_username': user_obj.username,
+                            }),
+                            sender=EMAIL_SENDER,
+                            receiver_list=[user_obj.email],
+                            cc=[project_obj.pi.email],
+                        )
                     if old_role != new_role:
                         notify_manager_role_transition(
                             project_user=project_user_obj,
