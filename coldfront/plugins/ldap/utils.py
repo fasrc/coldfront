@@ -863,26 +863,27 @@ def collect_update_project_status_membership():
             missing_projectusers = present_project_ifxusers.exclude(
                 pk__in=[pu.user.pk for pu in present_projectusers]
             )
-            ProjectUser.objects.bulk_create([
-                ProjectUser(
-                    project=group.project,
-                    user=user,
-                    role=projectuser_role_user,
-                    status=projectuserstatus_active
-                ) for user in missing_projectusers if user.username in active_ad_usernames
-            ] + [
-                ProjectUser(
-                    project=group.project,
-                    user=user,
-                    role=projectuser_role_user,
-                    status=projectuserstatus_deactivated
-                ) for user in missing_projectusers if user.username in disabled_ad_usernames
-            ])
-            logger.info(
-                "added projectusers to project %s: %s",
-                group.project.title, [u.username for u in missing_projectusers],
-                extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
-            )
+            if missing_projectusers.exists():
+                ProjectUser.objects.bulk_create([
+                    ProjectUser(
+                        project=group.project,
+                        user=user,
+                        role=projectuser_role_user,
+                        status=projectuserstatus_active
+                    ) for user in missing_projectusers if user.username in active_ad_usernames
+                ] + [
+                    ProjectUser(
+                        project=group.project,
+                        user=user,
+                        role=projectuser_role_user,
+                        status=projectuserstatus_deactivated
+                    ) for user in missing_projectusers if user.username in disabled_ad_usernames
+                ])
+                logger.info(
+                    "added projectusers to project %s: %s",
+                    group.project.title, [u.username for u in missing_projectusers],
+                    extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+                )
 
         ### identify Active ProjectUsers whose AD account has since been disabled,
         ### while they remain a group member: Active -> Deactivated ###
