@@ -218,6 +218,17 @@ class ProjectDetailViewDeactivatedUsersTest(ProjectViewTestBase):
         self.assertIn('text-muted', row.get('class', []))
         self.assertIn('Disabled', row.get_text())
 
+    def test_deactivated_user_row_has_no_edit_link(self):
+        """No link to the projectuser edit page is shown for a Deactivated
+        user, since that page is unreachable for them."""
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        table = soup.find('table', {'id': 'projectuser_table'})
+        row = next(
+            tr for tr in table.find_all('tr')
+            if self.deactivated_user.username in tr.get_text()
+        )
+        self.assertNotIn('fa-user-edit', str(row))
+
     def test_removed_user_row_absent_from_table(self):
         soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
         table = soup.find('table', {'id': 'projectuser_table'})

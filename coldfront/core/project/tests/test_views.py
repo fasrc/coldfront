@@ -664,6 +664,37 @@ class ProjectUserDetailViewTest(ProjectViewTestBase):
         utils.test_user_cannot_access(self, self.proj_accessmanager, self.url)# access manager cannot access
         utils.test_user_cannot_access(self, self.proj_datamanager, self.url)# storage manager cannot access
 
+    def test_projectuserdetailview_deactivated_unreachable(self):
+        """A Deactivated ProjectUser's edit page is unreachable, even to a
+        General Manager who could otherwise edit any non-PI user."""
+        self.npu.status = ProjectUserStatusChoice.objects.get(name='Deactivated')
+        self.npu.save()
+        url = reverse(
+            'project-user-detail',
+            kwargs={'pk': self.project.pk, 'project_user_pk': self.npu.pk},
+        )
+        utils.test_user_cannot_access(self, self.proj_generalmanager, url)
+
+    def test_projectuserdetailview_deactivated_post_rejected(self):
+        """POSTing a role/notification change for a Deactivated ProjectUser is
+        rejected and leaves the row unchanged."""
+        deactivated_status = ProjectUserStatusChoice.objects.get(name='Deactivated')
+        self.npu.status = deactivated_status
+        self.npu.save()
+        original_role = self.npu.role
+        url = reverse(
+            'project-user-detail',
+            kwargs={'pk': self.project.pk, 'project_user_pk': self.npu.pk},
+        )
+        other_role = ProjectUserRoleChoice.objects.exclude(
+            pk=original_role.pk
+        ).exclude(name='PI').first()
+        self.client.force_login(self.proj_generalmanager)
+        self.client.post(url, data={'role': other_role.pk, 'enable_notifications': 'on'})
+        self.npu.refresh_from_db()
+        self.assertEqual(self.npu.role, original_role)
+        self.assertEqual(self.npu.status, deactivated_status)
+
     def test_projectuserdetailview_role_options(self):
         """Only Admin and PI should see option to set role to General Manager;
         option to set role to PI should not be available"""
@@ -705,3 +736,37 @@ class ProjectUserDetailViewTest(ProjectViewTestBase):
         self.assertNotIn('General Manager', role_names)
         self.assertIn('Access Manager', role_names)
         self.assertIn('Storage Manager', role_names)
+
+
+class ProjectUpdateEmailNotificationTest(ProjectViewTestBase):
+    """Tests for the project_update_email_notification AJAX endpoint"""
+
+    def setUp(self):
+        self.url = reverse('project-user-update-email-notification')
+
+    def test_deactivated_projectuser_rejected_for_manager(self):
+        """An Access Manager cannot toggle notifications for a Deactivated
+        ProjectUser."""
+        self.npu.status = ProjectUserStatusChoice.objects.get(name='Deactivated')
+        self.npu.enable_notifications = True
+        self.npu.save()
+        self.client.force_login(self.proj_accessmanager)
+        response = self.client.post(
+            self.url, data={'user_project_id': self.npu.pk, 'checked': 'false'}
+        )
+        self.assertEqual(response.status_code, 403)
+        self.npu.refresh_from_db()
+        self.assertTrue(self.npu.enable_notifications)
+
+    def test_deactivated_projectuser_rejected_for_self(self):
+        """A Deactivated user cannot toggle their own notifications either."""
+        self.npu.status = ProjectUserStatusChoice.objects.get(name='Deactivated')
+        self.npu.enable_notifications = True
+        self.npu.save()
+        self.client.force_login(self.npu.user)
+        response = self.client.post(
+            self.url, data={'user_project_id': self.npu.pk, 'checked': 'false'}
+        )
+        self.assertEqual(response.status_code, 403)
+        self.npu.refresh_from_db()
+        self.assertTrue(self.npu.enable_notifications)

@@ -1286,6 +1286,10 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                 err = 'You cannot edit the PI of the project.'
                 messages.error(self.request, err)
                 return False
+            if project_user.status.name == 'Deactivated':
+                err = 'You cannot edit a deactivated project user.'
+                messages.error(self.request, err)
+                return False
             return True
         err = 'You do not have permission to edit project users.'
         messages.error(self.request, err)
@@ -1330,6 +1334,12 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                 messages.error(
                     request, 'PI role and email notification option cannot be changed.'
                 )
+                return HttpResponseRedirect(
+                    reverse('project-user-detail', kwargs={'pk': project_user_pk})
+                )
+
+            if project_user_obj.status.name == 'Deactivated':
+                messages.error(request, 'You cannot edit a deactivated project user.')
                 return HttpResponseRedirect(
                     reverse('project-user-detail', kwargs={'pk': project_user_pk})
                 )
@@ -1416,6 +1426,9 @@ def project_update_email_notification(request):
         allowed = True
     if project_user_obj.user == request.user:
         allowed = True
+
+    if project_user_obj.status.name == 'Deactivated':
+        allowed = False
 
     if allowed is False:
         return HttpResponse('not allowed', status=403)

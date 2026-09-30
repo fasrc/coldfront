@@ -130,11 +130,30 @@ class EmailFunctionsTestCase(TestCase):
         allocation_user = MagicMock()
         allocation_user.user.email = 'user@example.com'
         allocation_user.allocation.project.projectuser_set.get.return_value.enable_notifications = True
+        allocation_user.allocation.project.projectuser_set.get.return_value.status.name = 'Active'
         allocation_obj.allocationuser_set.exclude.return_value = [allocation_user]
         send_allocation_customer_email(allocation_obj, self.subject, self.template_name)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('user@example.com', mail.outbox[0].to)
         mock_render.assert_called_once_with(self.template_name, mock.ANY)
+
+    @patch('coldfront.core.utils.mail.reverse', return_value='/test-path/')
+    @patch('coldfront.core.utils.mail.render_to_string', return_value='Rendered Body')
+    def test_send_allocation_customer_email_excludes_deactivated_projectuser(
+        self, mock_render, mock_reverse
+    ):
+        """A Deactivated ProjectUser should never receive allocation customer
+        emails, even if enable_notifications is still True."""
+        allocation_obj = MagicMock()
+        allocation_obj.pk = 1
+        allocation_obj.get_parent_resource = 'Test Resource'
+        allocation_user = MagicMock()
+        allocation_user.user.email = 'user@example.com'
+        allocation_user.allocation.project.projectuser_set.get.return_value.enable_notifications = True
+        allocation_user.allocation.project.projectuser_set.get.return_value.status.name = 'Deactivated'
+        allocation_obj.allocationuser_set.exclude.return_value = [allocation_user]
+        send_allocation_customer_email(allocation_obj, self.subject, self.template_name)
+        self.assertEqual(len(mail.outbox), 0)
 
 
 class AddScheduledTasksTests(TestCase):

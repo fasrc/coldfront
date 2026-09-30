@@ -149,8 +149,10 @@ def send_allocation_customer_email(
     email_receiver_list = []
     for allocation_user in allocation_users:
         try:
-            if allocation_user.allocation.project.projectuser_set.get(
-            user=allocation_user.user).enable_notifications:
+            project_user = allocation_user.allocation.project.projectuser_set.get(
+                user=allocation_user.user
+            )
+            if project_user.status.name == 'Active' and project_user.enable_notifications:
                 email_receiver_list.append(allocation_user.user.email)
         except:
             pass
