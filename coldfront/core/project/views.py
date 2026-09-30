@@ -148,8 +148,10 @@ class ProjectStorageReportView(LoginRequiredMixin, UserPassesTestMixin, PDFView)
         context = super().get_context_data(**kwargs)
 
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
+        # Show Active users and Deactivated users (still an AD group member, but
+        # their AD account is disabled) - Removed users are no longer group members.
         project_users = project_obj.projectuser_set.filter(
-                    status__name='Active').order_by('user__username')
+                    status__name__in=['Active', 'Deactivated']).order_by('user__username')
 
         storage_allocations = project_obj.allocation_set.filter(
             status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested'],
@@ -262,11 +264,14 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         for a in invalid_attributes:
             attributes_with_usage.remove(a)
 
-        # Only show 'Active Users'
+        # Show Active users and Deactivated users (still an AD group member, but
+        # their AD account is disabled) - Removed users are no longer group members.
         project_users = self.object.projectuser_set.filter(
-                    status__name='Active').order_by('user__username')
+                    status__name__in=['Active', 'Deactivated']).order_by('user__username')
 
-        context['mailto'] = 'mailto:' + ','.join([u.user.email for u in project_users])
+        # Don't email accounts that are disabled in AD, even though they're shown above.
+        active_project_users = project_users.filter(status__name='Active')
+        context['mailto'] = 'mailto:' + ','.join([u.user.email for u in active_project_users])
 
         allocations = self.object.allocation_set.exclude(status__name='Merged').prefetch_related('resources').order_by('-pk')
         allocation_history_records = self.return_status_change_records(allocations)
@@ -766,6 +771,19 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         ).distinct().update(
             status=AllocationUserStatusChoice.objects.get(name='Active')
         )
+        send_email_template(
+            subject=f'FASRC account for {user_obj.username} Reactivated',
+            template_name='email/projectuser_reactivated.txt',
+            template_context=email_template_context(extra_context={
+                'project_title': project_obj.title,
+                'pi_email': project_obj.pi.email,
+                'user_full_name': f"{user_obj.first_name} {user_obj.last_name}",
+                'user_username': user_obj.username,
+            }),
+            sender=EMAIL_SENDER,
+            receiver_list=[user_obj.email],
+            cc=[project_obj.pi.email],
+        )
 
     def post(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
@@ -860,6 +878,9 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         user=user_obj
                     ).first()
                     old_role = existing_pu.role.name if existing_pu else 'None (added user)'
+                    was_active_before = (
+                        existing_pu is not None and existing_pu.status.name == 'Active'
+                    )
 
                     try:
                         project_make_projectuser.send(
@@ -918,6 +939,20 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             'project': project_obj.title,
                         }
                     )
+                    if not was_active_before:
+                        send_email_template(
+                            subject=f'Added {user_obj.username} to {project_obj.title}',
+                            template_name='email/projectuser_added.txt',
+                            template_context=email_template_context(extra_context={
+                                'project_title': project_obj.title,
+                                'pi_email': project_obj.pi.email,
+                                'user_full_name': f"{user_obj.first_name} {user_obj.last_name}",
+                                'user_username': user_obj.username,
+                            }),
+                            sender=EMAIL_SENDER,
+                            receiver_list=[user_obj.email],
+                            cc=[project_obj.pi.email],
+                        )
                     if old_role != new_role:
                         notify_manager_role_transition(
                             project_user=project_user_obj,
@@ -1158,13 +1193,15 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     project_user_obj.status = projectuser_status_deactivated
                     project_user_obj.save()
                     action = 'deactivated'
-                    # change status to "removed" for all other projectusers with this user
+                    # deactivating the primary group disables the user's whole AD
+                    # account, but doesn't remove them from their other AD groups -
+                    # so other projects' memberships become Deactivated, not Removed
                     secondary_projectusers = ProjectUser.objects.filter(
                         user=user_obj,
                         status__name='Active',
                         project__status__name__in=['Active', 'New'],
                     ).exclude(project=project_obj)
-                    secondary_projectusers.update(status=projectuser_status_removed)
+                    secondary_projectusers.update(status=projectuser_status_deactivated)
                     # get allocations to remove user from in projects where they have been removed
                     allocations_to_remove_user_from = Allocation.objects.filter(
                         allocationuser__user=user_obj,

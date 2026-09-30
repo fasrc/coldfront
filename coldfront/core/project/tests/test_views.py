@@ -1,5 +1,6 @@
 import logging
 
+from django.core import mail
 from django.test import TestCase, tag, override_settings
 from django.urls import reverse
 from unittest.mock import patch
@@ -8,6 +9,7 @@ from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import (
     setup_models,
     ProjectFactory,
+    ProjectUserFactory,
     PAttributeTypeFactory,
     ProjectAttributeFactory,
     ProjectStatusChoiceFactory,
@@ -423,6 +425,60 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         project_user_obj.refresh_from_db()
         self.assertEqual(project_user_obj.status.name, 'Deactivated')
 
+    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_primary_group_removal_deactivates_secondary_projects_not_removes(
+        self, mock_filter_users_to_remove, mock_project_preremove
+    ):
+        """Deactivating a user's primary AD group disables their whole AD account,
+        but doesn't remove them from their other AD groups - so their membership
+        in other active projects should become Deactivated, not Removed."""
+        primary_user = self.project_user
+        project_user_obj = self.project.projectuser_set.get(user=primary_user)
+        project_user_obj.status = ProjectUserStatusChoice.objects.get(name='Active')
+        project_user_obj.save()
+
+        other_project = ProjectFactory(
+            title='other_lab', status=ProjectStatusChoiceFactory(name='Active')
+        )
+        other_projectuser = ProjectUserFactory(
+            project=other_project, user=primary_user,
+            status=ProjectUserStatusChoice.objects.get(name='Active'),
+        )
+
+        mock_filter_users_to_remove.return_value = [(
+            None,
+            [{
+                'username': primary_user.username,
+                'first_name': primary_user.first_name,
+                'last_name': primary_user.last_name,
+                'email': primary_user.email,
+                'role': 'User',
+                'primary_group': True,
+            }]
+        )]
+        mock_project_preremove.return_value = None
+
+        post_data = {
+            'userform-TOTAL_FORMS': '1',
+            'userform-INITIAL_FORMS': '1',
+            'userform-MIN_NUM_FORMS': '0',
+            'userform-MAX_NUM_FORMS': '1',
+            'userform-0-selected': 'on',
+            'userform-0-username': primary_user.username,
+            'userform-0-first_name': primary_user.first_name,
+            'userform-0-last_name': primary_user.last_name,
+            'userform-0-email': primary_user.email,
+            'userform-0-role': 'User',
+            'userform-0-primary_group': 'on',
+        }
+
+        self.client.force_login(self.proj_generalmanager)
+        self.client.post(self.url, data=post_data, follow=True)
+
+        other_projectuser.refresh_from_db()
+        self.assertEqual(other_projectuser.status.name, 'Deactivated')
+
 
 class ProjectUpdateViewTest(ProjectViewTestBase):
     """Tests for ProjectUpdateView"""
@@ -526,6 +582,72 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         response = self.client.post(self.url, data=self.form_data, follow=True)
         # self.assertContains(response, 'LDAP error occurred')
         self.assertContains(response, 'Added 0 users')
+
+    @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
+    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
+    @patch('coldfront.core.project.signals.project_make_projectuser.send')
+    def test_projectaddusers_new_user_sends_added_email(self, mock_signal):
+        """Adding a brand-new user sends a projectuser_added email to the
+        user, cc'd to the PI."""
+        self.client.force_login(self.proj_accessmanager)
+        mock_signal.return_value = None
+        self.client.post(self.url, data=self.form_data)
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertIn(self.nonproj_allocationuser.email, sent.to)
+        self.assertIn(self.pi_user.email, sent.cc)
+        self.assertIn(self.nonproj_allocationuser.username, sent.subject)
+
+    @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
+    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
+    @patch('coldfront.core.project.signals.project_make_projectuser.send')
+    def test_projectaddusers_readd_removed_user_sends_added_email(self, mock_signal):
+        """Re-adding a previously-Removed user also sends the added email,
+        not just brand-new additions."""
+        ProjectUserFactory(
+            project=self.project, user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Removed'),
+        )
+        self.client.force_login(self.proj_accessmanager)
+        mock_signal.return_value = None
+        self.client.post(self.url, data=self.form_data)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(self.nonproj_allocationuser.email, mail.outbox[0].to)
+
+    @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
+    @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
+    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
+    def test_projectaddusers_reactivate_sends_reactivated_email(self, mock_signal):
+        """Reactivating a Deactivated user sends a projectuser_reactivated
+        email to the user, cc'd to the PI."""
+        ProjectUserFactory(
+            project=self.project, user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Deactivated'),
+        )
+        mock_signal.return_value = None
+        form_data = {
+            'q': 'no_such_user_xyz',
+            'search_by': 'username_only',
+            'userform-TOTAL_FORMS': '0',
+            'userform-INITIAL_FORMS': '0',
+            'userform-MIN_NUM_FORMS': '0',
+            'userform-MAX_NUM_FORMS': '0',
+            'allocationform-allocation': [],
+            'reactivateuserform-TOTAL_FORMS': '1',
+            'reactivateuserform-INITIAL_FORMS': '1',
+            'reactivateuserform-MIN_NUM_FORMS': '0',
+            'reactivateuserform-MAX_NUM_FORMS': '1',
+            'reactivateuserform-0-username': self.nonproj_allocationuser.username,
+            'reactivateuserform-0-role': ProjectUserRoleChoice.objects.get(name='User').pk,
+            'reactivateuserform-0-selected': 'on',
+        }
+        self.client.force_login(self.proj_accessmanager)
+        self.client.post(self.url, data=form_data)
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertIn(self.nonproj_allocationuser.email, sent.to)
+        self.assertIn(self.pi_user.email, sent.cc)
+        self.assertIn(self.nonproj_allocationuser.username, sent.subject)
 
 
 class ProjectUserDetailViewTest(ProjectViewTestBase):

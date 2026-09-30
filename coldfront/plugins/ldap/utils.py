@@ -460,7 +460,8 @@ class LDAPConn:
         group_dn = group_entry['distinguishedName'][0]
         user_attr_list = [
             'sAMAccountName', 'cn', 'name', 'title', 'department',
-            'distinguishedName', 'accountExpires', 'info', 'userAccountControl'
+            'distinguishedName', 'accountExpires', 'info', 'userAccountControl',
+            'gidNumber',
         ]
         group_members = self.search_users({'memberOf': group_dn}, attributes=user_attr_list)
         logger.debug('group_members:\n%s', group_members)
@@ -487,11 +488,12 @@ def user_valid(user):
 class GroupUserCollection:
     """Class to hold a group and its members.
     """
-    def __init__(self, group_name, ad_users, pi, project=None):
+    def __init__(self, group_name, ad_users, pi, project=None, group_gid_number=None):
         self.name = group_name
         self.members = ad_users
         self.pi = pi
         self.project = project
+        self.group_gid_number = group_gid_number
         self._current_ad_users = None
 
     @property
@@ -499,6 +501,30 @@ class GroupUserCollection:
         if not self._current_ad_users:
             self._current_ad_users = [u for u in self.members if user_valid(u)]
         return self._current_ad_users
+
+    @property
+    def current_ad_usernames(self):
+        """sAMAccountNames of group members whose AD account is enabled/unexpired."""
+        return {u['sAMAccountName'][0] for u in self.current_ad_users}
+
+    @property
+    def disabled_ad_usernames(self):
+        """sAMAccountNames of group members whose AD account is disabled/expired."""
+        all_usernames = {u['sAMAccountName'][0] for u in self.members}
+        return all_usernames - self.current_ad_usernames
+
+    @property
+    def primary_member_usernames(self):
+        """sAMAccountNames of members whose primary AD group (gidNumber) is this group."""
+        if self.group_gid_number is None:
+            return set()
+        primary_usernames = set()
+        for member in self.members:
+            member_gid = member.get('gidNumber')
+            if not member_gid or member_gid[0] != self.group_gid_number:
+                continue
+            primary_usernames.add(member['sAMAccountName'][0])
+        return primary_usernames
 
     @property
     def pi_is_active(self):
@@ -640,6 +666,7 @@ def collect_update_project_status_membership():
     # collect commonly used db objects
     projectuser_role_user = ProjectUserRoleChoice.objects.get(name='User')
     projectuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
+    projectuserstatus_deactivated = ProjectUserStatusChoice.objects.get(name='Deactivated')
     project_active_status = ProjectStatusChoice.objects.get(name='Active')
     allocationuserstatus_active = AllocationUserStatusChoice.objects.get(name='Active')
     allocationuserstatus_removed = AllocationUserStatusChoice.objects.get(name='Removed')
@@ -668,8 +695,25 @@ def collect_update_project_status_membership():
 
     proj_membs_mans = {p: ad_conn.return_group_members_manager(p.title) for p in active_projects}
     proj_membs_mans, _ = cleaned_membership_query(proj_membs_mans)
+
+    # Resolve each project's own AD group gidNumber, used to determine which
+    # members have this group as their *primary* AD group.
+    proj_group_gids = {}
+    for project in proj_membs_mans:
+        try:
+            group_entry = ad_conn.return_group_by_name(
+                project.title, attributes=['sAMAccountName', 'gidNumber']
+            )
+            gid_values = group_entry.get('gidNumber')
+            proj_group_gids[project] = gid_values[0] if gid_values else None
+        except ValueError:
+            logger.warning('could not resolve AD group gidNumber for project %s', project.title)
+            proj_group_gids[project] = None
+
     groupusercollections = [
-        GroupUserCollection(k.title, v[0], v[1], project=k) for k, v in proj_membs_mans.items()
+        GroupUserCollection(
+            k.title, v[0], v[1], project=k, group_gid_number=proj_group_gids.get(k)
+        ) for k, v in proj_membs_mans.items()
     ]
     active_pi_groups, inactive_pi_groups = remove_inactive_disabled_managers(groupusercollections)
     projects_to_deactivate = Project.objects.filter(
@@ -758,6 +802,8 @@ def collect_update_project_status_membership():
             )
 
         ad_users_not_added, remove_projuser_names = group.compare_members_projectusers()
+        active_ad_usernames = group.current_ad_usernames
+        disabled_ad_usernames = group.disabled_ad_usernames
         group_storage_allocations = group.project.allocation_set.filter(
                 resources__resource_type__name='Storage', status__name='Active'
         )
@@ -791,8 +837,13 @@ def collect_update_project_status_membership():
                     extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
                 )
 
-                present_projectusers.update(
+                # reactivate as Active if their AD account is enabled, otherwise
+                # Deactivated (still a group member, but the AD account is disabled)
+                present_projectusers.filter(user__username__in=active_ad_usernames).update(
                     role=projectuser_role_user, status=projectuserstatus_active
+                )
+                present_projectusers.filter(user__username__in=disabled_ad_usernames).update(
+                    role=projectuser_role_user, status=projectuserstatus_deactivated
                 )
 
                 readd_aus = AllocationUser.objects.filter(
@@ -818,13 +869,55 @@ def collect_update_project_status_membership():
                     user=user,
                     role=projectuser_role_user,
                     status=projectuserstatus_active
-                ) for user in missing_projectusers
+                ) for user in missing_projectusers if user.username in active_ad_usernames
+            ] + [
+                ProjectUser(
+                    project=group.project,
+                    user=user,
+                    role=projectuser_role_user,
+                    status=projectuserstatus_deactivated
+                ) for user in missing_projectusers if user.username in disabled_ad_usernames
             ])
             logger.info(
                 "added projectusers to project %s: %s",
                 group.project.title, [u.username for u in missing_projectusers],
                 extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
             )
+
+        ### identify Active ProjectUsers whose AD account has since been disabled,
+        ### while they remain a group member: Active -> Deactivated ###
+        newly_disabled_projusers = group.project.projectuser_set.filter(
+            status__name='Active', user__username__in=disabled_ad_usernames
+        )
+        if newly_disabled_projusers:
+            logger.info(
+                'deactivating projectusers for project %s (AD account disabled, still a group member): %s',
+                group.project.title, [u.user.username for u in newly_disabled_projusers],
+                extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+            )
+            newly_disabled_projusers.update(status=projectuserstatus_deactivated)
+
+        ### identify Deactivated ProjectUsers whose AD account has since been
+        ### re-enabled, while they remain a group member: Deactivated -> Active ###
+        newly_reenabled_projusers = group.project.projectuser_set.filter(
+            status__name='Deactivated', user__username__in=active_ad_usernames
+        )
+        if newly_reenabled_projusers:
+            logger.info(
+                'reactivating projectusers for project %s (AD account re-enabled): %s',
+                group.project.title, [u.user.username for u in newly_reenabled_projusers],
+                extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
+            )
+            newly_reenabled_projusers.update(status=projectuserstatus_active)
+
+        ### reconcile primary_group flag against AD gidNumber primary-group membership ###
+        primary_usernames = group.primary_member_usernames
+        group.project.projectuser_set.filter(
+            user__username__in=primary_usernames
+        ).update(primary_group=True)
+        group.project.projectuser_set.exclude(
+            user__username__in=primary_usernames
+        ).update(primary_group=False)
 
         ### identify inactive ProjectUsers, slate for status change ###
         remove_projusers = group.project.projectuser_set.filter(

@@ -1,0 +1,8 @@
+Dear {{user_full_name}},
+
+You have been added to {{project_title}}. You now have access to that lab's cluster account and storage resources.
+
+If you believe you have been added in error, please contact the lab's PI. Their email is {{pi_email}}.
+
+Thank you,
+{{signature}}
