@@ -583,6 +583,7 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         # self.assertContains(response, 'LDAP error occurred')
         self.assertContains(response, 'Added 0 users')
 
+    @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
     @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
     @patch('coldfront.core.project.signals.project_make_projectuser.send')
     def test_projectaddusers_new_user_sends_added_email(self, mock_signal):
@@ -597,6 +598,7 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         self.assertIn(self.pi_user.email, sent.cc)
         self.assertIn(self.nonproj_allocationuser.username, sent.subject)
 
+    @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
     @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
     @patch('coldfront.core.project.signals.project_make_projectuser.send')
     def test_projectaddusers_readd_removed_user_sends_added_email(self, mock_signal):
@@ -612,6 +614,7 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(self.nonproj_allocationuser.email, mail.outbox[0].to)
 
+    @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
     @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
     @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
     def test_projectaddusers_reactivate_sends_reactivated_email(self, mock_signal):
