@@ -21,6 +21,7 @@ from coldfront.core.project.models import Project
 from ifxbilling.models import ProductUsage, Product, Facility
 from ifxbilling.fiine import create_new_product, migrate_product
 from ifxuser.models import Organization
+from nanites.client import API as NanitesAPI
 
 logger = logging.getLogger('ifx')
 
@@ -296,6 +297,41 @@ def allocation_attribute_post_save(sender, instance, **kwargs):
                 update_allocation_product(instance.allocation)
             except Exception as e:
                 logger.error(f'Error updating product for allocation {instance.allocation} after change to attribute {instance}: {e}')
+
+
+def set_project_organization(project):
+    '''
+    Use the Nanites RC / Harvard organization "sister" mapping to link a Project
+    to its Organization.  Returns the ProjectOrganization, or None if no mapping exists.
+    '''
+    rc_sister = next((s for s in NanitesAPI.getRcSisters() if s.rc == project.title), None)
+    if rc_sister is None:
+        logger.info(f'No Nanites RC sister found for project {project.title}')
+        return None
+    try:
+        organization = Organization.objects.get(ifxorg=rc_sister.harvard)
+    except Organization.DoesNotExist:
+        logger.info(f'Unable to find organization {rc_sister.harvard} to go with {project.title}')
+        return None
+    project_organization, _ = ProjectOrganization.objects.get_or_create(
+        project=project, organization=organization
+    )
+    return project_organization
+
+
+@receiver(post_save, sender=Project)
+def project_post_save(sender, instance, created, **kwargs):
+    '''
+    When a Project is created, add a ProjectOrganization if Nanites maps it to an Organization.
+    Runs after commit so the Nanites call happens outside the transaction that creates the Project.
+    '''
+    if created and not kwargs.get('raw'):
+        def set_organization():
+            try:
+                set_project_organization(instance)
+            except Exception as e:
+                logger.error(f'Error setting organization for project {instance}: {e}')
+        transaction.on_commit(set_organization)
 
 
 @receiver(post_save, sender=Resource)
