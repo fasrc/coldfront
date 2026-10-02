@@ -486,7 +486,14 @@ Project Detail
               <td>{{ user.user.email }}</td>
               <td>{{ user.role.name }}</td>
               <td>
-                {% if is_allowed_to_update_permissions %}
+                {% if user.status.name == 'Deactivated' %}
+                  <input type="checkbox"
+                         id="email_notifications_for_user_id_{{ user.id }}"
+                         name="email_notifications_checkbox"
+                         value="{{ user.enable_notifications }}"
+                          {% if user.enable_notifications %} checked {% endif %}
+                         disabled>
+                {% elif is_allowed_to_update_permissions %}
                   <input type="checkbox"
                          id="email_notifications_for_user_id_{{ user.id }}"
                          name="email_notifications_checkbox"
@@ -508,7 +515,7 @@ Project Detail
                          disabled>
                 {% endif %}
               </td>
-              {% if is_allowed_to_update_permissions and user != project.pi %}
+              {% if is_allowed_to_update_permissions and user != project.pi and user.status.name != 'Deactivated' %}
                 <td>
                   <a href="{% url 'project-user-detail' project.pk user.id %}">
                     <i class="fas fa-user-edit" aria-hidden="true"></i>
