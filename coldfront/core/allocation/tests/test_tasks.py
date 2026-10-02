@@ -51,3 +51,5 @@ class RequestReminderEmails(TestCase):
     def test_send_request_reminder_emails(self):
         """test send_request_reminder_emails task"""
         pending_changerequests, pending_allocations = send_request_reminder_emails()
+        self.assertEqual(set(pending_changerequests), {self.acr2, self.acr3})
+        self.assertEqual(set(pending_allocations), {self.allocation2, self.allocation3})

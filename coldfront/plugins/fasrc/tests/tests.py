@@ -1,5 +1,9 @@
 from django.test import TestCase
 
+from coldfront.core.test_helpers.utils import require_plugin
+
+require_plugin('coldfront.plugins.fasrc')
+
 from coldfront.plugins.fasrc.utils import AllTheThingsConn, push_quota_data
 from coldfront.core.test_helpers.factories import (
     setup_models,

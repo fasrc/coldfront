@@ -1,4 +1,5 @@
 import logging
+from unittest.mock import patch
 
 from django.db.models import Count
 from django.test import TestCase
@@ -422,6 +423,11 @@ class AllocationCreateViewTest(AllocationViewBaseTest):
     def setUp(self):
         self.url = f'/allocation/project/{self.project.pk}/create' # url for AllocationCreateView
         self.client.force_login(self.pi_user)
+        # expense code lookup in Fiine
+        fiine_patcher = patch('coldfront.core.allocation.views.FiineAPI')
+        self.mock_fiine = fiine_patcher.start()
+        self.addCleanup(fiine_patcher.stop)
+        self.mock_fiine.listAccounts.return_value = []
         tier_restype = ResourceTypeFactory(name='Storage Tier')
         storage_tier = ResourceFactory(resource_type=tier_restype)
         ResourceAttributeFactory(resource=storage_tier, value='TB')
