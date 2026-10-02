@@ -1,5 +1,16 @@
 """utility functions for unit and integration testing"""
+import unittest
+
 from bs4 import BeautifulSoup
+from django.conf import settings
+
+
+def require_plugin(app_name):
+    """Skip the calling test module unless app_name is in INSTALLED_APPS.
+    Call at the top of the module, before importing anything from the plugin.
+    """
+    if app_name not in settings.INSTALLED_APPS:
+        raise unittest.SkipTest(f'{app_name} is not enabled')
 
 def page_contains_for_user(test_case, user, url, text):
     """Check that page contains text for user"""

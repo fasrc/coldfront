@@ -6,8 +6,11 @@ from rest_framework.test import APITestCase, APIRequestFactory
 
 from coldfront.core.test_helpers.factories import setup_models, AllocationFactory
 from coldfront.core.test_helpers.fasrc_factories import setup_departments, UserAffiliationFactory
+from coldfront.core.test_helpers.utils import require_plugin
 from coldfront.core.allocation.models import Allocation
 from coldfront.core.project.models import Project
+
+require_plugin('coldfront.plugins.api')
 
 
 class ColdfrontAPI(APITestCase):
