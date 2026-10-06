@@ -20,8 +20,7 @@ from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project
 from ifxbilling.models import ProductUsage, Product, Facility
 from ifxbilling.fiine import create_new_product, migrate_product
-from ifxuser.models import Organization
-from nanites.client import API as NanitesAPI
+from ifxuser.models import Organization, UserAffiliation
 
 logger = logging.getLogger('ifx')
 
@@ -304,15 +303,29 @@ def set_project_organization(project):
     Use the Nanites RC / Harvard organization "sister" mapping to link a Project
     to its Organization.  Returns the ProjectOrganization, or None if no mapping exists.
     '''
-    rc_sister = next((s for s in NanitesAPI.getRcSisters() if s.rc == project.title), None)
-    if rc_sister is None:
-        logger.info(f'No Nanites RC sister found for project {project.title}')
-        return None
+    affiliation_kwargs = {
+        'role': 'pi',
+        'organization__org_tree': 'Harvard',
+        'organization__rank': 'lab'
+    }
+
     try:
-        organization = Organization.objects.get(ifxorg=rc_sister.harvard)
-    except Organization.DoesNotExist:
-        logger.info(f'Unable to find organization {rc_sister.harvard} to go with {project.title}')
+        affiliation = project.pi.useraffiliation_set.get(**affiliation_kwargs)
+    except UserAffiliation.DoesNotExist:
+        logger.warning(f'{project.pi} is not a PI for any Harvard lab Organization.')
         return None
+    except UserAffiliation.MultipleObjectsReturned:
+        logger.warning(
+            f'{project.pi} is a multiple. Orgs:{[ua.organization for ua in project.pi.useraffiliation_set.filter(**affiliation_kwargs)]}'
+        )
+        return None
+
+    organization = affiliation.organization
+    # add filter testing that project title contains the first word in the organization name, ignoring case
+    if organization.name.split()[0].lower() not in project.title.lower():
+        logger.warning(f'Project title "{project.title}" does not contain first word of organization name "{organization.name}". Not linking.')
+        return None
+
     project_organization, _ = ProjectOrganization.objects.get_or_create(
         project=project, organization=organization
     )
