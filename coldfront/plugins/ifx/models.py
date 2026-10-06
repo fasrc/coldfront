@@ -18,6 +18,8 @@ from fiine.client import ApiException
 from coldfront.core.allocation.models import AllocationUser, Allocation, AllocationAttribute
 from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project
+from coldfront.core.utils.common import import_from_settings
+from coldfront.core.utils.mail import send_email
 from ifxbilling.models import ProductUsage, Product, Facility
 from ifxbilling.fiine import create_new_product, migrate_product
 from ifxuser.models import Organization, UserAffiliation
@@ -300,8 +302,13 @@ def allocation_attribute_post_save(sender, instance, **kwargs):
 
 def set_project_organization(project):
     '''
-    Use the Nanites RC / Harvard organization "sister" mapping to link a Project
-    to its Organization.  Returns the ProjectOrganization, or None if no mapping exists.
+    Link a Project to the Harvard lab Organization its PI leads.
+
+    The PI must have exactly one 'pi' UserAffiliation with a lab-rank Organization in the
+    Harvard org tree, and the project title must contain the first word of that
+    Organization's name (case-insensitive).
+
+    Returns a (ProjectOrganization or None, message) tuple; the message describes the outcome.
     '''
     affiliation_kwargs = {
         'role': 'pi',
@@ -312,38 +319,65 @@ def set_project_organization(project):
     try:
         affiliation = project.pi.useraffiliation_set.get(**affiliation_kwargs)
     except UserAffiliation.DoesNotExist:
-        logger.warning(f'{project.pi} is not a PI for any Harvard lab Organization.')
-        return None
+        message = f'{project.pi} is not a PI for any Harvard lab Organization.'
+        logger.warning(message)
+        return None, message
     except UserAffiliation.MultipleObjectsReturned:
-        logger.warning(
+        message = (
             f'{project.pi} is a multiple. Orgs:{[ua.organization for ua in project.pi.useraffiliation_set.filter(**affiliation_kwargs)]}'
         )
-        return None
+        logger.warning(message)
+        return None, message
 
     organization = affiliation.organization
     # add filter testing that project title contains the first word in the organization name, ignoring case
     if organization.name.split()[0].lower() not in project.title.lower():
-        logger.warning(f'Project title "{project.title}" does not contain first word of organization name "{organization.name}". Not linking.')
-        return None
+        message = f'Project title "{project.title}" does not contain first word of organization name "{organization.name}". Not linking.'
+        logger.warning(message)
+        return None, message
 
     project_organization, _ = ProjectOrganization.objects.get_or_create(
         project=project, organization=organization
     )
-    return project_organization
+    message = f'Linked project "{project.title}" to organization "{organization.name}".'
+    logger.info(message)
+    return project_organization, message
+
+
+def send_project_organization_result(project, project_organization, message):
+    '''
+    Email the outcome of an attempt to link a Project to an Organization to the IFX_MANAGER addresses
+    '''
+    recipients = import_from_settings('IFX_MANAGER', [])
+    if not recipients:
+        return
+    if project_organization:
+        subject = f'Project {project.title} linked to organization {project_organization.organization.name}'
+    else:
+        subject = f'Project {project.title} not linked to an organization'
+    body = f'Project: {project.title}\nPI: {project.pi}\n\n{message}\n'
+    try:
+        send_email(subject, body, import_from_settings('EMAIL_SENDER', ''), recipients)
+    except Exception as e:
+        logger.error(f'Error emailing organization result for project {project}: {e}')
 
 
 @receiver(post_save, sender=Project)
 def project_post_save(sender, instance, created, **kwargs):
     '''
-    When a Project is created, add a ProjectOrganization if Nanites maps it to an Organization.
-    Runs after commit so the Nanites call happens outside the transaction that creates the Project.
+    When a Project is created, try to link it to its PI's lab Organization with
+    set_project_organization and email the result to the IFX_MANAGER addresses.
+    Runs after commit so it only acts on Projects that were actually saved.
     '''
     if created and not kwargs.get('raw'):
         def set_organization():
             try:
-                set_project_organization(instance)
+                project_organization, message = set_project_organization(instance)
             except Exception as e:
-                logger.error(f'Error setting organization for project {instance}: {e}')
+                project_organization = None
+                message = f'Error setting organization for project {instance}: {e}'
+                logger.error(message)
+            send_project_organization_result(instance, project_organization, message)
         transaction.on_commit(set_organization)
 
 
