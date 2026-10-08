@@ -1,6 +1,5 @@
 from unittest.mock import patch
 
-from django.core import mail
 from django.test import TestCase, override_settings
 
 from coldfront.core.test_helpers.factories import ProjectFactory, UserFactory
@@ -36,12 +35,33 @@ class SetProjectOrganizationTest(TestCase):
         project_organization, _ = set_project_organization(project)
         self.assertIsNotNone(project_organization)
 
-    def test_no_link_when_title_lacks_org_first_word(self):
+    def test_matches_word_before_lab_suffix(self):
+        lab = OrganizationFactory(name='Simeon Denis Poisson Lab', rank='lab', org_tree='Harvard')
+        self.affiliate(lab)
+        project = self.make_project(title='poisson_lab')
+        project_organization, _ = set_project_organization(project)
+        self.assertEqual(project_organization.organization, lab)
+
+    def test_matches_last_word_without_lab_suffix(self):
+        group = OrganizationFactory(name='Simeon Denis Poisson', rank='lab', org_tree='Harvard')
+        self.affiliate(group)
+        project = self.make_project(title='poisson_lab')
+        project_organization, _ = set_project_organization(project)
+        self.assertEqual(project_organization.organization, group)
+
+    def test_no_link_when_title_lacks_word_before_lab_suffix(self):
+        lab = OrganizationFactory(name='Poisson Gordon Lab', rank='lab', org_tree='Harvard')
+        self.affiliate(lab)
+        project = self.make_project(title='poisson_lab')
+        project_organization, _ = set_project_organization(project)
+        self.assertIsNone(project_organization)
+
+    def test_no_link_when_title_fails_string_check(self):
         self.affiliate(self.lab)
         project = self.make_project(title='gordon_lab')
         project_organization, message = set_project_organization(project)
         self.assertIsNone(project_organization)
-        self.assertIn('does not contain first word of organization name "Poisson Lab"', message)
+        self.assertIn('failed string check for organization name "Poisson Lab"', message)
         self.assertFalse(ProjectOrganization.objects.filter(project=project).exists())
 
     def test_no_link_without_pi_affiliation(self):
@@ -84,7 +104,6 @@ class SetProjectOrganizationTest(TestCase):
 IFX_MANAGERS = ['manager1@example.org', 'manager2@example.org']
 
 
-@patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
 @override_settings(IFX_MANAGER=IFX_MANAGERS, EMAIL_SENDER='coldfront@example.org')
 class ProjectPostSaveTest(TestCase):
     """Tests for the Project post_save receiver that calls set_project_organization"""
@@ -93,11 +112,20 @@ class ProjectPostSaveTest(TestCase):
         self.pi = UserFactory(username='sdpoisson')
         lab = OrganizationFactory(name='Poisson Lab', rank='lab', org_tree='Harvard')
         UserAffiliationFactory(user=self.pi, organization=lab, role='pi')
+        # ifxmail sends through the IfxMail API
+        send_patcher = patch('coldfront.plugins.ifx.models.send')
+        self.mock_send = send_patcher.start()
+        self.addCleanup(send_patcher.stop)
 
     def create_project(self, title='poisson_lab'):
         """Create a Project and run the on_commit callback its post_save registers"""
         with self.captureOnCommitCallbacks(execute=True):
             return ProjectFactory(title=title, pi=self.pi)
+
+    def sent_email(self):
+        """Return the kwargs of the single ifxmail send call"""
+        self.mock_send.assert_called_once()
+        return self.mock_send.call_args.kwargs
 
     def test_project_organization_created_on_project_creation(self):
         project = self.create_project()
@@ -105,52 +133,51 @@ class ProjectPostSaveTest(TestCase):
 
     def test_success_emailed_to_ifx_managers(self):
         self.create_project()
-        self.assertEqual(len(mail.outbox), 1)
-        sent = mail.outbox[0]
-        self.assertEqual(sent.to, IFX_MANAGERS)
-        self.assertIn('Project poisson_lab linked to organization Poisson Lab', sent.subject)
-        self.assertIn('Linked project "poisson_lab" to organization "Poisson Lab"', sent.body)
+        email = self.sent_email()
+        self.assertEqual(email['to'], ','.join(IFX_MANAGERS))
+        self.assertEqual(email['fromaddr'], 'coldfront@example.org')
+        self.assertIn('Project poisson_lab linked to organization Poisson Lab', email['subject'])
+        self.assertIn('Linked project "poisson_lab" to organization "Poisson Lab"', email['message'])
 
     def test_unlinked_result_emailed_to_ifx_managers(self):
         self.create_project(title='gordon_lab')
-        self.assertEqual(len(mail.outbox), 1)
-        sent = mail.outbox[0]
-        self.assertEqual(sent.to, IFX_MANAGERS)
-        self.assertIn('Project gordon_lab not linked to an organization', sent.subject)
-        self.assertIn('does not contain first word of organization name', sent.body)
+        email = self.sent_email()
+        self.assertEqual(email['to'], ','.join(IFX_MANAGERS))
+        self.assertIn('Project gordon_lab not linked to an organization', email['subject'])
+        self.assertIn('failed string check', email['message'])
 
     @patch('coldfront.plugins.ifx.models.logger')
     @patch('coldfront.plugins.ifx.models.set_project_organization', side_effect=Exception('lookup failed'))
     def test_error_does_not_block_project_creation(self, mock_set_project_organization, mock_logger):
         project = self.create_project()
-        mock_logger.error.assert_called_once()
         self.assertTrue(project.pk)
-        mock_set_project_organization.assert_called_once()
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn('not linked to an organization', mail.outbox[0].subject)
-        self.assertIn('lookup failed', mail.outbox[0].body)
-
-    @override_settings(IFX_MANAGER=[])
-    def test_no_email_without_ifx_managers(self):
-        project = self.create_project()
-        self.assertTrue(ProjectOrganization.objects.filter(project=project).exists())
-        self.assertEqual(len(mail.outbox), 0)
+        mock_logger.error.assert_called_once()
+        email = self.sent_email()
+        self.assertIn('not linked to an organization', email['subject'])
+        self.assertIn('lookup failed', email['message'])
 
     @patch('coldfront.plugins.ifx.models.logger')
-    @patch('coldfront.plugins.ifx.models.send_email', side_effect=Exception('smtp down'))
-    def test_email_error_does_not_block_project_creation(self, mock_send_email, mock_logger):
+    @override_settings(IFX_MANAGER=[])
+    def test_no_email_without_ifx_managers(self, mock_logger):
         project = self.create_project()
-        mock_logger.error.assert_called_once()
         self.assertTrue(ProjectOrganization.objects.filter(project=project).exists())
-        mock_send_email.assert_called_once()
+        self.mock_send.assert_not_called()
+        mock_logger.error.assert_called_once()
+
+    @patch('coldfront.plugins.ifx.models.logger')
+    def test_email_error_does_not_block_project_creation(self, mock_logger):
+        self.mock_send.side_effect = Exception('ifxmail down')
+        project = self.create_project()
+        self.assertTrue(ProjectOrganization.objects.filter(project=project).exists())
+        mock_logger.exception.assert_called_once()
 
     @patch('coldfront.plugins.ifx.models.set_project_organization', return_value=(None, ''))
     def test_not_called_on_project_update(self, mock_set_project_organization):
         project = self.create_project()
         mock_set_project_organization.reset_mock()
-        mail.outbox.clear()
+        self.mock_send.reset_mock()
         with self.captureOnCommitCallbacks(execute=True):
             project.description = 'updated'
             project.save()
         mock_set_project_organization.assert_not_called()
-        self.assertEqual(len(mail.outbox), 0)
+        self.mock_send.assert_not_called()

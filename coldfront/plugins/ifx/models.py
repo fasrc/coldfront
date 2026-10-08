@@ -307,8 +307,9 @@ def set_project_organization(project):
     Link a Project to the Harvard lab Organization its PI leads.
 
     The PI must have exactly one 'pi' UserAffiliation with a lab-rank Organization in the
-    Harvard org tree, and the project title must contain the first word of that
-    Organization's name (case-insensitive).
+    Harvard org tree, and the project title must contain the last word of that
+    Organization's name, or the word before it if the name contains "Lab"
+    (case-insensitive). For example, "Simeon Denis Poisson Lab" requires "poisson".
 
     Returns a (ProjectOrganization or None, message) tuple; the message describes the outcome.
     '''
@@ -365,7 +366,8 @@ def send_project_organization_result(project, project_organization, message):
     tostr = ','.join(import_from_settings('IFX_MANAGER', []))
     fromaddr = import_from_settings('EMAIL_SENDER')
     if not tostr:
-        raise Exception('IFX_MANAGER setting not defined')
+        logger.error(f'IFX_MANAGER setting not defined; not emailing organization result for project {title}')
+        return
     try:
         send(
             to=tostr,
