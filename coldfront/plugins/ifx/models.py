@@ -330,9 +330,14 @@ def set_project_organization(project):
         return None, message
 
     organization = affiliation.organization
-    # add filter testing that project title contains the first word in the organization name, ignoring case
-    if organization.name.split()[0].lower() not in project.title.lower():
-        message = f'Project title "{project.title}" does not contain first word of organization name "{organization.name}". Not linking.'
+    # add filter testing that project title contains the last word of the organization name before the "Lab" suffix, if present.
+    if 'Lab' in organization.name:
+        org_name_last_word = organization.name.split()[-2]
+    else:
+        org_name_last_word = organization.name.split()[-1]
+
+    if org_name_last_word.lower() not in project.title.lower():
+        message = f'Project title "{project.title}" failed string check for organization name "{organization.name}". Not linking.'
         logger.warning(message)
         return None, message
 
