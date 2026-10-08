@@ -95,7 +95,3 @@ def get_user_resources(user_obj):
         ).distinct()
 
     return resources
-
-
-def test_allocation_function(allocation_pk):
-    print('test_allocation_function', allocation_pk)

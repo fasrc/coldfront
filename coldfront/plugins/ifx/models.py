@@ -15,12 +15,16 @@ from django.conf import settings
 from rest_framework.exceptions import ValidationError
 from fiine.client import API as FiineAPI
 from fiine.client import ApiException
+from ifxmail.client import send
+from ifxbilling.models import ProductUsage, Product, Facility
+from ifxbilling.fiine import create_new_product, migrate_product
+from ifxuser.models import Organization, UserAffiliation
+
 from coldfront.core.allocation.models import AllocationUser, Allocation, AllocationAttribute
 from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project
-from ifxbilling.models import ProductUsage, Product, Facility
-from ifxbilling.fiine import create_new_product, migrate_product
-from ifxuser.models import Organization
+from coldfront.core.utils.common import import_from_settings
+
 
 logger = logging.getLogger('ifx')
 
@@ -296,6 +300,103 @@ def allocation_attribute_post_save(sender, instance, **kwargs):
                 update_allocation_product(instance.allocation)
             except Exception as e:
                 logger.error(f'Error updating product for allocation {instance.allocation} after change to attribute {instance}: {e}')
+
+
+def set_project_organization(project):
+    '''
+    Link a Project to the Harvard lab Organization its PI leads.
+
+    The PI must have exactly one 'pi' UserAffiliation with a lab-rank Organization in the
+    Harvard org tree, and the project title must contain the last word of that
+    Organization's name, or the word before it if the name contains "Lab"
+    (case-insensitive). For example, "Simeon Denis Poisson Lab" requires "poisson".
+
+    Returns a (ProjectOrganization or None, message) tuple; the message describes the outcome.
+    '''
+    affiliation_kwargs = {
+        'role': 'pi',
+        'organization__org_tree': 'Harvard',
+        'organization__rank': 'lab'
+    }
+
+    try:
+        affiliation = project.pi.useraffiliation_set.get(**affiliation_kwargs)
+    except UserAffiliation.DoesNotExist:
+        message = f'{project.pi} is not a PI for any Harvard lab Organization.'
+        logger.warning(message)
+        return None, message
+    except UserAffiliation.MultipleObjectsReturned:
+        message = (
+            f'{project.pi} is a multiple. Orgs:{[ua.organization for ua in project.pi.useraffiliation_set.filter(**affiliation_kwargs)]}'
+        )
+        logger.warning(message)
+        return None, message
+
+    organization = affiliation.organization
+    # add filter testing that project title contains the last word of the organization name before the "Lab" suffix, if present.
+    if 'Lab' in organization.name:
+        org_name_last_word = organization.name.split()[-2]
+    else:
+        org_name_last_word = organization.name.split()[-1]
+
+    if org_name_last_word.lower() not in project.title.lower():
+        message = f'Project title "{project.title}" failed string check for organization name "{organization.name}". Not linking.'
+        logger.warning(message)
+        return None, message
+
+    project_organization, _ = ProjectOrganization.objects.get_or_create(
+        project=project, organization=organization
+    )
+    message = f'Linked project "{project.title}" to organization "{organization.name}".'
+    logger.info(message)
+    return project_organization, message
+
+
+def send_project_organization_result(project, project_organization, message):
+    '''
+    Email the outcome of a ProjectOrganization creation attempt to the IFX_MANAGER addresses
+    '''
+    title = project.title
+    if project_organization:
+        subject = f'Project {title} linked to organization {project_organization.organization.name}'
+    else:
+        subject = f'Project {title} not linked to an organization'
+    body = f'Project: {title}\nPI: {project.pi}\n\n{message}\n'
+
+    tostr = ','.join(import_from_settings('IFX_MANAGER', []))
+    fromaddr = import_from_settings('EMAIL_SENDER')
+    if not tostr:
+        logger.error(f'IFX_MANAGER setting not defined; not emailing organization result for project {title}')
+        return
+    try:
+        send(
+            to=tostr,
+            fromaddr=fromaddr,
+            message=body,
+            subject=subject
+        )
+    except Exception as e:
+        logger.exception(f'Error emailing organization result for project {title}: {e}')
+
+
+@receiver(post_save, sender=Project)
+def project_post_save(sender, instance, created, **kwargs):
+    '''
+    When a Project is created, try to link it to its PI's lab Organization with
+    set_project_organization and email the result to the IFX_MANAGER addresses.
+    Runs after commit so it only acts on Projects that were actually saved.
+    '''
+    if created and not kwargs.get('raw'):
+        def set_organization():
+            try:
+                project_organization, message = set_project_organization(instance)
+            except Exception as e:
+                project_organization = None
+                message = f'Error setting organization for project {instance}: {e}'
+                logger.error(message)
+            send_project_organization_result(instance, project_organization, message)
+
+        transaction.on_commit(set_organization)
 
 
 @receiver(post_save, sender=Resource)
