@@ -15,14 +15,16 @@ from django.conf import settings
 from rest_framework.exceptions import ValidationError
 from fiine.client import API as FiineAPI
 from fiine.client import ApiException
+from ifxmail.client import send
+from ifxbilling.models import ProductUsage, Product, Facility
+from ifxbilling.fiine import create_new_product, migrate_product
+from ifxuser.models import Organization, UserAffiliation
+
 from coldfront.core.allocation.models import AllocationUser, Allocation, AllocationAttribute
 from coldfront.core.resource.models import Resource
 from coldfront.core.project.models import Project
 from coldfront.core.utils.common import import_from_settings
-from coldfront.core.utils.mail import send_email
-from ifxbilling.models import ProductUsage, Product, Facility
-from ifxbilling.fiine import create_new_product, migrate_product
-from ifxuser.models import Organization, UserAffiliation
+
 
 logger = logging.getLogger('ifx')
 
@@ -351,20 +353,29 @@ def set_project_organization(project):
 
 def send_project_organization_result(project, project_organization, message):
     '''
-    Email the outcome of an attempt to link a Project to an Organization to the IFX_MANAGER addresses
+    Email the outcome of a ProjectOrganization creation attempt to the IFX_MANAGER addresses
     '''
-    recipients = import_from_settings('IFX_MANAGER', [])
-    if not recipients:
-        return
+    title = project.title
     if project_organization:
-        subject = f'Project {project.title} linked to organization {project_organization.organization.name}'
+        subject = f'Project {title} linked to organization {project_organization.organization.name}'
     else:
-        subject = f'Project {project.title} not linked to an organization'
-    body = f'Project: {project.title}\nPI: {project.pi}\n\n{message}\n'
+        subject = f'Project {title} not linked to an organization'
+    body = f'Project: {title}\nPI: {project.pi}\n\n{message}\n'
+
+    tostr = ','.join(import_from_settings('IFX_MANAGER', []))
+    fromaddr = import_from_settings('EMAIL_SENDER')
+    if not tostr:
+        raise Exception('IFX_MANAGER setting not defined')
     try:
-        send_email(subject, body, import_from_settings('EMAIL_SENDER', ''), recipients)
+        send(
+            to=tostr,
+            fromaddr=fromaddr,
+            message=body,
+            subject=subject
+        )
     except Exception as e:
-        logger.error(f'Error emailing organization result for project {project}: {e}')
+        logger.exception(f'Error emailing organization result for project {title}: {e}')
+        raise Exception(f'Error sending email to {tostr} from {fromaddr} with message {message} and subject {subject}: {e}.') from e
 
 
 @receiver(post_save, sender=Project)
