@@ -375,7 +375,6 @@ def send_project_organization_result(project, project_organization, message):
         )
     except Exception as e:
         logger.exception(f'Error emailing organization result for project {title}: {e}')
-        raise Exception(f'Error sending email to {tostr} from {fromaddr} with message {message} and subject {subject}: {e}.') from e
 
 
 @receiver(post_save, sender=Project)
@@ -394,6 +393,7 @@ def project_post_save(sender, instance, created, **kwargs):
                 message = f'Error setting organization for project {instance}: {e}'
                 logger.error(message)
             send_project_organization_result(instance, project_organization, message)
+
         transaction.on_commit(set_organization)
 
 
