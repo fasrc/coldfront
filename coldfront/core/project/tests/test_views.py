@@ -3,7 +3,7 @@ import logging
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import (
@@ -14,7 +14,10 @@ from coldfront.core.test_helpers.factories import (
     ProjectAttributeFactory,
     ProjectStatusChoiceFactory,
     ProjectAttributeTypeFactory,
+    ResourceAttributeFactory,
 )
+from coldfront.core.project.views import ProjectRemoveUsersView
+from coldfront.core.resource.models import ResourceAttributeType
 from coldfront.core.project.models import (
     Project, ProjectUser,
     ProjectUserRoleChoice,
@@ -482,6 +485,140 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
 
         other_projectuser.refresh_from_db()
         self.assertEqual(other_projectuser.status.name, 'Deactivated')
+
+    def _post_cluster_user_removal(self, mock_filter_users_to_remove):
+        """Remove proj_allocationuser (non-primary group) from the project as the PI"""
+        user = self.project_user
+        mock_filter_users_to_remove.return_value = [(
+            None,
+            [{
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'email': user.email,
+                'role': 'User',
+                'primary_group': False,
+            }]
+        )]
+        post_data = {
+            'userform-TOTAL_FORMS': '1',
+            'userform-INITIAL_FORMS': '1',
+            'userform-MIN_NUM_FORMS': '0',
+            'userform-MAX_NUM_FORMS': '1',
+            'userform-0-selected': 'on',
+            'userform-0-username': user.username,
+            'userform-0-first_name': user.first_name,
+            'userform-0-last_name': user.last_name,
+            'userform-0-email': user.email,
+            'userform-0-role': 'User',
+        }
+        self.client.force_login(self.pi_user)
+        return self.client.post(self.url, data=post_data, follow=True)
+
+    def _set_slurm_cluster(self, value='testcluster'):
+        ResourceAttributeFactory(
+            resource=self.cluster_resource,
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_cluster'),
+            value=value,
+        )
+
+    @patch('coldfront.core.project.views.allocation_remove_user.send')
+    @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_projectuser_removal_removes_cluster_allocationuser(
+        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+    ):
+        """Removing a ProjectUser removes their Slurm association and cluster AllocationUser"""
+        self._set_slurm_cluster()
+        cluster_alloc_user = self.cluster_allocation.allocationuser_set.get(user=self.project_user)
+        status_at_signal = []
+
+        def slurm_remove(**kwargs):
+            # the Slurm removal must happen before the AllocationUser status changes
+            cluster_alloc_user.refresh_from_db()
+            status_at_signal.append(cluster_alloc_user.status.name)
+            return [(None, None), (None, True)]
+        mock_slurm_remove.side_effect = slurm_remove
+
+        response = self._post_cluster_user_removal(mock_filter)
+
+        mock_slurm_remove.assert_called_once_with(
+            sender=ProjectRemoveUsersView,
+            account=self.project.title,
+            username=self.project_user.username,
+            cluster='testcluster',
+        )
+        self.assertEqual(status_at_signal, ['Active'])
+        cluster_alloc_user.refresh_from_db()
+        self.assertEqual(cluster_alloc_user.status.name, 'Removed')
+        mock_alloc_remove.assert_any_call(
+            sender=ProjectRemoveUsersView, allocation_user_pk=cluster_alloc_user.pk
+        )
+        self.assertContains(
+            response, f'Removed {self.project_user.username} from {self.cluster_resource.name} allocation.'
+        )
+
+    @patch('coldfront.core.project.views.allocation_remove_user.send')
+    @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_projectuser_removal_slurm_failure_keeps_cluster_allocationuser(
+        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+    ):
+        """A failed Slurm removal is reported and leaves the cluster AllocationUser Active,
+        but the ProjectUser and storage AllocationUser are still removed"""
+        self._set_slurm_cluster()
+        mock_slurm_remove.return_value = [(None, Exception('user has running jobs'))]
+
+        response = self._post_cluster_user_removal(mock_filter)
+
+        cluster_alloc_user = self.cluster_allocation.allocationuser_set.get(user=self.project_user)
+        self.assertEqual(cluster_alloc_user.status.name, 'Active')
+        storage_alloc_user = self.storage_allocation.allocationuser_set.get(user=self.project_user)
+        self.assertEqual(storage_alloc_user.status.name, 'Removed')
+        self.assertEqual(ProjectUser.objects.get(pk=self.npu.pk).status.name, 'Removed')
+        self.assertContains(response, 'user has running jobs')
+        self.assertNotIn(
+            call(sender=ProjectRemoveUsersView, allocation_user_pk=cluster_alloc_user.pk),
+            mock_alloc_remove.call_args_list,
+        )
+
+    @patch('coldfront.core.project.views.allocation_remove_user.send')
+    @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_projectuser_removal_no_slurm_receiver_acts_keeps_cluster_allocationuser(
+        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+    ):
+        """If no Slurm receiver confirms the removal (no matching integration),
+        the cluster AllocationUser stays Active and the remover is told why"""
+        self._set_slurm_cluster()
+        mock_slurm_remove.return_value = [(None, None), (None, None)]
+
+        response = self._post_cluster_user_removal(mock_filter)
+
+        cluster_alloc_user = self.cluster_allocation.allocationuser_set.get(user=self.project_user)
+        self.assertEqual(cluster_alloc_user.status.name, 'Active')
+        self.assertContains(response, 'no Slurm integration is configured for cluster testcluster')
+        self.assertNotContains(
+            response, f'Removed {self.project_user.username} from {self.cluster_resource.name} allocation.'
+        )
+
+    @patch('coldfront.core.project.views.allocation_remove_user.send')
+    @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_projectuser_removal_cluster_without_slurm_cluster_skips_signal(
+        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+    ):
+        """A cluster resource with no slurm_cluster attribute gets no Slurm call,
+        but the AllocationUser is still marked Removed"""
+        self._post_cluster_user_removal(mock_filter)
+
+        mock_slurm_remove.assert_not_called()
+        cluster_alloc_user = self.cluster_allocation.allocationuser_set.get(user=self.project_user)
+        self.assertEqual(cluster_alloc_user.status.name, 'Removed')
 
 
 class ProjectUpdateViewTest(ProjectViewTestBase):

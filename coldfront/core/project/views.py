@@ -31,6 +31,7 @@ from coldfront.core.allocation.models import (
 from coldfront.core.allocation.signals import (
     allocation_remove_user,
     allocation_activate_user,
+    allocation_user_remove_on_slurm,
 )
 from coldfront.core.project.signals import (
     project_filter_users_to_remove,
@@ -1054,6 +1055,71 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         ]
         return users_to_remove
 
+    def remove_user_from_cluster_allocations(self, project_obj, user_obj, allocationuser_status_removed):
+        """Remove the user's Slurm associations for the project's cluster allocations,
+        then mark the matching AllocationUsers Removed.
+
+        Returns (removed, failed): lists of message strings describing each allocation's outcome.
+        An AllocationUser is only marked Removed once a Slurm receiver confirms the association
+        was removed; if a receiver raises or none acts, it is left Active so the removal can be
+        retried from the allocation's remove-users page.
+        """
+        removed, failed = [], []
+        cluster_allocations = project_obj.allocation_set.filter(
+            status__name__in=['Active', 'Renewal Requested'],
+            resources__resource_type__name='Cluster',
+            allocationuser__user=user_obj,
+            allocationuser__status__name='Active',
+        ).distinct()
+        for allocation in cluster_allocations:
+            resource = allocation.get_parent_resource
+            cluster = resource.get_attribute('slurm_cluster')
+            log_extra = {
+                'category': 'integration:slurmrest',
+                'removed_user': user_obj.username,
+                'account': project_obj.title,
+                'cluster': cluster,
+            }
+            # a cluster resource with no slurm_cluster attribute has no associations to remove
+            if cluster:
+                responses = allocation_user_remove_on_slurm.send_robust(
+                    sender=self.__class__,
+                    account=project_obj.title,
+                    username=user_obj.username,
+                    cluster=cluster,
+                )
+                errors = [resp for _, resp in responses if isinstance(resp, Exception)]
+                if errors:
+                    error_text = '; '.join(str(e) for e in errors)
+                    failed.append(
+                        f'Could not remove {user_obj.username} from Slurm account '
+                        f'{project_obj.title} on {resource.name}: {error_text}. They may have a running '
+                        'job under this account; remove them from the allocation once it completes.'
+                    )
+                    logger.error(
+                        'Could not remove user from slurm account.',
+                        extra={**log_extra, 'status': 'failure', 'error': error_text},
+                    )
+                    continue
+                if not any(resp is True for _, resp in responses):
+                    failed.append(
+                        f'Could not remove {user_obj.username} from Slurm account {project_obj.title} '
+                        f'on {resource.name}: no Slurm integration is configured for cluster {cluster}. '
+                        'Their allocation membership was left active; contact support.'
+                    )
+                    logger.error(
+                        'No slurm receiver removed user from slurm account.',
+                        extra={**log_extra, 'status': 'failure'},
+                    )
+                    continue
+                logger.info('Removed user from slurm account.', extra={**log_extra, 'status': 'success'})
+            for alloc_user in allocation.allocationuser_set.filter(user=user_obj, status__name='Active'):
+                alloc_user.status = allocationuser_status_removed
+                alloc_user.save()
+                allocation_remove_user.send(sender=self.__class__, allocation_user_pk=alloc_user.pk)
+            removed.append(f'Removed {user_obj.username} from {resource.name} allocation.')
+        return removed, failed
+
     def get(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
         project_obj = get_object_or_404(Project, pk=pk)
@@ -1098,6 +1164,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 
         remove_users_count = 0
         failed_user_removals = []
+        cluster_removals = []
 
         if not formset.is_valid():
             for error in formset.errors:
@@ -1263,6 +1330,11 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         allocation_remove_user.send(
                             sender=self.__class__, allocation_user_pk=alloc_user.pk
                         )
+                cluster_removed, cluster_failed = self.remove_user_from_cluster_allocations(
+                    project_obj, user_obj, allocationuser_status_removed
+                )
+                cluster_removals += cluster_removed
+                failed_user_removals += cluster_failed
                 remove_users_count += 1
         user_pl = 'user' if remove_users_count == 1 else 'users'
         for fail in failed_user_removals:
@@ -1270,6 +1342,8 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         messages.success(
             request, f'Removed {remove_users_count} {user_pl} from project.'
         )
+        for removal in cluster_removals:
+            messages.success(request, removal)
 
         return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 

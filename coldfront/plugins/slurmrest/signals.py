@@ -58,18 +58,22 @@ def slurmrest_allocation_add_user_handler(sender, **kwargs):
 
 @receiver(allocation_user_remove_on_slurm)
 def slurmrest_allocation_user_deactivate_handler(sender, **kwargs):
-    """Remove Slurm association when the AllocationUser is removed."""
+    """Remove Slurm association when the AllocationUser is removed.
+    Returns True once the association is removed, so senders can tell a handled
+    removal from one no receiver acted on.
+    """
     slurm_cluster = Resource.objects.get(
         Q(resourceattribute__resource_attribute_type__name='slurm_cluster') &
         Q(resourceattribute__value=kwargs.get('cluster'))
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'API':
-        return
+        return None
     api = SlurmApiConnection(slurm_cluster.get_attribute('slurm_cluster'))
     api.remove_assoc(user_name=kwargs['username'], account_name=kwargs['account'])
     logger.info("Successfully removed Slurm user %s from account %s on cluster %s",
         kwargs['username'], kwargs['account'], kwargs.get('cluster')
     )
+    return True
 
 
 @receiver(allocation_raw_share_edit)

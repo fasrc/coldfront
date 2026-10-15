@@ -40,8 +40,9 @@ def allocation_user_deactivate_handler(sender, **kwargs):
         Q(resourceattribute__value=kwargs.get('cluster'))
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'CLI':
-        return
+        return None
     slurm_remove_assoc(kwargs['username'], kwargs['account'])
+    return True
 
 
 @receiver(allocation_raw_share_edit)
