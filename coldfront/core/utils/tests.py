@@ -1,3 +1,4 @@
+from io import StringIO
 from types import SimpleNamespace
 
 from django.core import mail
@@ -162,6 +163,12 @@ class AddScheduledTasksTests(TestCase):
     def make_app_config(self, name):
         return SimpleNamespace(name=name)
 
+    def run_command(self):
+        """Run the command, returning its output instead of printing it"""
+        out = StringIO()
+        AddScheduledTasksCommand(stdout=out).handle()
+        return out.getvalue()
+
     @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.importlib.import_module')
     @patch('coldfront.core.utils.management.commands.add_scheduled_tasks.apps.get_app_configs')
     def test_registers_declared_task_with_time(self, mock_get_app_configs, mock_import_module):
@@ -172,8 +179,9 @@ class AddScheduledTasksTests(TestCase):
         ]
         mock_import_module.return_value = mock_tasks_module
 
-        AddScheduledTasksCommand().handle()
+        output = self.run_command()
 
+        self.assertIn('Registered task coldfront.plugins.fake.tasks.do_thing', output)
         sched = Schedule.objects.get(func='coldfront.plugins.fake.tasks.do_thing')
         self.assertEqual(sched.name, 'do_thing')
         self.assertEqual(sched.schedule_type, Schedule.DAILY)
@@ -190,8 +198,10 @@ class AddScheduledTasksTests(TestCase):
         ]
         mock_import_module.return_value = mock_tasks_module
 
-        AddScheduledTasksCommand().handle()
-        AddScheduledTasksCommand().handle()
+        self.run_command()
+        output = self.run_command()
+
+        self.assertIn('coldfront.plugins.fake.tasks.do_thing is already scheduled, skipping', output)
 
         self.assertEqual(
             Schedule.objects.filter(func='coldfront.plugins.fake.tasks.do_thing').count(), 1
@@ -203,7 +213,7 @@ class AddScheduledTasksTests(TestCase):
         mock_get_app_configs.return_value = [self.make_app_config('coldfront.plugins.notasks')]
         mock_import_module.side_effect = ModuleNotFoundError
 
-        AddScheduledTasksCommand().handle()  # must not raise
+        self.run_command()  # must not raise
 
         self.assertEqual(Schedule.objects.count(), 0)
 
@@ -213,7 +223,7 @@ class AddScheduledTasksTests(TestCase):
         mock_get_app_configs.return_value = [self.make_app_config('coldfront.plugins.notasks')]
         mock_import_module.return_value = MagicMock(spec=[])  # no SCHEDULED_TASKS attribute
 
-        AddScheduledTasksCommand().handle()
+        self.run_command()
 
         self.assertEqual(Schedule.objects.count(), 0)
 
@@ -222,6 +232,6 @@ class AddScheduledTasksTests(TestCase):
     def test_non_coldfront_app_is_ignored(self, mock_get_app_configs, mock_import_module):
         mock_get_app_configs.return_value = [self.make_app_config('django.contrib.admin')]
 
-        AddScheduledTasksCommand().handle()
+        self.run_command()
 
         mock_import_module.assert_not_called()

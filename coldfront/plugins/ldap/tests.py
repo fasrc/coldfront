@@ -300,7 +300,9 @@ class CollectUpdateProjectStatusMembershipTests(TestCase):
         }
 
     def run_sync(self):
-        with patch('coldfront.plugins.ldap.utils.Connection'), patch(
+        with patch('coldfront.plugins.ldap.utils.Server'), patch(
+            'coldfront.plugins.ldap.utils.Connection'
+        ), patch(
             'coldfront.plugins.ldap.utils.LDAPConn.return_group_members_manager',
             return_value=(self.ad_members, self.ad_manager),
         ), patch(

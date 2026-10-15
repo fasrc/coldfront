@@ -1,7 +1,7 @@
 import logging
 
 from django.core import mail
-from django.test import TestCase, tag, override_settings
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import patch
 
@@ -336,14 +336,18 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         self.project_user = self.proj_allocationuser
         self.nonproject_user = self.nonproj_allocationuser
 
-    @tag('net')
-    def test_projectremoveusersview_access(self):
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send', return_value=[])
+    def test_projectremoveusersview_access(self, mock_filter_users_to_remove):
         """test access to project remove users page"""
         self.project_access_tstbase(self.url)
 
-    @tag('net')
-    def test_pi_user_cannot_be_removed(self):
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_pi_user_cannot_be_removed(self, mock_filter_users_to_remove):
         """Test that the project PI cannot be removed"""
+        # pass the view's candidate list through unchanged, as the LDAP receiver would
+        mock_filter_users_to_remove.side_effect = lambda sender, users_to_remove, project: [
+            (None, users_to_remove)
+        ]
         self.client.force_login(self.pi_user)
 
         response = self.client.get(self.url)
@@ -538,6 +542,7 @@ class ProjectAddUsersSearchViewTest(ProjectViewTestBase):
         utils.test_user_cannot_access(self, self.proj_datamanager, self.url)# data manager cannot access
         utils.test_user_cannot_access(self, self.proj_allocationuser, self.url)# user cannot access
 
+@override_settings(ADDITIONAL_USER_SEARCH_CLASSES=[])  # search local users only, not LDAP
 class ProjectAddUsersViewTest(ProjectViewTestBase):
     """Tests for ProjectAddUsersView"""
     def setUp(self):

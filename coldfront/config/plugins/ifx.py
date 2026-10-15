@@ -5,6 +5,7 @@ Installs ifxuser, ifxbilling, and author.  Sets AUTH_USER_MODEL
 import os
 from decimal import Decimal
 from coldfront.config.base import MIDDLEWARE, INSTALLED_APPS
+from coldfront.config.env import ENV
 
 INSTALLED_APPS.insert(0, 'ifxuser')
 INSTALLED_APPS += ['author', 'ifxbilling', 'rest_framework.authtoken', 'ifxreport', 'django_extensions']
@@ -47,3 +48,6 @@ IFXREPORT_URL_ROOT = f'{MEDIA_URL}reports'
 REBALANCER_CLASS = 'coldfront.plugins.ifx.calculator.ColdfrontRebalance'
 
 FIINELESS = os.environ.get('FIINELESS', 'FALSE').upper() == 'TRUE'
+
+# Comma-separated emails notified of each attempt to link a new Project to an Organization
+IFX_MANAGER = ENV.list('IFX_MANAGER', default=[])
