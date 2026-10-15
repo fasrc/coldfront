@@ -358,6 +358,70 @@ class SyncIsilonAllocationsTests(TestCase):
         with override_settings(ISILON_PATH_IGNORE=['/ifs/rc_labs/poisson_lab']):
             self.assertTrue(is_isilon_path_ignored('/ifs/rc_labs/poisson_lab'))
 
+    @override_settings(ISILON_PATH_IGNORE=['rc_labs/archive/'])
+    def test_is_isilon_path_ignored_covers_descendants_not_siblings(self):
+        self.assertTrue(is_isilon_path_ignored('rc_labs/archive'))
+        self.assertTrue(is_isilon_path_ignored('rc_labs/archive/example_lab'))
+        self.assertTrue(is_isilon_path_ignored('/rc_labs/archive/example_lab/sub'))
+        self.assertFalse(is_isilon_path_ignored('rc_labs/archive2'))
+        self.assertFalse(is_isilon_path_ignored('rc_labs'))
+        self.assertFalse(is_isilon_path_ignored(None, ''))
+
+    @override_settings(ISILON_PATH_IGNORE=['rc_labs/archive'])
+    def test_quota_under_ignored_relative_path_is_skipped(self):
+        quota = make_mock_quota('/ifs/rc_labs/archive/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('/ifs/rc_labs/archive/poisson_lab', report['ignored'])
+        self.assertEqual(report['created'], [])
+        self.assertEqual(Allocation.objects.count(), 0)
+
+    @override_settings(ISILON_PATH_IGNORE=['/ifs/rc_labs/archive'])
+    def test_quota_under_ignored_full_path_is_skipped(self):
+        quota = make_mock_quota('/ifs/rc_labs/archive/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('/ifs/rc_labs/archive/poisson_lab', report['ignored'])
+        self.assertEqual(Allocation.objects.count(), 0)
+
+    @override_settings(ISILON_PATH_IGNORE=['rc_labs/archive'])
+    def test_quota_in_sibling_of_ignored_path_is_still_synced(self):
+        quota = make_mock_quota('/ifs/rc_labs/archive2/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertIn('rc_labs/archive2/poisson_lab', report['created'])
+        self.assertEqual(report['ignored'], [])
+
+    @override_settings(ISILON_PATH_IGNORE=['rc_labs/archive'])
+    def test_existing_allocation_under_ignored_path_is_not_updated(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=allocation, allocation_attribute_type=self.subdir_type,
+            value='rc_labs/archive/poisson_lab',
+        )
+
+        quota = make_mock_quota('/ifs/rc_labs/archive/poisson_lab', TIB, TIB // 2)
+        report = self.sync_with_quotas([quota])
+
+        self.assertEqual(report['updated'], [])
+        self.assertIsNone(allocation.get_attribute('Quota_In_Bytes', typed=False))
+
+    @override_settings(ISILON_PATH_IGNORE=['rc_labs/archive'])
+    def test_active_allocation_under_ignored_path_is_not_deactivated(self):
+        allocation = AllocationFactory(project=self.project, status__name='Active')
+        allocation.resources.add(self.resource)
+        AllocationAttributeFactory(
+            allocation=allocation, allocation_attribute_type=self.subdir_type,
+            value='rc_labs/archive/poisson_lab',
+        )
+
+        report = self.sync_with_quotas([])
+
+        self.assertEqual(report['deactivated'], [])
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status.name, 'Active')
+
     def test_active_allocation_missing_from_volume_is_deactivated(self):
         allocation = AllocationFactory(project=self.project, status__name='Active')
         allocation.resources.add(self.resource)
