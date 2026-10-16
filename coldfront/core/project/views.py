@@ -1019,6 +1019,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         return (
             self.request.user.is_superuser
             or project_obj.has_perm(self.request.user, ProjectPermission.GENERAL_MANAGER)
+            or project_obj.has_perm(self.request.user, ProjectPermission.ACCESS_MANAGER)
         )
 
     def test_func(self):
