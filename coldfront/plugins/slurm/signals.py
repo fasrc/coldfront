@@ -63,8 +63,9 @@ def allocation_add_user_handler(sender, **kwargs):
         Q(resourceattribute__value=kwargs.get('cluster'))
     )
     if not slurm_cluster or slurm_cluster.get_attribute('slurm_integration') != 'CLI':
-        return
+        return None
     slurm_add_assoc(kwargs['username'], kwargs['cluster'], kwargs['account'], specs=['Fairshare=parent'])
+    return True
 
 @receiver(allocation_activate_user)
 def allocation_activate_user_handler(sender, **kwargs):

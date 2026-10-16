@@ -16,7 +16,8 @@ from coldfront.core.test_helpers.factories import (
     ProjectAttributeTypeFactory,
     ResourceAttributeFactory,
 )
-from coldfront.core.project.views import ProjectRemoveUsersView
+from coldfront.core.allocation.models import AllocationUserStatusChoice
+from coldfront.core.project.views import ProjectAddUsersView, ProjectRemoveUsersView
 from coldfront.core.resource.models import ResourceAttributeType
 from coldfront.core.project.models import (
     Project, ProjectUser,
@@ -790,6 +791,216 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         self.assertIn(self.nonproj_allocationuser.email, sent.to)
         self.assertIn(self.pi_user.email, sent.cc)
         self.assertIn(self.nonproj_allocationuser.username, sent.subject)
+
+    def _set_slurm_cluster(self, value='testcluster'):
+        ResourceAttributeFactory(
+            resource=self.cluster_resource,
+            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_cluster'),
+            value=value,
+        )
+
+    def _set_allocationuser_status(self, allocation, status_name):
+        alloc_user = allocation.allocationuser_set.get(user=self.nonproj_allocationuser)
+        alloc_user.status = AllocationUserStatusChoice.objects.get(name=status_name)
+        alloc_user.save()
+        return alloc_user
+
+    def _post_cluster_user_addition(self):
+        """Add nonproj_allocationuser to the project and its cluster allocation"""
+        form_data = {**self.form_data, 'allocationform-allocation': [self.cluster_allocation.pk]}
+        self.client.force_login(self.proj_accessmanager)
+        return self.client.post(self.url, data=form_data, follow=True)
+
+    def _post_reactivation(self):
+        """Reactivate nonproj_allocationuser, who has a Deactivated ProjectUser"""
+        ProjectUserFactory(
+            project=self.project, user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Deactivated'),
+        )
+        form_data = {
+            'q': 'no_such_user_xyz',
+            'search_by': 'username_only',
+            'userform-TOTAL_FORMS': '0',
+            'userform-INITIAL_FORMS': '0',
+            'userform-MIN_NUM_FORMS': '0',
+            'userform-MAX_NUM_FORMS': '0',
+            'allocationform-allocation': [],
+            'reactivateuserform-TOTAL_FORMS': '1',
+            'reactivateuserform-INITIAL_FORMS': '1',
+            'reactivateuserform-MIN_NUM_FORMS': '0',
+            'reactivateuserform-MAX_NUM_FORMS': '1',
+            'reactivateuserform-0-username': self.nonproj_allocationuser.username,
+            'reactivateuserform-0-role': ProjectUserRoleChoice.objects.get(name='User').pk,
+            'reactivateuserform-0-selected': 'on',
+        }
+        self.client.force_login(self.proj_accessmanager)
+        return self.client.post(self.url, data=form_data, follow=True)
+
+    @patch('coldfront.core.project.views.allocation_activate_user.send')
+    @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.notify_manager_role_transition')
+    @patch('coldfront.core.project.signals.project_make_projectuser.send')
+    def test_projectaddusers_cluster_adds_slurm_association_before_activating(
+        self, mock_make_pu, mock_notify, mock_slurm_add, mock_activate
+    ):
+        """Adding a user to a cluster allocation adds their Slurm association,
+        then marks the AllocationUser Active and sends allocation_activate_user"""
+        self._set_slurm_cluster()
+        cluster_alloc_user = self._set_allocationuser_status(self.cluster_allocation, 'Removed')
+        status_at_signal = []
+
+        def slurm_add(**kwargs):
+            # the Slurm addition must happen before the AllocationUser status changes
+            cluster_alloc_user.refresh_from_db()
+            status_at_signal.append(cluster_alloc_user.status.name)
+            return [(None, None), (None, True)]
+        mock_slurm_add.side_effect = slurm_add
+
+        self._post_cluster_user_addition()
+
+        mock_slurm_add.assert_called_once_with(
+            sender=ProjectAddUsersView,
+            username=self.nonproj_allocationuser.username,
+            account=self.project.title,
+            cluster='testcluster',
+        )
+        self.assertEqual(status_at_signal, ['Removed'])
+        cluster_alloc_user.refresh_from_db()
+        self.assertEqual(cluster_alloc_user.status.name, 'Active')
+        mock_activate.assert_called_once_with(
+            sender=ProjectAddUsersView, allocation_user_pk=cluster_alloc_user.pk
+        )
+
+    @patch('coldfront.core.project.views.allocation_activate_user.send')
+    @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.notify_manager_role_transition')
+    @patch('coldfront.core.project.signals.project_make_projectuser.send')
+    def test_projectaddusers_cluster_slurm_error_leaves_allocationuser(
+        self, mock_make_pu, mock_notify, mock_slurm_add, mock_activate
+    ):
+        """A Slurm receiver error is reported and the cluster AllocationUser is left as-is,
+        but the ProjectUser is still added"""
+        self._set_slurm_cluster()
+        cluster_alloc_user = self._set_allocationuser_status(self.cluster_allocation, 'Removed')
+        mock_slurm_add.return_value = [(None, Exception('slurmdbd unreachable'))]
+
+        response = self._post_cluster_user_addition()
+
+        cluster_alloc_user.refresh_from_db()
+        self.assertEqual(cluster_alloc_user.status.name, 'Removed')
+        mock_activate.assert_not_called()
+        self.assertContains(response, 'slurmdbd unreachable')
+        self.assertEqual(
+            ProjectUser.objects.get(project=self.project, user=self.nonproj_allocationuser).status.name,
+            'Active',
+        )
+
+    @patch('coldfront.core.project.views.allocation_activate_user.send')
+    @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.notify_manager_role_transition')
+    @patch('coldfront.core.project.signals.project_make_projectuser.send')
+    def test_projectaddusers_cluster_no_slurm_receiver_acts_leaves_allocationuser(
+        self, mock_make_pu, mock_notify, mock_slurm_add, mock_activate
+    ):
+        """If no Slurm receiver confirms the addition, the cluster AllocationUser is
+        not activated and the person adding the user is told why"""
+        self._set_slurm_cluster()
+        cluster_alloc_user = self._set_allocationuser_status(self.cluster_allocation, 'Removed')
+        mock_slurm_add.return_value = [(None, None), (None, None)]
+
+        response = self._post_cluster_user_addition()
+
+        cluster_alloc_user.refresh_from_db()
+        self.assertEqual(cluster_alloc_user.status.name, 'Removed')
+        mock_activate.assert_not_called()
+        self.assertContains(response, 'no Slurm integration is configured for cluster testcluster')
+
+    @patch('coldfront.core.project.views.allocation_activate_user.send')
+    @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.notify_manager_role_transition')
+    @patch('coldfront.core.project.signals.project_make_projectuser.send')
+    def test_projectaddusers_cluster_without_slurm_cluster_skips_signal(
+        self, mock_make_pu, mock_notify, mock_slurm_add, mock_activate
+    ):
+        """A cluster resource with no slurm_cluster attribute gets no Slurm call,
+        but the AllocationUser is still activated"""
+        cluster_alloc_user = self._set_allocationuser_status(self.cluster_allocation, 'Removed')
+
+        self._post_cluster_user_addition()
+
+        mock_slurm_add.assert_not_called()
+        cluster_alloc_user.refresh_from_db()
+        self.assertEqual(cluster_alloc_user.status.name, 'Active')
+        mock_activate.assert_called_once_with(
+            sender=ProjectAddUsersView, allocation_user_pk=cluster_alloc_user.pk
+        )
+
+    @patch('coldfront.core.project.views.allocation_activate_user.send')
+    @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
+    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
+    def test_projectaddusers_reactivate_restores_cluster_allocationuser(
+        self, mock_reactivate_pu, mock_slurm_add, mock_activate
+    ):
+        """Reactivating a user re-adds their Slurm association and restores their
+        Removed cluster AllocationUser"""
+        self._set_slurm_cluster()
+        cluster_alloc_user = self._set_allocationuser_status(self.cluster_allocation, 'Removed')
+        mock_slurm_add.return_value = [(None, True)]
+
+        response = self._post_reactivation()
+
+        mock_slurm_add.assert_called_once_with(
+            sender=ProjectAddUsersView,
+            username=self.nonproj_allocationuser.username,
+            account=self.project.title,
+            cluster='testcluster',
+        )
+        cluster_alloc_user.refresh_from_db()
+        self.assertEqual(cluster_alloc_user.status.name, 'Active')
+        mock_activate.assert_called_once_with(
+            sender=ProjectAddUsersView, allocation_user_pk=cluster_alloc_user.pk
+        )
+        self.assertContains(
+            response,
+            f'Reactivated {self.nonproj_allocationuser.username} in {self.cluster_resource.name} allocation.',
+        )
+
+    @patch('coldfront.core.project.views.allocation_activate_user.send')
+    @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
+    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
+    def test_projectaddusers_reactivate_slurm_failure_keeps_cluster_allocationuser_removed(
+        self, mock_reactivate_pu, mock_slurm_add, mock_activate
+    ):
+        """A failed Slurm addition during reactivation is reported and leaves the
+        cluster AllocationUser Removed"""
+        self._set_slurm_cluster()
+        cluster_alloc_user = self._set_allocationuser_status(self.cluster_allocation, 'Removed')
+        mock_slurm_add.return_value = [(None, Exception('slurmdbd unreachable'))]
+
+        response = self._post_reactivation()
+
+        cluster_alloc_user.refresh_from_db()
+        self.assertEqual(cluster_alloc_user.status.name, 'Removed')
+        mock_activate.assert_not_called()
+        self.assertContains(response, 'slurmdbd unreachable')
+
+    @patch('coldfront.core.project.views.allocation_activate_user.send')
+    @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
+    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
+    def test_projectaddusers_reactivate_storage_only_unchanged(
+        self, mock_reactivate_pu, mock_slurm_add, mock_activate
+    ):
+        """With no Removed cluster AllocationUser, reactivation only restores storage
+        AllocationUsers and makes no Slurm call"""
+        self._set_slurm_cluster()
+        storage_alloc_user = self._set_allocationuser_status(self.storage_allocation, 'Removed')
+
+        self._post_reactivation()
+
+        storage_alloc_user.refresh_from_db()
+        self.assertEqual(storage_alloc_user.status.name, 'Active')
+        mock_slurm_add.assert_not_called()
+        mock_activate.assert_not_called()
 
 
 class ProjectUserDetailViewTest(ProjectViewTestBase):
