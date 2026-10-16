@@ -165,6 +165,9 @@ class SlurmApiConnection():
             noop=noop,
             **association_dict
         )
+        # _call_api only logs errors; callers need a failed addition to raise
+        if not noop and getattr(response, 'errors', None):
+            raise SlurmError(f"Unable to add association {association_dict}: {response.errors}")
         logger.info('added associations: %s', response)
         return response
 
@@ -195,6 +198,9 @@ class SlurmApiConnection():
             noop=noop,
             **args
         )
+        # _call_api only logs errors; callers need a failed removal to raise
+        if not noop and getattr(response, 'errors', None):
+            raise SlurmError(f"Unable to delete association {args}: {response.errors}")
         logger.info("deleted association: %s", args)
         return response
 

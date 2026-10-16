@@ -23,13 +23,14 @@ updating the test.
 """
 
 import logging
+from types import SimpleNamespace
 from unittest import mock
 
 from django.test import SimpleTestCase
 from urllib3.exceptions import MaxRetryError
 from slurmrest_python import ApiClient, Configuration, SlurmApi, SlurmdbApi
 
-from coldfront.plugins.slurmrest.utils import SlurmApiConnection
+from coldfront.plugins.slurmrest.utils import SlurmApiConnection, SlurmError
 
 # Guaranteed to refuse the connection immediately: loopback, no DNS lookup,
 # and port 1 is never listening. Keeps these tests fast, deterministic, and
@@ -184,3 +185,26 @@ class SdkCallsTests(SlurmApiConnectionIntegrationTestCase):
 
     def test_get_wckeys(self):
         self.assertReachesRealSdkTransport(self.conn.get_wckeys)
+
+
+class RemoveAssocErrorHandlingTests(SimpleTestCase):
+    """remove_assoc must raise when slurmrestd reports errors in the response body,
+    so callers don't treat a failed removal as a success"""
+
+    def setUp(self):
+        self.conn = _build_connection()
+        # keep these independent of the installed SDK's endpoint versions
+        self.conn.slurmdb_api = mock.Mock()
+
+    def test_remove_assoc_raises_on_response_errors(self):
+        response = SimpleNamespace(errors=[{'error': 'Job(s) active, cancel job(s) before remove'}])
+        with mock.patch.object(self.conn, '_call_api', return_value=response):
+            with self.assertRaisesRegex(SlurmError, 'Job\\(s\\) active'):
+                self.conn.remove_assoc(user_name='bobtest', account_name='acct1')
+
+    def test_remove_assoc_returns_response_without_errors(self):
+        response = SimpleNamespace(errors=[], removed_associations=['bobtest'])
+        with mock.patch.object(self.conn, '_call_api', return_value=response):
+            self.assertIs(
+                self.conn.remove_assoc(user_name='bobtest', account_name='acct1'), response
+            )
