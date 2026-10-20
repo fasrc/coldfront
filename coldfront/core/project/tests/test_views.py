@@ -487,8 +487,9 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         other_projectuser.refresh_from_db()
         self.assertEqual(other_projectuser.status.name, 'Deactivated')
 
-    def _post_cluster_user_removal(self, mock_filter_users_to_remove):
-        """Remove proj_allocationuser (non-primary group) from the project as the PI"""
+    def _post_cluster_user_removal(self, mock_filter_users_to_remove, primary_group=False):
+        """Remove proj_allocationuser from the project: as the PI, or as a General Manager
+        deactivating them when the project is their primary group"""
         user = self.project_user
         mock_filter_users_to_remove.return_value = [(
             None,
@@ -498,7 +499,7 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
                 'last_name': user.last_name,
                 'email': user.email,
                 'role': 'User',
-                'primary_group': False,
+                'primary_group': primary_group,
             }]
         )]
         post_data = {
@@ -513,7 +514,9 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
             'userform-0-email': user.email,
             'userform-0-role': 'User',
         }
-        self.client.force_login(self.pi_user)
+        if primary_group:
+            post_data['userform-0-primary_group'] = 'on'
+        self.client.force_login(self.proj_generalmanager if primary_group else self.pi_user)
         return self.client.post(self.url, data=post_data, follow=True)
 
     def _set_slurm_cluster(self, value='testcluster'):
@@ -579,11 +582,38 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         storage_alloc_user = self.storage_allocation.allocationuser_set.get(user=self.project_user)
         self.assertEqual(storage_alloc_user.status.name, 'Removed')
         self.assertEqual(ProjectUser.objects.get(pk=self.npu.pk).status.name, 'Removed')
-        self.assertContains(response, 'user has running jobs')
+        self.assertContains(
+            response,
+            f'Could not remove {self.project_user.username} from Slurm account {self.project.title} '
+            f'on {self.cluster_resource.name}: user has running jobs. Their {self.cluster_resource.name} '
+            'allocation membership was left active.',
+        )
         self.assertNotIn(
             call(sender=ProjectRemoveUsersView, allocation_user_pk=cluster_alloc_user.pk),
             mock_alloc_remove.call_args_list,
         )
+
+    @patch('coldfront.core.project.views.allocation_remove_user.send')
+    @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_projectuser_deactivation_leaves_cluster_allocationuser_active(
+        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+    ):
+        """Deactivating a user (primary group) makes no Slurm call and leaves their cluster
+        AllocationUser Active; their storage AllocationUser is still removed"""
+        self._set_slurm_cluster()
+
+        response = self._post_cluster_user_removal(mock_filter, primary_group=True)
+
+        self.assertEqual(ProjectUser.objects.get(pk=self.npu.pk).status.name, 'Deactivated')
+        mock_slurm_remove.assert_not_called()
+        cluster_alloc_user = self.cluster_allocation.allocationuser_set.get(user=self.project_user)
+        self.assertEqual(cluster_alloc_user.status.name, 'Active')
+        storage_alloc_user = self.storage_allocation.allocationuser_set.get(user=self.project_user)
+        self.assertEqual(storage_alloc_user.status.name, 'Removed')
+        msgs = [(m.level_tag, m.message) for m in response.context['messages']]
+        self.assertFalse([m for tag, m in msgs if tag in ('error', 'warning')], msgs)
 
     @patch('coldfront.core.project.views.allocation_remove_user.send')
     @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
@@ -938,51 +968,20 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
     @patch('coldfront.core.project.views.allocation_activate_user.send')
     @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
     @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
-    def test_projectaddusers_reactivate_restores_cluster_allocationuser(
+    def test_projectaddusers_reactivate_leaves_cluster_allocationuser_alone(
         self, mock_reactivate_pu, mock_slurm_add, mock_activate
     ):
-        """Reactivating a user re-adds their Slurm association and restores their
-        Removed cluster AllocationUser"""
+        """Reactivation makes no Slurm call and doesn't touch cluster AllocationUsers;
+        slurmrest_sync keeps their status in line with Slurm"""
         self._set_slurm_cluster()
         cluster_alloc_user = self._set_allocationuser_status(self.cluster_allocation, 'Removed')
-        mock_slurm_add.return_value = [(None, True)]
 
-        response = self._post_reactivation()
-
-        mock_slurm_add.assert_called_once_with(
-            sender=ProjectAddUsersView,
-            username=self.nonproj_allocationuser.username,
-            account=self.project.title,
-            cluster='testcluster',
-        )
-        cluster_alloc_user.refresh_from_db()
-        self.assertEqual(cluster_alloc_user.status.name, 'Active')
-        mock_activate.assert_called_once_with(
-            sender=ProjectAddUsersView, allocation_user_pk=cluster_alloc_user.pk
-        )
-        self.assertContains(
-            response,
-            f'Reactivated {self.nonproj_allocationuser.username} in {self.cluster_resource.name} allocation.',
-        )
-
-    @patch('coldfront.core.project.views.allocation_activate_user.send')
-    @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
-    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
-    def test_projectaddusers_reactivate_slurm_failure_keeps_cluster_allocationuser_removed(
-        self, mock_reactivate_pu, mock_slurm_add, mock_activate
-    ):
-        """A failed Slurm addition during reactivation is reported and leaves the
-        cluster AllocationUser Removed"""
-        self._set_slurm_cluster()
-        cluster_alloc_user = self._set_allocationuser_status(self.cluster_allocation, 'Removed')
-        mock_slurm_add.return_value = [(None, Exception('slurmdbd unreachable'))]
-
-        response = self._post_reactivation()
+        self._post_reactivation()
 
         cluster_alloc_user.refresh_from_db()
         self.assertEqual(cluster_alloc_user.status.name, 'Removed')
+        mock_slurm_add.assert_not_called()
         mock_activate.assert_not_called()
-        self.assertContains(response, 'slurmdbd unreachable')
 
     @patch('coldfront.core.project.views.allocation_activate_user.send')
     @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
@@ -990,8 +989,7 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
     def test_projectaddusers_reactivate_storage_only_unchanged(
         self, mock_reactivate_pu, mock_slurm_add, mock_activate
     ):
-        """With no Removed cluster AllocationUser, reactivation only restores storage
-        AllocationUsers and makes no Slurm call"""
+        """Reactivation restores storage AllocationUsers and makes no Slurm call"""
         self._set_slurm_cluster()
         storage_alloc_user = self._set_allocationuser_status(self.storage_allocation, 'Removed')
 

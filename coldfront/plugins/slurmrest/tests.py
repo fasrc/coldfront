@@ -22,6 +22,7 @@ a method will make the relevant test fail the same way, without anyone
 updating the test.
 """
 
+import json
 import logging
 from types import SimpleNamespace
 from unittest import mock
@@ -29,8 +30,11 @@ from unittest import mock
 from django.test import SimpleTestCase
 from urllib3.exceptions import MaxRetryError
 from slurmrest_python import ApiClient, Configuration, SlurmApi, SlurmdbApi
+from slurmrest_python.exceptions import ApiException
 
-from coldfront.plugins.slurmrest.utils import SlurmApiConnection, SlurmError
+from coldfront.plugins.slurmrest.utils import (
+    SLURM_ERROR_HINTS, SlurmApiConnection, SlurmApiError, SlurmError
+)
 
 # Guaranteed to refuse the connection immediately: loopback, no DNS lookup,
 # and port 1 is never listening. Keeps these tests fast, deterministic, and
@@ -208,3 +212,56 @@ class RemoveAssocErrorHandlingTests(SimpleTestCase):
             self.assertIs(
                 self.conn.remove_assoc(user_name='bobtest', account_name='acct1'), response
             )
+
+    def test_remove_assoc_api_exception_raises_readable_error(self):
+        """A 422 from slurmrestd becomes a SlurmApiError carrying only Slurm's reasons and a hint"""
+        body = json.dumps({
+            'errors': [
+                {
+                    'description': 'slurmdb_associations_remove failed', 'error_number': 7009,
+                    'error': 'You can not remove the default account of a user', 'source': '_delete_assoc',
+                },
+                {
+                    'description': 'remove associations failed', 'error_number': 7009,
+                    'error': 'You can not remove the default account of a user', 'source': '_delete_assoc',
+                },
+            ],
+            'warnings': [],
+        })
+        exc = ApiException(status=422, reason='Unprocessable Entity', body=body)
+        with mock.patch.object(self.conn, '_call_api', side_effect=exc):
+            with self.assertRaises(SlurmApiError) as ctx:
+                self.conn.remove_assoc(user_name='bobtest', account_name='acct1')
+        self.assertEqual(
+            str(ctx.exception),
+            'You can not remove the default account of a user. ' + SLURM_ERROR_HINTS[7009],
+        )
+        self.assertEqual(ctx.exception.status, 422)
+        self.assertEqual(ctx.exception.error_numbers, [7009, 7009])
+
+    def test_remove_assoc_api_exception_running_jobs_hint(self):
+        body = json.dumps({'errors': [{
+            'description': 'remove associations failed', 'error_number': 7001,
+            'error': 'Job(s) active, cancel job(s) before remove', 'source': '_delete_assoc',
+        }]})
+        exc = ApiException(status=422, reason='Unprocessable Entity', body=body)
+        with mock.patch.object(self.conn, '_call_api', side_effect=exc):
+            with self.assertRaises(SlurmApiError) as ctx:
+                self.conn.remove_assoc(user_name='bobtest', account_name='acct1')
+        self.assertEqual(
+            str(ctx.exception),
+            'Job(s) active, cancel job(s) before remove. ' + SLURM_ERROR_HINTS[7001],
+        )
+
+    def test_remove_assoc_api_exception_without_json_body(self):
+        exc = ApiException(status=502, reason='Bad Gateway', body='<html>upstream down</html>')
+        with mock.patch.object(self.conn, '_call_api', side_effect=exc):
+            with self.assertRaisesRegex(SlurmApiError, '^HTTP 502 Bad Gateway\\.$'):
+                self.conn.remove_assoc(user_name='bobtest', account_name='acct1')
+
+    def test_add_assoc_api_exception_raises_readable_error(self):
+        body = json.dumps({'errors': [{'error': 'Invalid account', 'error_number': 2000}]})
+        exc = ApiException(status=422, reason='Unprocessable Entity', body=body)
+        with mock.patch.object(self.conn, '_call_api', side_effect=exc):
+            with self.assertRaisesRegex(SlurmApiError, '^Invalid account\\.$'):
+                self.conn.add_assoc('acct1', 'bobtest')
