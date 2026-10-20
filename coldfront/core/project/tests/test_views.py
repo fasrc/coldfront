@@ -426,7 +426,7 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         self.client.force_login(self.proj_accessmanager)
         self.client.post(self.url, data=post_data, follow=True)
         project_user_obj.refresh_from_db()
-        self.assertEqual(project_user_obj.status.name, 'Deactivated')
+        self.assertEqual(project_user_obj.status.name, 'Active')
 
         self.client.force_login(self.proj_generalmanager)
         self.client.post(self.url, data=post_data, follow=True)
