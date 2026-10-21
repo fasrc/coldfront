@@ -1,5 +1,7 @@
+import json
 import logging
 from slurmrest_python import SlurmApi, SlurmdbApi, ApiClient, Configuration
+from slurmrest_python.exceptions import ApiException
 from coldfront.core.utils.common import import_from_settings
 
 
@@ -8,9 +10,63 @@ SLURMREST_NOOP = import_from_settings('SLURMREST_NOOP', False)
 
 logger = logging.getLogger(__name__)
 
+# Slurm error numbers (slurm_errno.h) that need guidance beyond Slurm's own error text
+SLURM_ERROR_HINTS = {
+    # ESLURM_JOBS_RUNNING_ON_ASSOC
+    7001: (
+        "The user has active jobs under this account; once they complete or are cancelled, "
+        "remove them from the allocation again."
+    ),
+    # ESLURM_NO_REMOVE_DEFAULT_ACCOUNT
+    7009: (
+        "This is the user's default Slurm account; a Slurm administrator must change their "
+        "default account before they can be removed from it."
+    ),
+}
+
 
 class SlurmError(Exception):
     pass
+
+
+class SlurmApiError(SlurmError):
+    """slurmrestd rejected a request.
+
+    str() gives Slurm's own reason(s), plus a hint for known error numbers, without the HTTP
+    status, headers or body that ApiException includes.
+    """
+
+    def __init__(self, errors, status=None):
+        # each error is a dict with Slurm's 'error', 'error_number', 'description' and 'source'
+        self.errors = errors
+        self.status = status
+        super().__init__(self._summary())
+
+    @classmethod
+    def from_api_exception(cls, exc):
+        try:
+            errors = json.loads(exc.body or '{}').get('errors') or []
+        except (ValueError, AttributeError):
+            errors = []
+        if not errors:
+            errors = [{'error': f'HTTP {exc.status} {exc.reason}'}]
+        return cls(errors, status=exc.status)
+
+    @classmethod
+    def from_response_errors(cls, errors):
+        return cls([e.to_dict() if hasattr(e, 'to_dict') else dict(e) for e in errors])
+
+    @property
+    def error_numbers(self):
+        return [e.get('error_number') for e in self.errors if e.get('error_number') is not None]
+
+    def _summary(self):
+        # slurmrestd repeats the same error at each layer; show each reason once
+        reasons = dict.fromkeys(
+            e.get('error') or e.get('description') or 'unknown error' for e in self.errors
+        )
+        hints = dict.fromkeys(SLURM_ERROR_HINTS[n] for n in self.error_numbers if n in SLURM_ERROR_HINTS)
+        return ' '.join([f"{'; '.join(reasons)}.", *hints])
 
 
 class SlurmApiConnection():
@@ -160,11 +216,17 @@ class SlurmApiConnection():
                 }]
             }
         }
-        response = self._call_api(
-            self.slurmdb_api.slurmdb_v0044_post_associations,
-            noop=noop,
-            **association_dict
-        )
+        try:
+            response = self._call_api(
+                self.slurmdb_api.slurmdb_v0044_post_associations,
+                noop=noop,
+                **association_dict
+            )
+        except ApiException as exc:
+            raise SlurmApiError.from_api_exception(exc) from exc
+        # _call_api only logs errors; callers need a failed addition to raise
+        if not noop and getattr(response, 'errors', None):
+            raise SlurmApiError.from_response_errors(response.errors)
         logger.info('added associations: %s', response)
         return response
 
@@ -190,11 +252,17 @@ class SlurmApiConnection():
 
         args['cluster'] = self.active_cluster['name']
 
-        response = self._call_api(
-            self.slurmdb_api.slurmdb_v0044_delete_association,
-            noop=noop,
-            **args
-        )
+        try:
+            response = self._call_api(
+                self.slurmdb_api.slurmdb_v0044_delete_association,
+                noop=noop,
+                **args
+            )
+        except ApiException as exc:
+            raise SlurmApiError.from_api_exception(exc) from exc
+        # _call_api only logs errors; callers need a failed removal to raise
+        if not noop and getattr(response, 'errors', None):
+            raise SlurmApiError.from_response_errors(response.errors)
         logger.info("deleted association: %s", args)
         return response
 
