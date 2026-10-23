@@ -1,3 +1,4 @@
+from django.contrib.auth.models import Group
 from django.urls import reverse
 
 from coldfront.core.project.tests.test_views import ProjectViewTestBase
@@ -238,3 +239,32 @@ class ProjectDetailViewDeactivatedUsersTest(ProjectViewTestBase):
         response = utils.login_and_get_page(self.client, self.pi_user, self.url)
         self.assertNotIn(self.deactivated_user.email, response.context['mailto'])
         self.assertIn(self.pi_user.email, response.context['mailto'])
+
+
+class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
+    """Test that ProjectDetailView badges users in the external/vendor groups."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super(ProjectDetailViewExternalUsersTest, cls).setUpTestData()
+        cls.url = f'/project/{cls.project.pk}/'
+        active_status = ProjectUserStatusChoiceFactory(name='Active')
+        cls.external_user = UserFactory(username='external_user')
+        cls.vendor_user = UserFactory(username='vendor_user')
+        cls.external_user.groups.add(Group.objects.get_or_create(name='external')[0])
+        cls.vendor_user.groups.add(Group.objects.get_or_create(name='vendor')[0])
+        for user in (cls.external_user, cls.vendor_user):
+            ProjectUserFactory(user=user, project=cls.project, status=active_status)
+
+    def _get_row(self, soup, username):
+        table = soup.find('table', {'id': 'projectuser_table'})
+        return next(tr for tr in table.find_all('tr') if username in tr.get_text())
+
+    def test_external_and_vendor_users_have_badge(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        for user in (self.external_user, self.vendor_user):
+            self.assertIn('External', self._get_row(soup, user.username).get_text())
+
+    def test_internal_user_has_no_badge(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        self.assertNotIn('External', self._get_row(soup, self.pi_user.username).get_text())

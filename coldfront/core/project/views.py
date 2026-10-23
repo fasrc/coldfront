@@ -7,8 +7,9 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.contrib.auth.models import Group
 from django.contrib.messages.views import SuccessMessageMixin
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.forms import formset_factory
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
@@ -268,8 +269,14 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
         # Show Active users and Deactivated users (still an AD group member, but
         # their AD account is disabled) - Removed users are no longer group members.
+        # Flag users in the external/vendor auth groups so the template can badge them.
         project_users = self.object.projectuser_set.filter(
-                    status__name__in=['Active', 'Deactivated']).order_by('user__username')
+                    status__name__in=['Active', 'Deactivated']
+        ).annotate(
+            is_external=Exists(Group.objects.filter(
+                user=OuterRef('user'), name__in=['external', 'vendor']
+            ))
+        ).select_related('user', 'role', 'status').order_by('user__username')
 
         # Don't email accounts that are disabled in AD, even though they're shown above.
         active_project_users = project_users.filter(status__name='Active')

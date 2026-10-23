@@ -482,7 +482,12 @@ Project Detail
                   <span class="badge badge-secondary">Disabled</span>
                 {% endif %}
               </td>
-              <td>{{ user.user.first_name }} {{ user.user.last_name }}</td>
+              <td>
+                {{ user.user.first_name }} {{ user.user.last_name }}
+                {% if user.is_external %}
+                  <span class="badge badge-warning">External</span>
+                {% endif %}
+              </td>
               <td>{{ user.user.email }}</td>
               <td>{{ user.role.name }}</td>
               <td>
