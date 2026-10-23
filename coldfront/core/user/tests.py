@@ -1,10 +1,12 @@
-from coldfront.core.test_helpers.factories import UserFactory
+from django.contrib.auth.models import Group
 from django.test import TestCase
+from django.urls import reverse
 
 from coldfront.core.test_helpers.factories import (
     UserFactory,
 )
 
+from coldfront.core.test_helpers import utils
 from coldfront.core.user.models import UserProfile
 
 class TestUserProfile(TestCase):
@@ -52,3 +54,25 @@ class TestUserProfile(TestCase):
         with self.assertRaises(UserProfile.DoesNotExist):
             UserProfile.objects.get(pk=profile_obj.pk)
         self.assertEqual(0, len(UserProfile.objects.all()))
+
+class TestUserProfileExternalStatus(TestCase):
+    """Test that the user profile page shows external/vendor status."""
+
+    def _get_status_cell(self, user):
+        soup = utils.login_and_get_soup(self.client, user, reverse('user-profile'))
+        header = soup.find('th', string='External Status:')
+        return header.find_next_sibling('td')
+
+    def test_external_user_shows_external(self):
+        user = UserFactory(username='external_user')
+        user.groups.add(Group.objects.get_or_create(name='external')[0])
+        self.assertEqual(self._get_status_cell(user).get_text(strip=True), 'External')
+
+    def test_vendor_user_shows_vendor(self):
+        user = UserFactory(username='vendor_user')
+        user.groups.add(Group.objects.get_or_create(name='vendor')[0])
+        self.assertEqual(self._get_status_cell(user).get_text(strip=True), 'Vendor')
+
+    def test_internal_user_shows_no(self):
+        user = UserFactory(username='internal_user')
+        self.assertEqual(self._get_status_cell(user).get_text(strip=True), 'No')
