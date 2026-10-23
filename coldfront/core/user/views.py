@@ -58,9 +58,16 @@ class UserProfile(TemplateView):
         else:
             viewed_user = self.request.user
 
-        group_list = ', '.join(
-            [group.name for group in viewed_user.groups.all()])
+        group_names = [group.name for group in viewed_user.groups.all()]
+        group_list = ', '.join(group_names)
         context['group_list'] = group_list
+        # 'vendor' takes precedence if a user is somehow in both groups
+        if 'vendor' in group_names:
+            context['external_status'] = 'Vendor'
+        elif 'external' in group_names:
+            context['external_status'] = 'External'
+        else:
+            context['external_status'] = None
         context['viewed_user'] = viewed_user
         return context
 
