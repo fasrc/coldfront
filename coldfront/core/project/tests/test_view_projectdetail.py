@@ -256,15 +256,22 @@ class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
         for user in (cls.external_user, cls.vendor_user):
             ProjectUserFactory(user=user, project=cls.project, status=active_status)
 
-    def _get_row(self, soup, username):
+    def _get_cells(self, soup, username):
+        """Return the (username, name) cells of the user's projectuser_table row"""
         table = soup.find('table', {'id': 'projectuser_table'})
-        return next(tr for tr in table.find_all('tr') if username in tr.get_text())
+        row = next(tr for tr in table.find_all('tr') if username in tr.get_text())
+        cells = row.find_all('td')
+        return cells[0], cells[1]
 
-    def test_external_and_vendor_users_have_badge(self):
+    def test_external_and_vendor_users_have_badge_after_username(self):
         soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
         for user in (self.external_user, self.vendor_user):
-            self.assertIn('External', self._get_row(soup, user.username).get_text())
+            username_cell, name_cell = self._get_cells(soup, user.username)
+            self.assertIn('External', username_cell.get_text())
+            self.assertNotIn('External', name_cell.get_text())
 
     def test_internal_user_has_no_badge(self):
         soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
-        self.assertNotIn('External', self._get_row(soup, self.pi_user.username).get_text())
+        username_cell, name_cell = self._get_cells(soup, self.pi_user.username)
+        self.assertNotIn('External', username_cell.get_text())
+        self.assertNotIn('External', name_cell.get_text())
