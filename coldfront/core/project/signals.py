@@ -17,6 +17,11 @@ project_preremove_projectuser = django.dispatch.Signal()
 
 project_reactivate_projectuser = django.dispatch.Signal()
 
+project_projectusers_status_change = django.dispatch.Signal()
+    # providing_args=["projectusers", "new_status", "created"]
+    # sent for bulk ProjectUser status changes that bypass post_save (queryset
+    # .update() / bulk_create). projectusers must still hold their pre-change status.
+
 project_filter_users_to_remove = django.dispatch.Signal()
     #providing_args=["project_user_list"]
     # return tuple of (no_removal, can_remove)

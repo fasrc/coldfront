@@ -983,6 +983,41 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         mock_slurm_add.assert_not_called()
         mock_activate.assert_not_called()
 
+    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
+    def test_projectaddusers_reactivate_restores_other_group_projectusers(self, mock_reactivate_pu):
+        """Reactivation restores the user's Removed/Deactivated ProjectUsers in active
+        projects named by the group names the reactivate receivers return"""
+        removed_pu = ProjectUserFactory(
+            project=ProjectFactory(title='reactivate_removed_lab'), user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Removed'),
+        )
+        deactivated_pu = ProjectUserFactory(
+            project=ProjectFactory(title='reactivate_deactivated_lab'), user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Deactivated'),
+        )
+        archived_pu = ProjectUserFactory(
+            project=ProjectFactory(
+                title='reactivate_archived_lab', status=ProjectStatusChoiceFactory(name='Archived')
+            ),
+            user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Removed'),
+        )
+        outside_pu = ProjectUserFactory(
+            project=ProjectFactory(title='reactivate_other_lab'), user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Removed'),
+        )
+        mock_reactivate_pu.return_value = [(
+            None, ['reactivate_removed_lab', 'reactivate_deactivated_lab', 'reactivate_archived_lab']
+        )]
+
+        self._post_reactivation()
+
+        for projectuser, status in [
+            (removed_pu, 'Active'), (deactivated_pu, 'Active'), (archived_pu, 'Removed'), (outside_pu, 'Removed')
+        ]:
+            projectuser.refresh_from_db()
+            self.assertEqual(projectuser.status.name, status, projectuser.project.title)
+
     @patch('coldfront.core.project.views.allocation_activate_user.send')
     @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
     @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')

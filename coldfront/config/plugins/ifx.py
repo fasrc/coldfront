@@ -51,3 +51,7 @@ FIINELESS = os.environ.get('FIINELESS', 'FALSE').upper() == 'TRUE'
 
 # Comma-separated emails notified of each attempt to link a new Project to an Organization
 IFX_MANAGER = ENV.list('IFX_MANAGER', default=[])
+
+# Nanites endpoint that receives ProjectUser add/remove affiliation updates; unset disables the sync
+NANITES_AFFILIATION_URL = ENV.str('NANITES_AFFILIATION_URL', default=None)
+NANITES_AFFILIATION_TIMEOUT = ENV.int('NANITES_AFFILIATION_TIMEOUT', default=30)
