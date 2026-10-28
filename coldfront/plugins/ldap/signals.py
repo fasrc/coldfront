@@ -53,7 +53,10 @@ def identify_ad_group(sender, **kwargs):
 
 @receiver(project_reactivate_projectuser)
 def reactivate_user(sender, **kwargs):
-    """Reactivate a user in LDAP"""
+    """Reactivate a user in LDAP.
+    Returns the names of the AD groups the user belongs to, so the caller can
+    reactivate the matching ProjectUsers.
+    """
     user = kwargs['user']
     actor_username = kwargs.get('actor_username')
     actor_role = kwargs.get('actor_role')
@@ -61,25 +64,16 @@ def reactivate_user(sender, **kwargs):
     ldap_conn.reactivate_user(user.username, actor_username=actor_username, actor_role=actor_role)
     ldap_user = ldap_conn.return_user_by_name(user.username)
     user_group_names = [group.split(',')[0].replace('CN=', '') for group in ldap_user['memberOf']]
-    projectuser_entries = ProjectUser.objects.filter(
-        user=user,
-        project__title__in=user_group_names,
-        project__status__name='Active',
-        status__name__in=['Removed', 'Deactivated'],
-    )
-    projects = ', '.join([pu.project.title for pu in projectuser_entries])
-    projectuser_entries.update(
-        status=ProjectUserStatusChoice.objects.get(name='Active')
-    )
     logger.info(
-        'Reactivated AD user and related ProjectUsers.',
+        'Reactivated AD user.',
         extra={
             'category': 'ldap:User',
             'status': 'success',
             'user': user.username,
-            'projects': projects,
+            'groups': ', '.join(user_group_names),
         }
     )
+    return user_group_names
 
 @receiver(project_post_create)
 def update_new_project(sender, **kwargs):

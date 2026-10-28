@@ -822,11 +822,38 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             )
         return None
 
+    def reactivate_group_projectusers(self, user_obj, group_names):
+        """Reactivate the user's Removed/Deactivated ProjectUsers in active projects whose
+        titles match group_names. Saved one at a time so ProjectUser post_save receivers run.
+        """
+        projectuser_status_active = ProjectUserStatusChoice.objects.get(name='Active')
+        projectusers = ProjectUser.objects.filter(
+            user=user_obj,
+            project__title__in=group_names,
+            project__status__name='Active',
+            status__name__in=['Removed', 'Deactivated'],
+        ).select_related('project')
+        reactivated = []
+        for projectuser in projectusers:
+            projectuser.status = projectuser_status_active
+            projectuser.save()
+            reactivated.append(projectuser.project.title)
+        if reactivated:
+            logger.info(
+                'Reactivated ProjectUsers in AD groups of reactivated user.',
+                extra={
+                    'category': 'database_change:ProjectUser',
+                    'status': 'success',
+                    'user': user_obj.username,
+                    'projects': ', '.join(reactivated),
+                }
+            )
+
     def reactivate_user(self, project_obj, user_form_data, actor=None):
         """Full organizational logic for user reactivation
         - reactivate projectuser entry
-        x reactivate any other projectusers in active projects that still have this user in AD
-          (taken care of by ldap signal)
+        - reactivate any other projectusers in active projects whose AD groups still contain
+          this user (group names are returned by project_reactivate_projectuser receivers)
         - reactivate any related allocationuser entries in active storage allocations
         Cluster allocationusers and Slurm associations are left alone on deactivation, so there
         is nothing to restore; slurmrest_sync keeps their status in line with Slurm.
@@ -839,12 +866,15 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
         ).update(status=ProjectUserStatusChoice.objects.get(name='Active'))
         actor_username = actor.username if actor else None
         actor_role = _actor_role_label(actor, project_obj) if actor else None
-        project_reactivate_projectuser.send(
+        responses = project_reactivate_projectuser.send(
             sender=self.__class__,
             user=user_obj,
             actor_username=actor_username,
             actor_role=actor_role,
         )
+        group_names = {name for _, names in responses or [] if names for name in names}
+        if group_names:
+            self.reactivate_group_projectusers(user_obj, group_names)
         AllocationUser.objects.filter(
             user=user_obj,
             allocation__project__status__name__in=['Active', 'Renewal Requested'],
