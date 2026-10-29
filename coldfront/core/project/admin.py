@@ -1,6 +1,6 @@
 import textwrap
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from simple_history.admin import SimpleHistoryAdmin
 from django.utils.translation import gettext_lazy as _
 
@@ -15,6 +15,26 @@ from coldfront.core.project.models import (Project, ProjectAdminComment,
                                             ProjectUserRoleChoice,
                                             ProjectUserStatusChoice,
                                             ProjectAttributeUsage)
+from coldfront.core.project.exceptions import ProjectUserStatusChangeError
+
+
+AD_QUEUED_ADMIN_MESSAGE = (
+    'AD could not be reached. {} was saved as {} and will finish automatically once AD is back.'
+)
+
+
+def save_projectuser_from_admin(request, projectuser, save):
+    """Run save() for a ProjectUser edited in the admin. If an integration (AD) rejects the
+    status change, show the error and leave the row unchanged; if the change was queued, say so.
+    """
+    uname = projectuser.user.username
+    try:
+        save()
+    except ProjectUserStatusChangeError as e:
+        messages.error(request, f'{uname} was not changed: {e}')
+        return
+    if getattr(projectuser, '_ad_queued', None):
+        messages.warning(request, AD_QUEUED_ADMIN_MESSAGE.format(uname, projectuser.status.name))
 
 
 @admin.register(ProjectStatusChoice)
@@ -46,7 +66,8 @@ class ProjectUserAdmin(SimpleHistoryAdmin):
         return textwrap.shorten(obj.project.title, width=50)
 
     def PI(self, obj):
-        return '{} {} ({})'.format(obj.project.pi.first_name, obj.project.pi.last_name, obj.project.pi.username)
+        pi = obj.project.pi
+        return f'{pi.first_name} {pi.last_name} ({pi.username})'
 
     def User(self, obj):
         return '{} {} ({})'.format(obj.user.first_name, obj.user.last_name, obj.user.username)
@@ -67,6 +88,11 @@ class ProjectUserAdmin(SimpleHistoryAdmin):
             # We are adding an object
             return super().get_inline_instances(request)
         return [inline(self.model, self.admin_site) for inline in self.inlines]
+
+    def save_model(self, request, obj, form, change):
+        save_projectuser_from_admin(
+            request, obj, lambda: super(ProjectUserAdmin, self).save_model(request, obj, form, change)
+        )
 
 
 class ProjectUserInline(admin.TabularInline):
@@ -278,6 +304,13 @@ class ProjectAdmin(SimpleHistoryAdmin):
             for instance in instances:
                 instance.author = request.user
                 instance.save()
+        elif formset.model == ProjectUser:
+            instances = formset.save(commit=False)
+            for obj in formset.deleted_objects:
+                obj.delete()
+            for instance in instances:
+                save_projectuser_from_admin(request, instance, instance.save)
+            formset.save_m2m()
         else:
             formset.save()
 

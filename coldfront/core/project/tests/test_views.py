@@ -5,6 +5,8 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import call, patch
 
+from ldap3.core.exceptions import LDAPSocketOpenError
+
 from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import (
     setup_models,
@@ -386,10 +388,9 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         response = self.client.get(self.url)
         self.assertContains(response, 'name="userform-0-selected"')
 
-    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
     def test_primary_group_removal_permissions(
-        self, mock_filter_users_to_remove, mock_project_preremove
+        self, mock_filter_users_to_remove
     ):
         primary_user = self.project_user
         project_user_obj = self.project.projectuser_set.get(user=primary_user)
@@ -407,7 +408,6 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
                 'primary_group': True,
             }]
         )]
-        mock_project_preremove.return_value = None
 
         post_data = {
             'userform-TOTAL_FORMS': '1',
@@ -433,10 +433,9 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         project_user_obj.refresh_from_db()
         self.assertEqual(project_user_obj.status.name, 'Deactivated')
 
-    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
     def test_primary_group_removal_deactivates_secondary_projects_not_removes(
-        self, mock_filter_users_to_remove, mock_project_preremove
+        self, mock_filter_users_to_remove
     ):
         """Deactivating a user's primary AD group disables their whole AD account,
         but doesn't remove them from their other AD groups - so their membership
@@ -465,7 +464,6 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
                 'primary_group': True,
             }]
         )]
-        mock_project_preremove.return_value = None
 
         post_data = {
             'userform-TOTAL_FORMS': '1',
@@ -528,10 +526,9 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
 
     @patch('coldfront.core.project.views.allocation_remove_user.send')
     @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
-    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
     def test_projectuser_removal_removes_cluster_allocationuser(
-        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+        self, mock_filter, mock_slurm_remove, mock_alloc_remove
     ):
         """Removing a ProjectUser removes their Slurm association and cluster AllocationUser"""
         self._set_slurm_cluster()
@@ -565,10 +562,9 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
 
     @patch('coldfront.core.project.views.allocation_remove_user.send')
     @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
-    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
     def test_projectuser_removal_slurm_failure_keeps_cluster_allocationuser(
-        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+        self, mock_filter, mock_slurm_remove, mock_alloc_remove
     ):
         """A failed Slurm removal is reported and leaves the cluster AllocationUser Active,
         but the ProjectUser and storage AllocationUser are still removed"""
@@ -595,10 +591,9 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
 
     @patch('coldfront.core.project.views.allocation_remove_user.send')
     @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
-    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
     def test_projectuser_deactivation_leaves_cluster_allocationuser_active(
-        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+        self, mock_filter, mock_slurm_remove, mock_alloc_remove
     ):
         """Deactivating a user (primary group) makes no Slurm call and leaves their cluster
         AllocationUser Active; their storage AllocationUser is still removed"""
@@ -617,10 +612,9 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
 
     @patch('coldfront.core.project.views.allocation_remove_user.send')
     @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
-    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
     def test_projectuser_removal_no_slurm_receiver_acts_keeps_cluster_allocationuser(
-        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+        self, mock_filter, mock_slurm_remove, mock_alloc_remove
     ):
         """If no Slurm receiver confirms the removal (no matching integration),
         the cluster AllocationUser stays Active and the remover is told why"""
@@ -638,10 +632,9 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
 
     @patch('coldfront.core.project.views.allocation_remove_user.send')
     @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
-    @patch('coldfront.core.project.views.project_preremove_projectuser.send')
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
     def test_projectuser_removal_cluster_without_slurm_cluster_skips_signal(
-        self, mock_filter, mock_preremove, mock_slurm_remove, mock_alloc_remove
+        self, mock_filter, mock_slurm_remove, mock_alloc_remove
     ):
         """A cluster resource with no slurm_cluster attribute gets no Slurm call,
         but the AllocationUser is still marked Removed"""
@@ -734,11 +727,9 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         self.client.force_login(self.pi_user)
 
     @patch('coldfront.core.project.views.notify_manager_role_transition')
-    @patch('coldfront.core.project.signals.project_make_projectuser.send')
-    def test_projectaddusers_form_validation(self, mock_signal, mock_notify_transition):
+    def test_projectaddusers_form_validation(self, mock_notify_transition):
         """Test that the formset and allocation form are validated correctly"""
         self.client.force_login(self.proj_accessmanager)
-        mock_signal.return_value = None
         # Prepare form data for adding a user
         response = self.client.post(self.url, data=self.form_data)
         self.assertEqual(response.url, reverse('project-detail', kwargs={'pk': self.project.pk}))
@@ -746,24 +737,41 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         # Check that user was added
         self.assertTrue(ProjectUser.objects.filter(project=self.project, user=self.nonproj_allocationuser).exists())
 
-    @patch('coldfront.core.project.signals.project_make_projectuser.send')
-    def test_projectaddusers_signal_fail(self, mock_signal):
-        """Test that the add users form fails when the signal sent to LDAP fails"""
+    @override_settings(LDAP_PROJECTUSER_AD_SYNC=True)
+    @patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent')
+    def test_projectaddusers_ad_rejection_blocks_add(self, mock_apply_ad_intent):
+        """If AD rejects the group addition, the user is not added to the project"""
         self.client.force_login(self.proj_accessmanager)
-        mock_signal.side_effect = Exception("LDAP error occurred")
-        # Prepare form data for adding a user
+        mock_apply_ad_intent.side_effect = Exception("LDAP error occurred")
         response = self.client.post(self.url, data=self.form_data, follow=True)
-        # self.assertContains(response, 'LDAP error occurred')
         self.assertContains(response, 'Added 0 users')
+        self.assertFalse(
+            ProjectUser.objects.filter(project=self.project, user=self.nonproj_allocationuser).exists()
+        )
+
+    @override_settings(LDAP_PROJECTUSER_AD_SYNC=True)
+    @patch('coldfront.plugins.ldap.projectuser_sync.async_task')
+    @patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent')
+    def test_projectaddusers_ad_unreachable_queues_add(self, mock_apply_ad_intent, mock_async_task):
+        """If AD is unreachable, the user is saved as Pending - Add, the change is queued,
+        and the person adding them is told"""
+        ProjectUserStatusChoice.objects.get_or_create(name='Pending - Add')
+        mock_apply_ad_intent.side_effect = LDAPSocketOpenError('unreachable')
+        self.client.force_login(self.proj_accessmanager)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, data=self.form_data, follow=True)
+        projectuser = ProjectUser.objects.get(project=self.project, user=self.nonproj_allocationuser)
+        self.assertEqual(projectuser.status.name, 'Pending - Add')
+        self.assertContains(response, 'change is queued')
+        mock_async_task.assert_called_once()
+        self.assertEqual(mock_async_task.call_args.kwargs['intent'], 'add')
 
     @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
     @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
-    @patch('coldfront.core.project.signals.project_make_projectuser.send')
-    def test_projectaddusers_new_user_sends_added_email(self, mock_signal):
+    def test_projectaddusers_new_user_sends_added_email(self):
         """Adding a brand-new user sends a projectuser_added email to the
         user, cc'd to the PI."""
         self.client.force_login(self.proj_accessmanager)
-        mock_signal.return_value = None
         self.client.post(self.url, data=self.form_data)
         self.assertEqual(len(mail.outbox), 1)
         sent = mail.outbox[0]
@@ -773,8 +781,7 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
 
     @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
     @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
-    @patch('coldfront.core.project.signals.project_make_projectuser.send')
-    def test_projectaddusers_readd_removed_user_sends_added_email(self, mock_signal):
+    def test_projectaddusers_readd_removed_user_sends_added_email(self):
         """Re-adding a previously-Removed user also sends the added email,
         not just brand-new additions."""
         ProjectUserFactory(
@@ -782,22 +789,19 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
             status=ProjectUserStatusChoice.objects.get(name='Removed'),
         )
         self.client.force_login(self.proj_accessmanager)
-        mock_signal.return_value = None
         self.client.post(self.url, data=self.form_data)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(self.nonproj_allocationuser.email, mail.outbox[0].to)
 
     @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
     @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
-    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
-    def test_projectaddusers_reactivate_sends_reactivated_email(self, mock_signal):
+    def test_projectaddusers_reactivate_sends_reactivated_email(self):
         """Reactivating a Deactivated user sends a projectuser_reactivated
         email to the user, cc'd to the PI."""
         ProjectUserFactory(
             project=self.project, user=self.nonproj_allocationuser,
             status=ProjectUserStatusChoice.objects.get(name='Deactivated'),
         )
-        mock_signal.return_value = None
         form_data = {
             'q': 'no_such_user_xyz',
             'search_by': 'username_only',
@@ -869,9 +873,8 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
     @patch('coldfront.core.project.views.allocation_activate_user.send')
     @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
     @patch('coldfront.core.project.views.notify_manager_role_transition')
-    @patch('coldfront.core.project.signals.project_make_projectuser.send')
     def test_projectaddusers_cluster_adds_slurm_association_before_activating(
-        self, mock_make_pu, mock_notify, mock_slurm_add, mock_activate
+        self, mock_notify, mock_slurm_add, mock_activate
     ):
         """Adding a user to a cluster allocation adds their Slurm association,
         then marks the AllocationUser Active and sends allocation_activate_user"""
@@ -904,9 +907,8 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
     @patch('coldfront.core.project.views.allocation_activate_user.send')
     @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
     @patch('coldfront.core.project.views.notify_manager_role_transition')
-    @patch('coldfront.core.project.signals.project_make_projectuser.send')
     def test_projectaddusers_cluster_slurm_error_leaves_allocationuser(
-        self, mock_make_pu, mock_notify, mock_slurm_add, mock_activate
+        self, mock_notify, mock_slurm_add, mock_activate
     ):
         """A Slurm receiver error is reported and the cluster AllocationUser is left as-is,
         but the ProjectUser is still added"""
@@ -928,9 +930,8 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
     @patch('coldfront.core.project.views.allocation_activate_user.send')
     @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
     @patch('coldfront.core.project.views.notify_manager_role_transition')
-    @patch('coldfront.core.project.signals.project_make_projectuser.send')
     def test_projectaddusers_cluster_no_slurm_receiver_acts_leaves_allocationuser(
-        self, mock_make_pu, mock_notify, mock_slurm_add, mock_activate
+        self, mock_notify, mock_slurm_add, mock_activate
     ):
         """If no Slurm receiver confirms the addition, the cluster AllocationUser is
         not activated and the person adding the user is told why"""
@@ -948,9 +949,8 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
     @patch('coldfront.core.project.views.allocation_activate_user.send')
     @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
     @patch('coldfront.core.project.views.notify_manager_role_transition')
-    @patch('coldfront.core.project.signals.project_make_projectuser.send')
     def test_projectaddusers_cluster_without_slurm_cluster_skips_signal(
-        self, mock_make_pu, mock_notify, mock_slurm_add, mock_activate
+        self, mock_notify, mock_slurm_add, mock_activate
     ):
         """A cluster resource with no slurm_cluster attribute gets no Slurm call,
         but the AllocationUser is still activated"""
@@ -967,9 +967,8 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
 
     @patch('coldfront.core.project.views.allocation_activate_user.send')
     @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
-    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
     def test_projectaddusers_reactivate_leaves_cluster_allocationuser_alone(
-        self, mock_reactivate_pu, mock_slurm_add, mock_activate
+        self, mock_slurm_add, mock_activate
     ):
         """Reactivation makes no Slurm call and doesn't touch cluster AllocationUsers;
         slurmrest_sync keeps their status in line with Slurm"""
@@ -983,10 +982,11 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         mock_slurm_add.assert_not_called()
         mock_activate.assert_not_called()
 
-    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
-    def test_projectaddusers_reactivate_restores_other_group_projectusers(self, mock_reactivate_pu):
-        """Reactivation restores the user's Removed/Deactivated ProjectUsers in active
-        projects named by the group names the reactivate receivers return"""
+    @override_settings(LDAP_PROJECTUSER_AD_SYNC=True)
+    @patch('coldfront.plugins.ldap.projectuser_sync.LDAPConn')
+    def test_projectaddusers_reactivate_restores_other_group_projectusers(self, mock_ldap_conn):
+        """Once AD reactivates the account, the user's Removed/Deactivated ProjectUsers in
+        active projects matching their AD groups are reactivated too"""
         removed_pu = ProjectUserFactory(
             project=ProjectFactory(title='reactivate_removed_lab'), user=self.nonproj_allocationuser,
             status=ProjectUserStatusChoice.objects.get(name='Removed'),
@@ -1006,11 +1006,15 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
             project=ProjectFactory(title='reactivate_other_lab'), user=self.nonproj_allocationuser,
             status=ProjectUserStatusChoice.objects.get(name='Removed'),
         )
-        mock_reactivate_pu.return_value = [(
-            None, ['reactivate_removed_lab', 'reactivate_deactivated_lab', 'reactivate_archived_lab']
-        )]
+        mock_ldap_conn.return_value.return_user_by_name.return_value = {'memberOf': [
+            f'CN={title},OU=RC,OU=Domain Groups,DC=rc,DC=domain'
+            for title in ['reactivate_removed_lab', 'reactivate_deactivated_lab', 'reactivate_archived_lab']
+        ]}
 
-        self._post_reactivation()
+        with self.captureOnCommitCallbacks(execute=True):
+            self._post_reactivation()
+
+        mock_ldap_conn.return_value.reactivate_user.assert_called_once()
 
         for projectuser, status in [
             (removed_pu, 'Active'), (deactivated_pu, 'Active'), (archived_pu, 'Removed'), (outside_pu, 'Removed')
@@ -1020,9 +1024,8 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
 
     @patch('coldfront.core.project.views.allocation_activate_user.send')
     @patch('coldfront.core.project.views.allocation_user_add_on_slurm.send_robust')
-    @patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
     def test_projectaddusers_reactivate_storage_only_unchanged(
-        self, mock_reactivate_pu, mock_slurm_add, mock_activate
+        self, mock_slurm_add, mock_activate
     ):
         """Reactivation restores storage AllocationUsers and makes no Slurm call"""
         self._set_slurm_cluster()

@@ -3,7 +3,7 @@ from unittest.mock import patch
 import requests
 from django.test import TestCase, override_settings
 
-from coldfront.core.project.models import ProjectUser
+from coldfront.core.project.models import ProjectUser, ProjectUserStatusChoice
 from coldfront.core.project.signals import project_projectusers_status_change
 from coldfront.core.test_helpers.factories import (
     ProjectFactory,
@@ -393,11 +393,108 @@ class ProjectUserAffiliationSyncTest(TestCase):
             )
         self.assertEqual(self.posted_entries()[0]['active'], True)
 
-    def test_view_group_reactivation_syncs_removed_projectusers(self):
-        """ProjectAddUsersView's other-project reactivation saves per row, so Removed -> Active is synced"""
-        from coldfront.core.project.views import ProjectAddUsersView
+    def test_group_reactivation_syncs_removed_projectusers(self):
+        """The other-group reactivation saves per row, so Removed -> Active is synced"""
+        from coldfront.core.project.utils import reactivate_group_projectusers
 
         self.make_projectuser(self.removed)
         with self.captureOnCommitCallbacks(execute=True):
-            ProjectAddUsersView().reactivate_group_projectusers(self.user, {'poisson_lab'})
+            reactivate_group_projectusers(self.user, {'poisson_lab'})
         self.assertEqual(self.posted_entries(), [{'ifxid': 'IFXID0001', 'ifxorg': 'IFXORG0001', 'active': True}])
+
+
+@override_settings(
+    NANITES_AFFILIATION_URL=NANITES_AFFILIATION_URL,
+    LDAP_PROJECTUSER_AD_SYNC=True,
+    EMAIL_ADMIN_LIST=['admin@example.org'],
+    EMAIL_SENDER='coldfront@example.org',
+)
+class QueuedADChangeAffiliationTest(TestCase):
+    """Nanites sees a queued AD change only once the queued task has applied it to AD"""
+
+    def setUp(self):
+        from coldfront.plugins.ldap.tasks import apply_projectuser_ad_change
+
+        self.apply_projectuser_ad_change = apply_projectuser_ad_change
+        self.user = UserFactory(username='sdpoisson', ifxid='IFXID0001')
+        lab = OrganizationFactory(name='Poisson Lab', rank='lab', ifxorg='IFXORG0001')
+        self.project = ProjectFactory(title='poisson_lab')
+        ProjectOrganization.objects.create(project=self.project, organization=lab)
+        for name in ['Active', 'Removed', 'Deactivated', 'Pending - Add', 'Pending - Remove']:
+            ProjectUserStatusChoiceFactory(name=name)
+
+        patchers = {
+            'post': patch('coldfront.plugins.ifx.affiliations.requests.post'),
+            'apply': patch('coldfront.plugins.ldap.tasks.apply_ad_intent'),
+            'sync_apply': patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent'),
+            'async_task': patch('coldfront.plugins.ldap.projectuser_sync.async_task'),
+            'ifx_send': patch('coldfront.plugins.ifx.models.send'),
+        }
+        self.mocks = {}
+        for name, patcher in patchers.items():
+            self.mocks[name] = patcher.start()
+            self.addCleanup(patcher.stop)
+        self.mocks['post'].return_value.json.return_value = []
+
+    def queue(self, start_status, target_status):
+        """Save a ProjectUser change while AD is unreachable; return the queued task kwargs"""
+        from ldap3.core.exceptions import LDAPSocketOpenError
+
+        projectuser = ProjectUserFactory(
+            project=self.project, user=self.user, status=ProjectUserStatusChoice.objects.get(name=start_status)
+        ) if start_status else None
+        self.mocks['sync_apply'].side_effect = LDAPSocketOpenError('unreachable')
+        with self.captureOnCommitCallbacks(execute=True):
+            if projectuser is None:
+                projectuser = ProjectUserFactory(
+                    project=self.project, user=self.user,
+                    status=ProjectUserStatusChoice.objects.get(name=target_status),
+                )
+            else:
+                projectuser.status = ProjectUserStatusChoice.objects.get(name=target_status)
+                projectuser.save()
+        self.mocks['post'].reset_mock()
+        return projectuser, self.mocks['async_task'].call_args
+
+    def run_task(self, call_args):
+        with self.captureOnCommitCallbacks(execute=True):
+            self.apply_projectuser_ad_change(*call_args.args[1:], **call_args.kwargs)
+
+    def test_nothing_sent_while_pending(self):
+        projectuser, _ = self.queue(None, 'Active')
+        projectuser.refresh_from_db()
+        self.assertEqual(projectuser.status.name, 'Pending - Add')
+        self.mocks['post'].assert_not_called()
+
+    def test_sent_after_task_applies_add(self):
+        projectuser, call_args = self.queue(None, 'Active')
+        self.run_task(call_args)
+        projectuser.refresh_from_db()
+        self.assertEqual(projectuser.status.name, 'Active')
+        self.assertEqual(
+            self.mocks['post'].call_args.kwargs['json'],
+            [{'ifxid': 'IFXID0001', 'ifxorg': 'IFXORG0001', 'active': True}],
+        )
+
+    def test_sent_after_task_applies_removal(self):
+        projectuser, call_args = self.queue('Active', 'Removed')
+        self.run_task(call_args)
+        self.assertEqual(self.mocks['post'].call_args.kwargs['json'][0]['active'], False)
+
+    def test_queued_reactivation_not_synced(self):
+        projectuser, call_args = self.queue('Deactivated', 'Active')
+        self.assertEqual(call_args.kwargs['intent'], 'reactivate')
+        with patch('coldfront.plugins.ldap.projectuser_sync.reactivate_user_groups'), \
+                patch('coldfront.plugins.ldap.projectuser_sync.reactivate_storage_allocationusers'):
+            self.run_task(call_args)
+        projectuser.refresh_from_db()
+        self.assertEqual(projectuser.status.name, 'Active')
+        self.mocks['post'].assert_not_called()
+
+    def test_nothing_sent_after_revert(self):
+        projectuser, call_args = self.queue('Active', 'Removed')
+        self.mocks['apply'].side_effect = Exception('no such group')
+        self.run_task(call_args)
+        projectuser.refresh_from_db()
+        self.assertEqual(projectuser.status.name, 'Active')
+        self.mocks['post'].assert_not_called()

@@ -1,12 +1,13 @@
 '''
 Report ProjectUser additions and removals to Nanites as organization affiliation changes.
 
-A user is added when their ProjectUser becomes Active (from any status but Deactivated) and
-removed when it becomes Removed. After the transaction commits, each change is sent to
-NANITES_AFFILIATION_URL as one {"ifxid", "ifxorg", "active"} entry per organization linked
-to the project, and the response is logged. Removals are skipped for an organization when the
-user still belongs to another project linked to it. If the project has no organization, the
-IFX_MANAGER addresses are emailed instead.
+A user is added when their ProjectUser status changes to Active (from any status but Deactivated)
+and removed when it becomes Removed. While an AD change is queued the row is Pending, so nothing is
+sent until the queued task sets the final status (or reverts it, which skips the sync). After the
+transaction commits, each change is sent to NANITES_AFFILIATION_URL as one {"ifxid", "ifxorg",
+"active"} entry per organization linked to the project, and the response is logged. Removals are
+skipped for an organization when the user still belongs to another project linked to it. If the
+project has no organization, the IFX_MANAGER addresses are emailed instead.
 '''
 # pylint: disable=broad-exception-caught,logging-fstring-interpolation
 import logging
@@ -56,9 +57,13 @@ def projectuser_pre_save(sender, instance, **kwargs):
 @receiver(post_save, sender=ProjectUser)
 def projectuser_post_save(sender, instance, created, **kwargs):
     '''Queue an affiliation update when a saved ProjectUser is added or removed'''
-    if kwargs.get('raw'):
+    if kwargs.get('raw') or getattr(instance, '_skip_affiliation_sync', False):
         return
-    old_status = None if created else getattr(instance, '_previous_status_name', None)
+    if hasattr(instance, '_affiliation_previous_status'):
+        # set by the queued AD task: stored status was Pending, not the real starting status
+        old_status = instance._affiliation_previous_status
+    else:
+        old_status = None if created else getattr(instance, '_previous_status_name', None)
     active = classify_change(old_status, instance.status.name)
     if active is not None:
         queue_affiliation_changes([(instance.user, instance.project, active)])
