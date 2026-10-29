@@ -20,6 +20,7 @@ from django.http import (HttpResponseRedirect,
                         JsonResponse, HttpResponse,
                         HttpResponseBadRequest, HttpResponseForbidden)
 from django.shortcuts import get_object_or_404, render
+from django.template.defaultfilters import pluralize
 from django.template.loader import get_template
 from django.urls import reverse, reverse_lazy
 from django.utils.html import format_html, mark_safe
@@ -1091,8 +1092,7 @@ class AllocationAddUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     continue
                 users_added_count += 1
 
-            user_plural = 'user' if users_added_count == 1 else 'users'
-            msg = f'Added {users_added_count} {user_plural} to allocation.'
+            msg = f'Added {users_added_count} user{pluralize(users_added_count)} to allocation.'
             messages.success(request, msg)
         else:
             for error in formset.errors:
@@ -1345,8 +1345,7 @@ class AllocationRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, Templat
                     )
                     messages.error(request, error_message)
 
-            user_plural = 'user' if remove_users_count == 1 else 'users'
-            msg = f'Removed {remove_users_count} {user_plural} from allocation.'
+            msg = f'Removed {remove_users_count} user{pluralize(remove_users_count)} from allocation.'
             messages.success(request, msg)
             logger.info(
                 "Removed allocationusers.",

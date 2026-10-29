@@ -324,6 +324,8 @@ class Allocation(TimeStampedModel):
 
     @property
     def cost(self):
+        if self.requires_payment is False:
+            return 0
         try:
             price = float(get_resource_rate(self.resources.first().name))
         except AttributeError:

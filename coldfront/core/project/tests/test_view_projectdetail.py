@@ -1,6 +1,20 @@
+from django.contrib.auth.models import Group
+from django.urls import reverse
+
 from coldfront.core.project.tests.test_views import ProjectViewTestBase
 from coldfront.core.test_helpers import utils
-from coldfront.core.test_helpers.factories import ProjectAttributeFactory
+from coldfront.core.test_helpers.factories import (
+    ProjectAttributeFactory,
+    ProjectUserFactory,
+    ProjectUserStatusChoiceFactory,
+    UserFactory,
+)
+from coldfront.core.test_helpers.fasrc_factories import (
+    OrganizationFactory,
+    OrgRelationFactory,
+    ProjectOrganizationFactory,
+    UserAffiliationFactory,
+)
 
 
 class ProjectDetailViewTest(ProjectViewTestBase):
@@ -104,6 +118,51 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         allocations_table = soup.find('table', {'id': 'invoice_table'})
         self.assertIn("holylfs10/tier1", allocations_table.get_text())
 
+    def test_projectdetail_department_displayed(self):
+        """Test ProjectDetail shows the department of the project's lab, if any"""
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        self.assertNotIn('Department:', soup.find('div', {'class': 'card-body'}).get_text())
+
+        lab = OrganizationFactory(name=self.project.title, rank='lab', org_tree='Harvard')
+        ProjectOrganizationFactory(project=self.project, organization=lab)
+        dept = OrganizationFactory(
+            name='Computational Chemistry',
+            rank='department',
+            org_tree='Research Computing Storage Billing',
+        )
+        OrgRelationFactory(parent=dept, child=lab)
+        # parents outside the department org_tree are not shown
+        other = OrganizationFactory(name='Not A Department', rank='department', org_tree='Harvard')
+        OrgRelationFactory(parent=other, child=lab)
+
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        card_text = soup.find('div', {'class': 'card-body'}).get_text()
+        self.assertIn('Department: Computational Chemistry', card_text)
+        self.assertNotIn('Not A Department', card_text)
+
+    def test_projectdetail_department_link_only_if_viewable(self):
+        """Test ProjectDetail links a department only for users who can view its detail page"""
+        lab = OrganizationFactory(name=self.project.title, rank='lab', org_tree='Harvard')
+        ProjectOrganizationFactory(project=self.project, organization=lab)
+        dept = OrganizationFactory(
+            name='Computational Chemistry',
+            rank='department',
+            org_tree='Research Computing Storage Billing',
+        )
+        OrgRelationFactory(parent=dept, child=lab)
+        dept_url = reverse('department-detail', kwargs={'pk': dept.pk})
+
+        # non-member sees the name without a link
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        self.assertIn('Computational Chemistry', soup.find('div', {'class': 'card-body'}).get_text())
+        self.assertIsNone(soup.find('a', href=dept_url))
+
+        # department member and superuser see a link
+        UserAffiliationFactory(user=self.pi_user, organization=dept)
+        for user in (self.pi_user, self.admin_user):
+            soup = utils.login_and_get_soup(self.client, user, self.url)
+            self.assertIsNotNone(soup.find('a', href=dept_url))
+
     def test_projectdetail_allocation_history_table(self):
         """Test ProjectDetail page storage allocation history table"""
         # pi can see allocation in Allocations table
@@ -118,3 +177,101 @@ class ProjectDetailViewTest(ProjectViewTestBase):
         soup = utils.login_and_get_soup(self.client, self.proj_nonallocationuser, self.url)
         allocations_table = soup.find('table', {'id': 'allocation_history'})
         self.assertIn("holylfs10/tier1", allocations_table.get_text())
+
+
+class ProjectDetailViewDeactivatedUsersTest(ProjectViewTestBase):
+    """Test how ProjectDetailView displays Active/Deactivated/Removed ProjectUsers.
+
+    Deactivated means: still an AD group member, but the AD account is disabled -
+    these should be shown (grayed out). Removed means: no longer a group member -
+    these should not be shown at all.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        super(ProjectDetailViewDeactivatedUsersTest, cls).setUpTestData()
+        cls.url = f'/project/{cls.project.pk}/'
+
+        cls.deactivated_user = UserFactory(username='deactivated_user')
+        cls.deactivated_projectuser = ProjectUserFactory(
+            user=cls.deactivated_user, project=cls.project,
+            status=ProjectUserStatusChoiceFactory(name='Deactivated'),
+        )
+        cls.removed_user = UserFactory(username='removed_user')
+        cls.removed_projectuser = ProjectUserFactory(
+            user=cls.removed_user, project=cls.project,
+            status=ProjectUserStatusChoiceFactory(name='Removed'),
+        )
+
+    def test_deactivated_user_shown_removed_user_not_shown(self):
+        response = utils.login_and_get_page(self.client, self.pi_user, self.url)
+        project_user_usernames = [pu.user.username for pu in response.context['project_users']]
+        self.assertIn(self.deactivated_user.username, project_user_usernames)
+        self.assertNotIn(self.removed_user.username, project_user_usernames)
+
+    def test_deactivated_user_row_is_grayed_out_with_badge(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        table = soup.find('table', {'id': 'projectuser_table'})
+        row = next(
+            tr for tr in table.find_all('tr')
+            if self.deactivated_user.username in tr.get_text()
+        )
+        self.assertIn('text-muted', row.get('class', []))
+        self.assertIn('Disabled', row.get_text())
+
+    def test_deactivated_user_row_has_no_edit_link(self):
+        """No link to the projectuser edit page is shown for a Deactivated
+        user, since that page is unreachable for them."""
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        table = soup.find('table', {'id': 'projectuser_table'})
+        row = next(
+            tr for tr in table.find_all('tr')
+            if self.deactivated_user.username in tr.get_text()
+        )
+        self.assertNotIn('fa-user-edit', str(row))
+
+    def test_removed_user_row_absent_from_table(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        table = soup.find('table', {'id': 'projectuser_table'})
+        self.assertNotIn(self.removed_user.username, table.get_text())
+
+    def test_mailto_excludes_deactivated_user_email(self):
+        response = utils.login_and_get_page(self.client, self.pi_user, self.url)
+        self.assertNotIn(self.deactivated_user.email, response.context['mailto'])
+        self.assertIn(self.pi_user.email, response.context['mailto'])
+
+
+class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
+    """Test that ProjectDetailView badges users in the external/vendor groups."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super(ProjectDetailViewExternalUsersTest, cls).setUpTestData()
+        cls.url = f'/project/{cls.project.pk}/'
+        active_status = ProjectUserStatusChoiceFactory(name='Active')
+        cls.external_user = UserFactory(username='external_user')
+        cls.vendor_user = UserFactory(username='vendor_user')
+        cls.external_user.groups.add(Group.objects.get_or_create(name='external')[0])
+        cls.vendor_user.groups.add(Group.objects.get_or_create(name='vendor')[0])
+        for user in (cls.external_user, cls.vendor_user):
+            ProjectUserFactory(user=user, project=cls.project, status=active_status)
+
+    def _get_cells(self, soup, username):
+        """Return the (username, name) cells of the user's projectuser_table row"""
+        table = soup.find('table', {'id': 'projectuser_table'})
+        row = next(tr for tr in table.find_all('tr') if username in tr.get_text())
+        cells = row.find_all('td')
+        return cells[0], cells[1]
+
+    def test_external_and_vendor_users_have_badge_after_username(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        for user in (self.external_user, self.vendor_user):
+            username_cell, name_cell = self._get_cells(soup, user.username)
+            self.assertIn('External', username_cell.get_text())
+            self.assertNotIn('External', name_cell.get_text())
+
+    def test_internal_user_has_no_badge(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        username_cell, name_cell = self._get_cells(soup, self.pi_user.username)
+        self.assertNotIn('External', username_cell.get_text())
+        self.assertNotIn('External', name_cell.get_text())

@@ -250,7 +250,7 @@ def update_csv(new_entries, dirpath, csv_name, date_update='date'):
     date_update : str
     """
     if new_entries:
-        locate_or_create_dirpath(dirpath)
+        os.makedirs(dirpath, exist_ok=True)
         fpath = f'{dirpath}{csv_name}'
         try:
             df = pd.read_csv(fpath, parse_dates=[date_update])
@@ -266,11 +266,6 @@ def update_csv(new_entries, dirpath, csv_name, date_update='date'):
                         .sort_values(date_update, ascending=False)
                         .reset_index(drop=True))
         updated_df.to_csv(fpath, index=False)
-
-
-def locate_or_create_dirpath(dpath):
-    if not os.path.exists(dpath):
-        os.makedirs(dpath)
 
 
 def read_json(filepath):

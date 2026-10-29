@@ -4,6 +4,7 @@ from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
+from ifxuser.models import Organization, OrgRelation
 
 from coldfront.core.allocation.models import (Allocation, AllocationAttribute,
                                               AllocationAttributeType,
@@ -21,8 +22,50 @@ from coldfront.core.publication.models import Publication, PublicationSource
 from coldfront.core.resource.models import (Resource, ResourceAttribute,
                                             ResourceAttributeType,
                                             ResourceType)
+from coldfront.plugins.ifx.models import ProjectOrganization
 
 base_dir = settings.BASE_DIR
+
+TIB_IN_BYTES = 1024**4
+
+
+def add_storage_allocation(project_obj, pi, resource_name, quota_tib, usage_tib, start_date, end_date):
+    """Create an active FASRC-style storage allocation on a resource created by
+    add_resource_defaults, with TiB quota/usage and byte quota/usage attributes.
+    """
+    allocation_obj, _ = Allocation.objects.get_or_create(
+        project=project_obj,
+        status=AllocationStatusChoice.objects.get(name='Active'),
+        start_date=start_date,
+        end_date=end_date,
+        is_changeable=True,
+        justification=f'Lab storage on {resource_name}.'
+    )
+    allocation_obj.resources.add(Resource.objects.get(name=resource_name))
+
+    for attr_type_name, value, usage in (
+        ('Storage Quota (TiB)', quota_tib, usage_tib),
+        ('Quota_In_Bytes', quota_tib * TIB_IN_BYTES, usage_tib * TIB_IN_BYTES),
+    ):
+        # AllocationAttribute.save() creates the usage record for has_usage types
+        allocation_attribute_obj, _ = AllocationAttribute.objects.get_or_create(
+            allocation_attribute_type=AllocationAttributeType.objects.get(name=attr_type_name),
+            allocation=allocation_obj,
+            value=value)
+        allocation_attribute_obj.allocationattributeusage.value = usage
+        allocation_attribute_obj.allocationattributeusage.save()
+
+    AllocationAttribute.objects.get_or_create(
+        allocation_attribute_type=AllocationAttributeType.objects.get(name='Subdirectory'),
+        allocation=allocation_obj,
+        value=f'C/LABS/{pi.username}_lab')
+
+    AllocationUser.objects.get_or_create(
+        allocation=allocation_obj,
+        user=pi,
+        defaults={'status': AllocationUserStatusChoice.objects.get(name='Active')}
+    )
+    return allocation_obj
 
 # first, last
 Users = ['Carl	Gray',  # PI#1
@@ -115,11 +158,11 @@ resources = [
     ('Cluster Partition', 'Physics', 'Physics-sfoster',
      "Stephanie Foster's nodes", True, False, True),
 
-    # Servers
-    ('Server', None, 'server-cgray',
-     "Server for Carl Gray's research lab", True, False, True),
-    ('Server', None, 'server-sfoster',
-     "Server for Stephanie Foster's research lab", True, False, True),
+    # # Servers
+    # ('Server', None, 'server-cgray',
+    #  "Server for Carl Gray's research lab", True, False, True),
+    # ('Server', None, 'server-sfoster',
+    #  "Server for Stephanie Foster's research lab", True, False, True),
 
     # Storage
     ('Storage', None, 'Budgetstorage',
@@ -182,10 +225,10 @@ class Command(BaseCommand):
                 is_allocatable=is_allocatable
             )
 
-        resource_obj = Resource.objects.get(name='server-cgray')
-        resource_obj.allowed_users.add(get_user_model().objects.get(username='cgray'))
-        resource_obj = Resource.objects.get(name='server-sfoster')
-        resource_obj.allowed_users.add(get_user_model().objects.get(username='sfoster'))
+        # resource_obj = Resource.objects.get(name='server-cgray')
+        # resource_obj.allowed_users.add(get_user_model().objects.get(username='cgray'))
+        # resource_obj = Resource.objects.get(name='server-sfoster')
+        # resource_obj.allowed_users.add(get_user_model().objects.get(username='sfoster'))
 
         pi1 = get_user_model().objects.get(username='cgray')
         pi1.userprofile.is_pi = True
@@ -267,13 +310,6 @@ class Command(BaseCommand):
             allocation=allocation_obj,
             value='cgray')
 
-        allocation_attribute_type_obj = AllocationAttributeType.objects.get(
-            name='slurm_user_specs')
-        AllocationAttribute.objects.get_or_create(
-            allocation_attribute_type=allocation_attribute_type_obj,
-            allocation=allocation_obj,
-            value='Fairshare=parent')
-
         AllocationUser.objects.create(
             allocation=allocation_obj,
             user=pi1,
@@ -301,32 +337,11 @@ class Command(BaseCommand):
             value='Fairshare=100:QOS+=supporters')
 
         allocation_attribute_type_obj = AllocationAttributeType.objects.get(
-            name='slurm_user_specs')
-        AllocationAttribute.objects.get_or_create(
-            allocation_attribute_type=allocation_attribute_type_obj,
-            allocation=allocation_obj,
-            value='Fairshare=parent')
-
-        allocation_attribute_type_obj = AllocationAttributeType.objects.get(
             name='slurm_account_name')
         AllocationAttribute.objects.get_or_create(
             allocation_attribute_type=allocation_attribute_type_obj,
             allocation=allocation_obj,
             value='cgray')
-
-        allocation_attribute_type_obj = AllocationAttributeType.objects.get(
-            name='SupportersQOS')
-        AllocationAttribute.objects.get_or_create(
-            allocation_attribute_type=allocation_attribute_type_obj,
-            allocation=allocation_obj,
-            value='Yes')
-
-        allocation_attribute_type_obj = AllocationAttributeType.objects.get(
-            name='SupportersQOSExpireDate')
-        AllocationAttribute.objects.get_or_create(
-            allocation_attribute_type=allocation_attribute_type_obj,
-            allocation=allocation_obj,
-            value='2022-01-01')
 
         AllocationUser.objects.create(
             allocation=allocation_obj,
@@ -385,6 +400,30 @@ class Command(BaseCommand):
             status=AllocationUserStatusChoice.objects.get(name='Active')
         )
 
+        # Add FASRC storage allocation
+        add_storage_allocation(project_obj, pi1, 'holylfs04/tier0', 20, 7, start_date, end_date)
+
+        # Link pi1's project to a lab Organization under a Department
+        # (school -> department -> lab) so the Department line shows on project detail.
+        # pi2's project is left without a Department to check the no-department case.
+        school_org, _ = Organization.objects.get_or_create(
+            name='Faculty of Arts and Sciences',
+            rank='school',
+            org_tree='Research Computing Storage Billing',
+        )
+        department_org, _ = Organization.objects.get_or_create(
+            name='Department of Chemistry and Chemical Biology',
+            rank='department',
+            org_tree='Research Computing Storage Billing',
+        )
+        lab_org, _ = Organization.objects.get_or_create(
+            name=project_obj.title,
+            rank='lab',
+            org_tree='Harvard',
+        )
+        OrgRelation.objects.get_or_create(parent=school_org, child=department_org)
+        OrgRelation.objects.get_or_create(parent=department_org, child=lab_org)
+        ProjectOrganization.objects.get_or_create(project=project_obj, organization=lab_org)
 
         pi2.userprofile.is_pi = True
         pi2.save()
@@ -516,7 +555,7 @@ class Command(BaseCommand):
             value='sfoster-openstack')
 
         allocation_attribute_type_obj = AllocationAttributeType.objects.get(
-            name='Cloud Storage Quota (TB)')
+            name='Storage Quota (TB)')
         allocation_attribute_obj, _ = AllocationAttribute.objects.get_or_create(
             allocation_attribute_type=allocation_attribute_type_obj,
             allocation=allocation_obj,
@@ -541,6 +580,9 @@ class Command(BaseCommand):
             user=pi2,
             status=AllocationUserStatusChoice.objects.get(name='Active')
         )
+
+        # Add FASRC storage allocation
+        add_storage_allocation(project_obj, pi2, 'holylfs05/tier0', 50, 31, start_date, end_date)
 
         # Set attributes for resources
         ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
@@ -598,23 +640,6 @@ class Command(BaseCommand):
         ResourceAttribute.objects.get_or_create(
             resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_specs'),
             resource=Resource.objects.get(name='Physics-sfoster'), value='QOS+=sfoster:Fairshare=100')
-        ResourceAttribute.objects.get_or_create(
-            resource_attribute_type=ResourceAttributeType.objects.get(name='slurm_specs'),
-            resource=Resource.objects.get(name='University Metered HPC'),
-            value='GrpTRESMins=cpu={cpumin}')
-
-        #slurm_specs_attrib_list for University Metered HPC
-        attriblist_list = [ '#Set cpumin from Core Usage attribute',
-            'cpumin := :Core Usage (Hours)',
-            '#Default to 1 SU',
-            'cpumin |= 1',
-            '#Convert to cpumin',
-            'cpumin *= 60'
-        ]
-        ResourceAttribute.objects.get_or_create(resource_attribute_type=ResourceAttributeType.objects.get(
-            name='slurm_specs_attriblist'), resource=Resource.objects.get(name='University Metered HPC'),
-            value="\n".join(attriblist_list))
-
         # call_command('loaddata', 'test_data.json')
 
         # print('All user passwords are set to "test1234", including user "admin".')

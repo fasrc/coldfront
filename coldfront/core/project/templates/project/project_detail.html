@@ -75,6 +75,9 @@ Project Detail
     </h3>
     <p class="card-text text-justify"><strong>Description: </strong>{{ project.description }}</p>
     <p class="card-text text-justify"><strong>Field of Science: </strong>{{ project.field_of_science }}</p>
+    {% if departments %}
+      <p class="card-text text-justify"><strong>Department{{ departments|pluralize }}: </strong>{% for department in departments %}{% if department.user_can_view %}<a href="{% url 'department-detail' department.pk %}">{{ department.name }}</a>{% else %}{{ department.name }}{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
     <p class="card-text text-justify"><strong>Project Status: </strong>{{ project.status }}
       {% if project.last_project_review and project.last_project_review.status.name == 'Pending' %}
         <span class="badge badge-pill badge-info">project review pending</span>
@@ -472,13 +475,30 @@ Project Detail
           it's coming from views.py under class ProjectDetailView; rendered project_user object -->
           <!-- project_user is giving out userid -->
           {% for user in project_users %}
-            <tr status="{{ user.status }}">
-              <td>{{ user.user.username }}</td>
-              <td>{{ user.user.first_name }} {{ user.user.last_name }}</td>
+            <tr status="{{ user.status }}" {% if user.status.name == 'Deactivated' %}class="text-muted"{% endif %}>
+              <td>
+                {{ user.user.username }}
+                {% if user.status.name == 'Deactivated' %}
+                  <span class="badge badge-secondary">Disabled</span>
+                {% endif %}
+                {% if user.is_external %}
+                  <span class="badge badge-warning">External</span>
+                {% endif %}
+              </td>
+              <td>
+                {{ user.user.first_name }} {{ user.user.last_name }}
+              </td>
               <td>{{ user.user.email }}</td>
               <td>{{ user.role.name }}</td>
               <td>
-                {% if is_allowed_to_update_permissions %}
+                {% if user.status.name == 'Deactivated' %}
+                  <input type="checkbox"
+                         id="email_notifications_for_user_id_{{ user.id }}"
+                         name="email_notifications_checkbox"
+                         value="{{ user.enable_notifications }}"
+                          {% if user.enable_notifications %} checked {% endif %}
+                         disabled>
+                {% elif is_allowed_to_update_permissions %}
                   <input type="checkbox"
                          id="email_notifications_for_user_id_{{ user.id }}"
                          name="email_notifications_checkbox"
@@ -500,7 +520,7 @@ Project Detail
                          disabled>
                 {% endif %}
               </td>
-              {% if is_allowed_to_update_permissions and user != project.pi %}
+              {% if is_allowed_to_update_permissions and user != project.pi and user.status.name != 'Deactivated' %}
                 <td>
                   <a href="{% url 'project-user-detail' project.pk user.id %}">
                     <i class="fas fa-user-edit" aria-hidden="true"></i>

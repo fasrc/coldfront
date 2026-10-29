@@ -91,16 +91,18 @@ class Command(BaseCommand):
 
         for name, desc, is_public, rtype, parent_name, default_value, reqspayment, is_allocatable in (
 
-            ('Tier 0',       'Bulk - Lustre', True, storage_tier, None, 1, True, True),
-            ('Tier 1', 'Enterprise - Isilon', False, storage_tier, None, 1, True, False),
-            ('Tier 2',        'CEPH storage', False, storage_tier, None, 1, True, False),
-            ('Lab Storage',    'Lab Storage', True, storage_tier, None, 1, True, True),
+            ('Tier 0',        'Bulk - Lustre', True, storage_tier, None, 1, True, True),
+            ('Tier 1',  'Enterprise - Isilon', False, storage_tier, None, 1, True, False),
+            ('Tier 2',         'CEPH storage', False, storage_tier, None, 1, True, False),
+            ('Lab Storage',     'Lab Storage', True, storage_tier, None, 1, True, True),
+            ('FASSE Storage', 'FASSE Storage', True, storage_tier, None, 1, False, True),
             ('Tape',  'Attic Storage - Tape', True, storage_tier, None, 20, True, True),
             ('holylfs04/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('holylfs05/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('holylfs06/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('nesetape/tier3', 'Cold storage for past projects', True, storage, 'Tape', 20, True, True),
-            ('lab-storage', 'NFS Lab Storage', True, storage, 'Lab Storage', 1, True, True),
+            ('lab_storage', 'NFS Lab Storage', True, storage, 'Lab Storage', 1, True, True),
+            ('fasse_storage', 'NFS FASSE Storage', True, storage, 'FASSE Storage', 1, False, True),
             ('holystore01/tier0', 'Luster storage under Tier0', True, storage, 'Tier 0', 1, True, True),
             ('b-nfs02-p/tier2', 'Tier2 CEPH storage', True, storage, 'Tier 2', 1, True, True),
             ('b-nfs03-p/tier2', 'Tier2 CEPH storage', True, storage, 'Tier 2', 1, True, True),

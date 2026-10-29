@@ -403,6 +403,7 @@ class ProjectUser(TimeStampedModel):
         role (ProjectUserRoleChoice): links the project user role choice to the user
         status (ProjectUserStatusChoice): links the project user status choice to the user
         enable_notifications (bool): indicates whether or not the user should enable notifications
+        primary_group (bool): indicates whether the project's AD group is this user's primary AD group
     """
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -410,6 +411,7 @@ class ProjectUser(TimeStampedModel):
     role = models.ForeignKey(ProjectUserRoleChoice, on_delete=models.CASCADE)
     status = models.ForeignKey(ProjectUserStatusChoice, on_delete=models.CASCADE, verbose_name='Status')
     enable_notifications = models.BooleanField(default=True)
+    primary_group = models.BooleanField(default=False)
     history = HistoricalRecords()
 
     def __str__(self):

@@ -7,8 +7,9 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.contrib.auth.models import Group
 from django.contrib.messages.views import SuccessMessageMixin
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.forms import formset_factory
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
@@ -18,6 +19,7 @@ from django.views.generic import CreateView, DetailView, ListView, UpdateView
 from django.views.generic.base import TemplateView
 from django.views.generic.edit import FormView
 from django_renderpdf.views import PDFView
+from ifxuser.models import OrgRelation, UserAffiliation
 
 from coldfront.core.allocation.utils import generate_guauge_data_from_usage
 from coldfront.core.allocation.models import (
@@ -30,6 +32,8 @@ from coldfront.core.allocation.models import (
 from coldfront.core.allocation.signals import (
     allocation_remove_user,
     allocation_activate_user,
+    allocation_user_add_on_slurm,
+    allocation_user_remove_on_slurm,
 )
 from coldfront.core.project.signals import (
     project_filter_users_to_remove,
@@ -39,6 +43,7 @@ from coldfront.core.project.signals import (
     project_create,
     project_post_create
 )
+from coldfront.core.department.models import Department
 from coldfront.core.grant.models import Grant
 from coldfront.core.project.forms import (
     ProjectReviewForm,
@@ -80,6 +85,7 @@ from coldfront.core.utils.mail import (
     send_email_template,
     email_template_context,
 )
+from coldfront.plugins.ifx.models import ProjectOrganization
 
 if 'django_q' in settings.INSTALLED_APPS:
     from django_q.tasks import Task
@@ -145,8 +151,10 @@ class ProjectStorageReportView(LoginRequiredMixin, UserPassesTestMixin, PDFView)
         context = super().get_context_data(**kwargs)
 
         project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
+        # Show Active users and Deactivated users (still an AD group member, but
+        # their AD account is disabled) - Removed users are no longer group members.
         project_users = project_obj.projectuser_set.filter(
-                    status__name='Active').order_by('user__username')
+                    status__name__in=['Active', 'Deactivated']).order_by('user__username')
 
         storage_allocations = project_obj.allocation_set.filter(
             status__name__in=['Active', 'Paid', 'Ready for Review','Payment Requested'],
@@ -259,11 +267,20 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         for a in invalid_attributes:
             attributes_with_usage.remove(a)
 
-        # Only show 'Active Users'
+        # Show Active users and Deactivated users (still an AD group member, but
+        # their AD account is disabled) - Removed users are no longer group members.
+        # Flag users in the external/vendor auth groups so the template can badge them.
         project_users = self.object.projectuser_set.filter(
-                    status__name='Active').order_by('user__username')
+                    status__name__in=['Active', 'Deactivated']
+        ).annotate(
+            is_external=Exists(Group.objects.filter(
+                user=OuterRef('user'), name__in=['external', 'vendor']
+            ))
+        ).select_related('user', 'role', 'status').order_by('user__username')
 
-        context['mailto'] = 'mailto:' + ','.join([u.user.email for u in project_users])
+        # Don't email accounts that are disabled in AD, even though they're shown above.
+        active_project_users = project_users.filter(status__name='Active')
+        context['mailto'] = 'mailto:' + ','.join([u.user.email for u in active_project_users])
 
         allocations = self.object.allocation_set.exclude(status__name='Merged').prefetch_related('resources').order_by('-pk')
         allocation_history_records = self.return_status_change_records(allocations)
@@ -328,6 +345,26 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         context['grants'] = Grant.objects.filter(
             project=self.object, status__name__in=['Active', 'Pending', 'Archived']
         )
+        # Departments are direct parents of the project's lab organization(s)
+        project_lab_ids = ProjectOrganization.objects.filter(
+            project=self.object
+        ).values_list('organization_id', flat=True)
+        departments = list(Department.objects.filter(
+            pk__in=OrgRelation.objects.filter(
+                child_id__in=project_lab_ids, child__rank='lab'
+            ).values_list('parent_id', flat=True)
+        ).order_by('name'))
+        # Mirror DepartmentDetailView.test_func: superusers and department members
+        # can view the department detail page.
+        if self.request.user.is_superuser:
+            viewable_department_ids = {department.pk for department in departments}
+        else:
+            viewable_department_ids = set(UserAffiliation.objects.filter(
+                user=self.request.user, organization_id__in=[department.pk for department in departments]
+            ).values_list('organization_id', flat=True))
+        for department in departments:
+            department.user_can_view = department.pk in viewable_department_ids
+        context['departments'] = departments
         context['storage_allocations'] = storage_allocations
         context['compute_allocations'] = compute_allocations
         context['allocation_total'] = allocation_total
@@ -712,12 +749,87 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
         return super().dispatch(request, *args, **kwargs)
 
+    def add_user_to_slurm_account(self, project_obj, allocation, user_obj):
+        """Add the user's Slurm association for a cluster allocation's project account.
+
+        Returns None when the association was added, or when the resource has no slurm_cluster
+        attribute and so has no association to add; otherwise returns an error message string.
+        The addition only counts as done once a Slurm receiver confirms it by returning True.
+        """
+        resource = allocation.get_parent_resource
+        cluster = resource.get_attribute('slurm_cluster')
+        if not cluster:
+            return None
+        log_extra = {
+            'category': 'integration:slurmrest',
+            'added_user': user_obj.username,
+            'account': project_obj.title,
+            'cluster': cluster,
+        }
+        responses = allocation_user_add_on_slurm.send_robust(
+            sender=self.__class__,
+            username=user_obj.username,
+            account=project_obj.title,
+            cluster=cluster,
+        )
+        errors = [resp for _, resp in responses if isinstance(resp, Exception)]
+        if errors:
+            error_text = '; '.join(str(e).strip().rstrip('.') for e in errors)
+            logger.error(
+                'Could not add user to slurm account.',
+                extra={**log_extra, 'status': 'failure', 'error': error_text},
+            )
+            return (
+                f'Could not add {user_obj.username} to Slurm account {project_obj.title} '
+                f'on {resource.name}: {error_text}. Their {resource.name} allocation membership '
+                'was not activated; contact support.'
+            )
+        if not any(resp is True for _, resp in responses):
+            logger.error(
+                'No slurm receiver added user to slurm account.',
+                extra={**log_extra, 'status': 'failure'},
+            )
+            return (
+                f'Could not add {user_obj.username} to Slurm account {project_obj.title} '
+                f'on {resource.name}: no Slurm integration is configured for cluster {cluster}. '
+                f'Their {resource.name} allocation membership was not activated; contact support.'
+            )
+        logger.info('Added user to slurm account.', extra={**log_extra, 'status': 'success'})
+        return None
+
+    def activate_allocation_user(self, allocation_user_obj):
+        """Send allocation_activate_user; return an error message string if a receiver raises."""
+        allocation = allocation_user_obj.allocation
+        username = allocation_user_obj.user.username
+        try:
+            allocation_activate_user.send(
+                sender=self.__class__,
+                allocation_user_pk=allocation_user_obj.pk,
+            )
+        except Exception as e:
+            logger.exception(
+                'User added to project but allocation activation failed.',
+                extra={
+                    'user': username,
+                    'project': allocation.project.title,
+                    'allocation_resource': allocation.get_parent_resource.name,
+                    'error': str(e),
+                }
+            )
+            return (
+                f"User {username} was added to the project but an error occurred when activating "
+                f"them in allocation for {allocation.get_parent_resource.name}: {e}"
+            )
+        return None
+
     def reactivate_user(self, project_obj, user_form_data, actor=None):
         """Full organizational logic for user reactivation
         - reactivate projectuser entry
         x reactivate any other projectusers in active projects that still have this user in AD
           (taken care of by ldap signal)
         - reactivate any related allocationuser entries in active storage allocations
+        Cluster allocationusers and Slurm associations are left alone on deactivation, so there
+        is nothing to restore; slurmrest_sync keeps their status in line with Slurm.
         """
         user_username = user_form_data.get('username')
         user_obj = get_user_model().objects.get(username=user_username)
@@ -742,6 +854,19 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             allocation__resources__resource_type__name='Storage'
         ).distinct().update(
             status=AllocationUserStatusChoice.objects.get(name='Active')
+        )
+        send_email_template(
+            subject=f'FASRC account for {user_obj.username} Reactivated',
+            template_name='email/projectuser_reactivated.txt',
+            template_context=email_template_context(extra_context={
+                'project_title': project_obj.title,
+                'pi_email': project_obj.pi.email,
+                'user_full_name': f"{user_obj.first_name} {user_obj.last_name}",
+                'user_username': user_obj.username,
+            }),
+            sender=EMAIL_SENDER,
+            receiver_list=[user_obj.email],
+            cc=[project_obj.pi.email],
         )
 
     def post(self, request, *args, **kwargs):
@@ -837,6 +962,9 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         user=user_obj
                     ).first()
                     old_role = existing_pu.role.name if existing_pu else 'None (added user)'
+                    was_active_before = (
+                        existing_pu is not None and existing_pu.status.name == 'Active'
+                    )
 
                     try:
                         project_make_projectuser.send(
@@ -895,6 +1023,20 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             'project': project_obj.title,
                         }
                     )
+                    if not was_active_before:
+                        send_email_template(
+                            subject=f'Added {user_obj.username} to {project_obj.title}',
+                            template_name='email/projectuser_added.txt',
+                            template_context=email_template_context(extra_context={
+                                'project_title': project_obj.title,
+                                'pi_email': project_obj.pi.email,
+                                'user_full_name': f"{user_obj.first_name} {user_obj.last_name}",
+                                'user_username': user_obj.username,
+                            }),
+                            sender=EMAIL_SENDER,
+                            receiver_list=[user_obj.email],
+                            cc=[project_obj.pi.email],
+                        )
                     if old_role != new_role:
                         notify_manager_role_transition(
                             project_user=project_user_obj,
@@ -907,6 +1049,12 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                     for allocation in Allocation.objects.filter(
                         pk__in=allocation_form_data
                     ):
+                        # add the Slurm association first; only activate once it exists
+                        if allocation.get_parent_resource.resource_type.name == 'Cluster':
+                            error = self.add_user_to_slurm_account(project_obj, allocation, user_obj)
+                            if error:
+                                errors.append(error)
+                                continue
                         if allocation.allocationuser_set.filter(user=user_obj).exists():
                             allocation_user_obj = allocation.allocationuser_set.get(
                                 user=user_obj
@@ -919,24 +1067,9 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                                 user=user_obj,
                                 status=allocuser_status_active,
                             )
-                        try:
-                            allocation_activate_user.send(
-                                sender=self.__class__,
-                                allocation_user_pk=allocation_user_obj.pk,
-                            )
-                        except Exception as e:
-                            logger.exception(
-                                'User added to project but allocation activation failed.',
-                                extra={
-                                    'user': user_obj.username,
-                                    'project': project_obj.title,
-                                    'allocation_resource': allocation.get_parent_resource.name,
-                                    'error': str(e),
-                                }
-                            )
-                            errors.append(
-                                f"User {user_obj.username} was added to the project but an error occurred when activating them in allocation for {allocation.get_parent_resource.name}: {e}"
-                            )
+                        error = self.activate_allocation_user(allocation_user_obj)
+                        if error:
+                            errors.append(error)
             if errors:
                 for error in errors:
                     messages.error(request, error)
@@ -961,6 +1094,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         return (
             self.request.user.is_superuser
             or project_obj.has_perm(self.request.user, ProjectPermission.GENERAL_MANAGER)
+            or project_obj.has_perm(self.request.user, ProjectPermission.ACCESS_MANAGER)
         )
 
     def test_func(self):
@@ -995,6 +1129,71 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
             if u.user not in (self.request.user, project_obj.pi)
         ]
         return users_to_remove
+
+    def remove_user_from_cluster_allocations(self, project_obj, user_obj, allocationuser_status_removed):
+        """Remove the user's Slurm associations for the project's cluster allocations,
+        then mark the matching AllocationUsers Removed.
+
+        Returns (removed, failed): lists of message strings describing each allocation's outcome.
+        An AllocationUser is only marked Removed once a Slurm receiver confirms the association
+        was removed; if a receiver raises or none acts, it is left Active so the removal can be
+        retried from the allocation's remove-users page.
+        """
+        removed, failed = [], []
+        cluster_allocations = project_obj.allocation_set.filter(
+            status__name__in=['Active', 'Renewal Requested'],
+            resources__resource_type__name='Cluster',
+            allocationuser__user=user_obj,
+            allocationuser__status__name='Active',
+        ).distinct()
+        for allocation in cluster_allocations:
+            resource = allocation.get_parent_resource
+            cluster = resource.get_attribute('slurm_cluster')
+            log_extra = {
+                'category': 'integration:slurmrest',
+                'removed_user': user_obj.username,
+                'account': project_obj.title,
+                'cluster': cluster,
+            }
+            # a cluster resource with no slurm_cluster attribute has no associations to remove
+            if cluster:
+                responses = allocation_user_remove_on_slurm.send_robust(
+                    sender=self.__class__,
+                    account=project_obj.title,
+                    username=user_obj.username,
+                    cluster=cluster,
+                )
+                errors = [resp for _, resp in responses if isinstance(resp, Exception)]
+                if errors:
+                    error_text = '; '.join(str(e).strip().rstrip('.') for e in errors)
+                    failed.append(
+                        f'Could not remove {user_obj.username} from Slurm account '
+                        f'{project_obj.title} on {resource.name}: {error_text}. Their {resource.name} '
+                        'allocation membership was left active.'
+                    )
+                    logger.error(
+                        'Could not remove user from slurm account.',
+                        extra={**log_extra, 'status': 'failure', 'error': error_text},
+                    )
+                    continue
+                if not any(resp is True for _, resp in responses):
+                    failed.append(
+                        f'Could not remove {user_obj.username} from Slurm account {project_obj.title} '
+                        f'on {resource.name}: no Slurm integration is configured for cluster {cluster}. '
+                        'Their allocation membership was left active; contact support.'
+                    )
+                    logger.error(
+                        'No slurm receiver removed user from slurm account.',
+                        extra={**log_extra, 'status': 'failure'},
+                    )
+                    continue
+                logger.info('Removed user from slurm account.', extra={**log_extra, 'status': 'success'})
+            for alloc_user in allocation.allocationuser_set.filter(user=user_obj, status__name='Active'):
+                alloc_user.status = allocationuser_status_removed
+                alloc_user.save()
+                allocation_remove_user.send(sender=self.__class__, allocation_user_pk=alloc_user.pk)
+            removed.append(f'Removed {user_obj.username} from {resource.name} allocation.')
+        return removed, failed
 
     def get(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
@@ -1040,6 +1239,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 
         remove_users_count = 0
         failed_user_removals = []
+        cluster_removals = []
 
         if not formset.is_valid():
             for error in formset.errors:
@@ -1135,13 +1335,15 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     project_user_obj.status = projectuser_status_deactivated
                     project_user_obj.save()
                     action = 'deactivated'
-                    # change status to "removed" for all other projectusers with this user
+                    # deactivating the primary group disables the user's whole AD
+                    # account, but doesn't remove them from their other AD groups -
+                    # so other projects' memberships become Deactivated, not Removed
                     secondary_projectusers = ProjectUser.objects.filter(
                         user=user_obj,
                         status__name='Active',
                         project__status__name__in=['Active', 'New'],
                     ).exclude(project=project_obj)
-                    secondary_projectusers.update(status=projectuser_status_removed)
+                    secondary_projectusers.update(status=projectuser_status_deactivated)
                     # get allocations to remove user from in projects where they have been removed
                     allocations_to_remove_user_from = Allocation.objects.filter(
                         allocationuser__user=user_obj,
@@ -1203,6 +1405,15 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         allocation_remove_user.send(
                             sender=self.__class__, allocation_user_pk=alloc_user.pk
                         )
+                # a deactivated user keeps their cluster allocations and Slurm associations: their
+                # disabled AD account blocks cluster login, and slurmrest_sync keeps the
+                # allocationuser statuses in line with Slurm
+                if not user_form_data['primary_group']:
+                    cluster_removed, cluster_failed = self.remove_user_from_cluster_allocations(
+                        project_obj, user_obj, allocationuser_status_removed
+                    )
+                    cluster_removals += cluster_removed
+                    failed_user_removals += cluster_failed
                 remove_users_count += 1
         user_pl = 'user' if remove_users_count == 1 else 'users'
         for fail in failed_user_removals:
@@ -1210,6 +1421,8 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         messages.success(
             request, f'Removed {remove_users_count} {user_pl} from project.'
         )
+        for removal in cluster_removals:
+            messages.success(request, removal)
 
         return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 
@@ -1224,6 +1437,10 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         if project_obj.has_perm(self.request.user, ProjectPermission.GENERAL_MANAGER):
             if project_user.user == project_obj.pi:
                 err = 'You cannot edit the PI of the project.'
+                messages.error(self.request, err)
+                return False
+            if project_user.status.name == 'Deactivated':
+                err = 'You cannot edit a deactivated project user.'
                 messages.error(self.request, err)
                 return False
             return True
@@ -1270,6 +1487,12 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                 messages.error(
                     request, 'PI role and email notification option cannot be changed.'
                 )
+                return HttpResponseRedirect(
+                    reverse('project-user-detail', kwargs={'pk': project_user_pk})
+                )
+
+            if project_user_obj.status.name == 'Deactivated':
+                messages.error(request, 'You cannot edit a deactivated project user.')
                 return HttpResponseRedirect(
                     reverse('project-user-detail', kwargs={'pk': project_user_pk})
                 )
@@ -1356,6 +1579,9 @@ def project_update_email_notification(request):
         allowed = True
     if project_user_obj.user == request.user:
         allowed = True
+
+    if project_user_obj.status.name == 'Deactivated':
+        allowed = False
 
     if allowed is False:
         return HttpResponse('not allowed', status=403)

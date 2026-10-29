@@ -63,7 +63,7 @@ def send_request_reminder_emails():
     Send reminders to admins about active allocation requests and
     allocation update requests that have existed for more than a week
     """
-    req_alert_date = timezone.now().date() - datetime.timedelta(days=7)
+    req_alert_date = timezone.now() - datetime.timedelta(days=7)
     # Allocation Change Requests are separate items.
     # if any that are more than a week old and "pending", send an email digest to admins
     pending_changerequests = {

@@ -9,6 +9,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.forms import formset_factory
 from django.http import HttpResponseRedirect, HttpResponse
 from django.shortcuts import get_object_or_404, render
+from django.template.defaultfilters import pluralize
 from django.urls import reverse
 from django.views.generic import TemplateView, View
 from django.views.generic.edit import FormView
@@ -236,7 +237,7 @@ class PublicationAddView(LoginRequiredMixin, UserPassesTestMixin, View):
             msg = ''
             if publications_added:
                 msg += 'Added {} publication{} to project.'.format(
-                    publications_added, 's' if publications_added > 1 else '')
+                    publications_added, pluralize(publications_added))
             if publications_skipped:
                 msg += 'Publication already exists on this project. Skipped adding: {}'.format(
                     ', '.join(publications_skipped))

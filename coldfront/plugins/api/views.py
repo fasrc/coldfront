@@ -440,9 +440,7 @@ class ProjectFilter(filters.FilterSet):
 
     class Meta:
         model = Project
-        fields = [
-            'created',
-        ]
+        fields = ['created']
 
 class ProjectViewSet(viewsets.ReadOnlyModelViewSet):
     '''

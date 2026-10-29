@@ -555,9 +555,25 @@ class IsilonDirectoryQuota:
         return path
 
 
-def is_isilon_path_ignored(path):
-    """Return True if `path` is in the ISILON_PATH_IGNORE setting."""
-    return path in import_from_settings('ISILON_PATH_IGNORE', [])
+def is_isilon_path_ignored(*paths):
+    """Return True if any of `paths` is, or sits beneath, a directory in the
+    ISILON_PATH_IGNORE setting.
+
+    Matching is by whole path component, so an entry of 'rc_labs/archive' ignores
+    'rc_labs/archive' and 'rc_labs/archive/example_lab' but not 'rc_labs/archive2'.
+    Leading/trailing slashes are ignored on both sides, so entries can be written as
+    full isilon paths ('/ifs/rc_labs/archive') or mount-relative ones ('rc_labs/archive')
+    as long as the caller passes the matching form of the path.
+    """
+    ignored = [entry.strip().strip('/') for entry in import_from_settings('ISILON_PATH_IGNORE', [])]
+    ignored = [entry for entry in ignored if entry]
+    for path in paths:
+        if not path:
+            continue
+        path = path.strip('/')
+        if any(path == entry or path.startswith(entry + '/') for entry in ignored):
+            return True
+    return False
 
 
 def get_directory_group(isilon_conn, directory_quota):
@@ -703,16 +719,19 @@ def sync_allocation_for_quota(project, resource, directory_quota, report):
     return new_allocation
 
 
-def deactivate_missing_allocations(resource, found_paths, report):
+def deactivate_missing_allocations(resource, found_paths, report, mount=DEFAULT_MOUNT_PATH):
     """Deactivate Active allocations on `resource` whose Subdirectory path is no
     longer among the volume's quotas. Allocations with no recorded path are left
-    alone, since absence from the volume isn't meaningful for them.
+    alone, since absence from the volume isn't meaningful for them, as are
+    allocations under an ISILON_PATH_IGNORE directory, which the sync doesn't manage.
     """
     inactive_status = AllocationStatusChoice.objects.get(name='Inactive')
     active_allocations = Allocation.objects.filter(resources=resource, status__name='Active')
     for allocation in active_allocations:
         path = allocation.path
         if not path or path in found_paths:
+            continue
+        if is_isilon_path_ignored(path, f'{mount}/{path}'):
             continue
         allocation.status = inactive_status
         allocation.save()
@@ -736,6 +755,7 @@ def sync_isilon_resource_allocations(resource):
         'missing_projects': [],
         'unresolved_group': [],
         'no_limit': [],
+        'ignored': [],
     }
     isilon_url = get_isilon_url(resource)
     isilon_conn = IsilonConnection(isilon_url)
@@ -752,11 +772,14 @@ def sync_isilon_resource_allocations(resource):
         directory_quota = IsilonDirectoryQuota(quota, mount_prefix=mount)
         found_paths.add(directory_quota.cf_path)
 
+        if is_isilon_path_ignored(directory_quota.path, directory_quota.cf_path):
+            report['ignored'].append(directory_quota.path)
+            continue
+
         if not directory_quota.has_hard_limit:
-            if not is_isilon_path_ignored(directory_quota.path):
-                logger.warning(
-                    'No hard quota limit set for %s on %s', directory_quota.path, resource.name)
-                report['no_limit'].append(directory_quota.path)
+            logger.warning(
+                'No hard quota limit set for %s on %s', directory_quota.path, resource.name)
+            report['no_limit'].append(directory_quota.path)
             continue
 
         group_name = get_directory_group(isilon_conn, directory_quota)
@@ -774,6 +797,6 @@ def sync_isilon_resource_allocations(resource):
 
         sync_allocation_for_quota(project, resource, directory_quota, report)
 
-    deactivate_missing_allocations(resource, found_paths, report)
+    deactivate_missing_allocations(resource, found_paths, report, mount=mount)
 
     return report

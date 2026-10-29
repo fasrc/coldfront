@@ -128,6 +128,8 @@ DB_HOST=coldfront-db
 # EMAIL_ADMIN_LIST=admin1@domain.university.edu,admin2@domain.university.edu
 # List of emails to send when in debug mode
 # EMAIL_DEVELOPMENT_EMAIL_LIST=dev1@domain.university.edu,dev@domain.university.edu
+# List of emails notified of each attempt to link a new Project to an Organization (ifx plugin)
+# IFX_MANAGER=manager1@domain.university.edu,manager2@domain.university.edu
 
 ### The following items are part of the standard email templates.
 # URL of article regarding opt out

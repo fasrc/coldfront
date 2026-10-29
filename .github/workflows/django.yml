@@ -27,7 +27,7 @@ jobs:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
           SSH_KEY: ${{ secrets.ACTION_SSH }}
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v7
       with:
         python-version: ${{ matrix.python-version }}
     # - name: Format with black
@@ -89,7 +89,7 @@ jobs:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
           SSH_KEY: ${{ secrets.ACTION_SSH }}
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v7
       with:
         python-version: ${{ matrix.python-version }}
     # - name: Format with black

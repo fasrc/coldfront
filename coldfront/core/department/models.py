@@ -38,9 +38,9 @@ class Department(Organization):
         """Get all projects related to the Department, either directly or indirectly.
         """
         child_lab_ids = list(
-            OrgRelation.objects.filter(parent=self, child__rank="lab").values_list(
-                'child_id', flat=True
-            )
+            OrgRelation.objects.filter(
+                parent=self, child__rank__in=["department", "lab"]
+            ).values_list('child_id', flat=True)
         )
         project_org_links = ProjectOrganization.objects.filter(
             organization_id__in=child_lab_ids
