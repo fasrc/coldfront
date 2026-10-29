@@ -12,7 +12,7 @@ python ./manage.py add_scheduled_tasks
 python ./manage.py collectstatic --noinput
 
 if [ "$BUILD_ENV" == 'dev' ]; then
-    python ./manage.py runserver 0.0.0.0:80 --insecure
+    python ./manage.py runserver 0.0.0.0:80
 else
     gunicorn coldfront.config.wsgi:application --bind 0.0.0.0:80 --error-logfile /var/log/gunicorn_errors.log --reload --timeout 144000 --workers=3
 fi
