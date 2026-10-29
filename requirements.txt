@@ -69,7 +69,7 @@ xhtml2pdf==0.2.15
 XlsxWriter
 git+https://github.com/coldfront/slurm-python-sdk.git
 git+https://github.com/fasrc/sftocf.git
-git+https://github.com/theam/coldfront_notifications.git
+git+https://github.com/theam/coldfront_notifications.git@feature/direct-user-selection-and-refactor
 vastpy
 django-prometheus
 gunicorn
