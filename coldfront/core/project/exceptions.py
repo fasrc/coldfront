@@ -6,7 +6,11 @@ so core code can handle the failure without importing from any plugin.
 """
 
 
-class ProjectUserAdditionError(Exception):
+class ProjectUserStatusChangeError(Exception):
+    """Raised when an integration rejects a ProjectUser status change, blocking the save."""
+
+
+class ProjectUserAdditionError(ProjectUserStatusChangeError):
     """Raised when a user cannot be added to a project by a signal receiver."""
 
 

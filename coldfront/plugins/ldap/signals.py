@@ -5,11 +5,8 @@ from coldfront.core.utils.common import import_from_settings
 from coldfront.core.field_of_science.models import FieldOfScience
 from coldfront.core.project.signals import (
     project_filter_users_to_remove,
-    project_preremove_projectuser,
-    project_make_projectuser,
     project_create,
     project_post_create,
-    project_reactivate_projectuser,
     project_user_manager_ldap_groups_grant,
     project_user_manager_ldap_groups_revoke,
 )
@@ -19,7 +16,8 @@ from coldfront.core.project.models import (
     ProjectUserStatusChoice,
     ProjectUser,
 )
-from coldfront.plugins.ldap.utils import LDAPConn, LDAPUserDeactivatedError
+from coldfront.plugins.ldap.projectuser_sync import UNREACHABLE_ERRORS
+from coldfront.plugins.ldap.utils import LDAPConn
 
 if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
     from sftocf.signals import (
@@ -50,36 +48,6 @@ def identify_ad_group(sender, **kwargs):
     except Exception as e:
         raise ValueError(f"issue retrieving pi's ifxuser entry: {e}") from e
     return ifx_pi
-
-@receiver(project_reactivate_projectuser)
-def reactivate_user(sender, **kwargs):
-    """Reactivate a user in LDAP"""
-    user = kwargs['user']
-    actor_username = kwargs.get('actor_username')
-    actor_role = kwargs.get('actor_role')
-    ldap_conn = LDAPConn()
-    ldap_conn.reactivate_user(user.username, actor_username=actor_username, actor_role=actor_role)
-    ldap_user = ldap_conn.return_user_by_name(user.username)
-    user_group_names = [group.split(',')[0].replace('CN=', '') for group in ldap_user['memberOf']]
-    projectuser_entries = ProjectUser.objects.filter(
-        user=user,
-        project__title__in=user_group_names,
-        project__status__name='Active',
-        status__name__in=['Removed', 'Deactivated'],
-    )
-    projects = ', '.join([pu.project.title for pu in projectuser_entries])
-    projectuser_entries.update(
-        status=ProjectUserStatusChoice.objects.get(name='Active')
-    )
-    logger.info(
-        'Reactivated AD user and related ProjectUsers.',
-        extra={
-            'category': 'ldap:User',
-            'status': 'success',
-            'user': user.username,
-            'projects': projects,
-        }
-    )
 
 @receiver(project_post_create)
 def update_new_project(sender, **kwargs):
@@ -113,12 +81,14 @@ def update_new_project(sender, **kwargs):
             logger.warning('User %s not found when trying to add to Project %s',
                            member['sAMAccountName'][0], project.title)
             continue
-        ProjectUser.objects.create(
+        projectuser = ProjectUser(
             project=project,
             user=user_obj,
             role=ProjectUserRoleChoice.objects.get(name=role_name),
             status=ProjectUserStatusChoice.objects.get(name='Active'),
         )
+        projectuser._skip_ad_sync = True  # membership comes from AD
+        projectuser.save()
         logger.info('added User %s to Project %s as %s',
                     user_obj.username, project.title, role_name,
                     extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
@@ -128,40 +98,24 @@ def update_new_project(sender, **kwargs):
 def filter_project_users_to_remove(sender, **kwargs):
     users_to_remove = kwargs['users_to_remove']
     usernames = [u['username'] for u in users_to_remove]
-    ldap_conn = LDAPConn()
-    users_main_group = ldap_conn.users_in_primary_group(usernames, kwargs['project'].title)
+    try:
+        ldap_conn = LDAPConn()
+        users_main_group = ldap_conn.users_in_primary_group(usernames, kwargs['project'].title)
+    except UNREACHABLE_ERRORS as e:
+        # fall back to the primary_group flags the daily sync stores, so removal still works
+        logger.warning(
+            'AD unreachable; using stored primary_group flags for project %s: %s',
+            kwargs['project'].title, e,
+        )
+        users_main_group = set(
+            kwargs['project'].projectuser_set.filter(
+                user__username__in=usernames, primary_group=True
+            ).values_list('user__username', flat=True)
+        )
     for user in users_to_remove:
         user['primary_group'] = user['username'] in users_main_group
     users_to_remove = sorted(users_to_remove, key=lambda x: x['primary_group'], reverse=True)
     return users_to_remove
-
-@receiver(project_make_projectuser)
-def add_user_to_group(sender, **kwargs):
-    ldap_conn = LDAPConn()
-    try:
-        ldap_conn.add_user_to_group(kwargs['user_name'], kwargs['group_name'])
-    except LDAPUserDeactivatedError:
-        logger.warning(
-            'Cannot add deactivated user to AD group.',
-            extra={
-                'category': 'ldap:GroupMembership',
-                'status': 'error',
-                'user': kwargs['user_name'],
-                'group': kwargs['group_name'],
-            }
-        )
-        raise
-
-@receiver(project_preremove_projectuser)
-def remove_member_from_group(sender, **kwargs):
-    ldap_conn = LDAPConn()
-    ldap_conn.remove_member_from_group(
-        kwargs['user_name'],
-        kwargs['group_name'],
-        actor_username=kwargs.get('actor_username'),
-        actor_role=kwargs.get('actor_role'),
-    )
-
 
 def _fsadm_group_name(project_title):
     return f'{project_title}_fs*'
