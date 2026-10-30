@@ -72,6 +72,7 @@ from coldfront.core.project.utils import (
     deactivate_secondary_projectusers,
     generate_usage_history_graph,
     reactivate_storage_allocationusers,
+    secondary_projectusers,
 )
 from coldfront.core.project.exceptions import ProjectUserDeactivatedError, ProjectUserStatusChangeError
 from coldfront.core.publication.models import Publication
@@ -130,6 +131,10 @@ def produce_filter_parameter(key, value):
     return f'{key}={value}&'
 
 logger = logging.getLogger(__name__)
+
+AD_QUEUED_MESSAGE = (
+    'AD could not be reached. The change is queued and will finish automatically once AD is back.'
+)
 
 
 class ProjectStorageReportView(LoginRequiredMixin, UserPassesTestMixin, PDFView):
@@ -825,13 +830,15 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
 
     def reactivate_user(self, project_obj, user_form_data, actor=None):
         """Full organizational logic for user reactivation
-        - reactivate projectuser entry; its pre_save reactivates the AD account, and once that
+        - reactivate projectuser entry. pre_save reactivates AD account; once that
           succeeds the user's projectusers in their other AD groups are reactivated too
         - reactivate any related allocationuser entries in active storage allocations
+          (done by the queued task instead if AD is unreachable)
         Cluster allocationusers and Slurm associations are left alone on deactivation, so there
         is nothing to restore; slurmrest_sync keeps their status in line with Slurm.
 
-        Raises ProjectUserStatusChangeError if AD rejects the reactivation.
+        Returns True if AD change was queued. Raises ProjectUserStatusChangeError if AD
+        rejects it.
         """
         user_username = user_form_data.get('username')
         user_obj = get_user_model().objects.get(username=user_username)
@@ -839,13 +846,16 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             user=user_obj,
             status__name='Deactivated'
         ).first()
+        queued = False
         if projectuser:
             projectuser.status = ProjectUserStatusChoice.objects.get(name='Active')
             projectuser._ad_intent = 'reactivate'
             if actor:
                 projectuser._ad_actor = (actor.username, _actor_role_label(actor, project_obj))
             projectuser.save()
-        reactivate_storage_allocationusers(user_obj)
+            queued = bool(getattr(projectuser, '_ad_queued', None))
+        if not queued:
+            reactivate_storage_allocationusers(user_obj)
         send_email_template(
             subject=f'FASRC account for {user_obj.username} Reactivated',
             template_name='email/projectuser_reactivated.txt',
@@ -859,6 +869,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             receiver_list=[user_obj.email],
             cc=[project_obj.pi.email],
         )
+        return queued
 
     def post(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
@@ -887,13 +898,16 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                     user_form_data = form.cleaned_data
                     if user_form_data['selected']:
                         try:
-                            self.reactivate_user(project_obj, user_form_data, actor=request.user)
+                            queued = self.reactivate_user(project_obj, user_form_data, actor=request.user)
                         except ProjectUserStatusChangeError as e:
                             messages.error(request, f'Could not reactivate {user_form_data["username"]}: {e}')
                             continue
-                        messages.success(
-                            request, f'Reactivated {user_form_data["username"]}.'
-                        )
+                        if queued:
+                            messages.warning(request, f'{AD_QUEUED_MESSAGE} (reactivate {user_form_data["username"]})')
+                        else:
+                            messages.success(
+                                request, f'Reactivated {user_form_data["username"]}.'
+                            )
                         reactivated_users_count += 1
                 if reactivated_users_count:
                     messages.success(
@@ -938,6 +952,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             if '__select_all__' in allocation_form_data:
                 allocation_form_data.remove('__select_all__')
             errors = []
+            queued = []
             for form in formset:
                 user_form_data = form.cleaned_data
                 if user_form_data['selected']:
@@ -989,6 +1004,8 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             "Please contact a Coldfront admin for further assistance."
                         )
                         continue
+                    if getattr(project_user_obj, '_ad_queued', None):
+                        queued.append(user_obj.username)
                     new_role = project_user_obj.role.name
                     logger.info(
                         "User added to project.",
@@ -1052,6 +1069,8 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                     messages.error(request, error)
 
             messages.success(request, f'Added {added_users_count} users to project.')
+            if queued:
+                messages.warning(request, f'{AD_QUEUED_MESSAGE} (add {", ".join(queued)})')
         else:
             if not formset.is_valid():
                 for error in formset.errors:
@@ -1217,6 +1236,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         remove_users_count = 0
         failed_user_removals = []
         cluster_removals = []
+        queued_removals = []
 
         if not formset.is_valid():
             for error in formset.errors:
@@ -1265,6 +1285,11 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 
                 project_user_obj = project_obj.projectuser_set.get(user=user_obj)
                 primary_group = user_form_data['primary_group']
+                # user's secondary projects; read before save, since queued deactivation defers the cascade
+                secondary_projects = (
+                    [pu.project for pu in secondary_projectusers(user_obj, project_obj).select_related('project')]
+                    if primary_group else []
+                )
                 # pre_save removes user from AD group (deactivates AD account if primary group)
                 project_user_obj.status = (
                     projectuser_status_deactivated if primary_group else projectuser_status_removed
@@ -1309,20 +1334,22 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     }
                 )
 
+                ad_queued = bool(getattr(project_user_obj, '_ad_queued', None))
+                if ad_queued:
+                    queued_removals.append(user_obj.username)
+
                 if primary_group:
                     action = 'deactivated'
-                    secondary_projects = ','.join(
+                    # the queued task does this cascade once AD succeeds
+                    if not ad_queued:
                         deactivate_secondary_projectusers(user_obj, project_obj)
-                    )
-                    # get allocations to remove user from in projects where they have been removed
                     allocations_to_remove_user_from = Allocation.objects.filter(
                         allocationuser__user=user_obj,
-                        project__projectuser__status__name__in=['Removed', 'Deactivated'],
-                        project__projectuser__user=user_obj,
+                        project__in=[project_obj, *secondary_projects],
                         status__name__in=['Active', 'Renewal Requested'],
                         resources__resource_type__name='Storage'
                     ).distinct()
-                    log_extra = {'secondary_projects': secondary_projects}
+                    log_extra = {'secondary_projects': ','.join(p.title for p in secondary_projects)}
 
                     send_email_template(
                         subject=f'FASRC account for {user_obj.username} Deactivated',
@@ -1373,7 +1400,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 # a deactivated user keeps their cluster allocations and Slurm associations: their
                 # disabled AD account blocks cluster login, and slurmrest_sync keeps the
                 # allocationuser statuses in line with Slurm
-                if not user_form_data['primary_group']:
+                if not primary_group:
                     cluster_removed, cluster_failed = self.remove_user_from_cluster_allocations(
                         project_obj, user_obj, allocationuser_status_removed
                     )
@@ -1388,6 +1415,8 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         )
         for removal in cluster_removals:
             messages.success(request, removal)
+        if queued_removals:
+            messages.warning(request, f'{AD_QUEUED_MESSAGE} (remove {", ".join(queued_removals)})')
 
         return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 

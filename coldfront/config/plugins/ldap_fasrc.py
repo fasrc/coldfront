@@ -25,11 +25,14 @@ AUTH_LDAP_GROUP_SEARCH_BASE = ENV.str('AUTH_LDAP_GROUP_SEARCH_BASE')
 CF_LDAP_PROJECT_GROUP_SAM = ENV.str('CF_LDAP_PROJECT_GROUP_SAM', default=None)
 CF_LDAP_FASSE_GROUP = ENV.str('CF_LDAP_FASSE_GROUP', default=None)
 
-# ProjectUser status changes are written to AD from pre_save.
+# ProjectUser status changes are written to AD from pre_save; when AD is unreachable the change
+# is queued and retried every LDAP_PROJECTUSER_RETRY_MINUTES, up to LDAP_PROJECTUSER_MAX_ATTEMPTS times.
 # Off during test runs so ProjectUser saves in tests never write to a real AD; tests of the
 # sync turn it on with override_settings and mock LDAPConn.
 TESTING = 'test' in sys.argv or 'test_coverage' in sys.argv
 LDAP_PROJECTUSER_AD_SYNC = not TESTING and ENV.bool('LDAP_PROJECTUSER_AD_SYNC', default=True)
+LDAP_PROJECTUSER_RETRY_MINUTES = ENV.int('LDAP_PROJECTUSER_RETRY_MINUTES', default=10)
+LDAP_PROJECTUSER_MAX_ATTEMPTS = ENV.int('LDAP_PROJECTUSER_MAX_ATTEMPTS', default=36)
 
 
 LOGGING['handlers']['ldap_fasrc'] = {
