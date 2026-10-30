@@ -98,6 +98,8 @@ def apply_projectuser_ad_change(
     final_status = REMOVAL_STATUS.get(applied, target_status)
     projectuser.status = ProjectUserStatusChoice.objects.get(name=final_status)
     projectuser._skip_ad_sync = True
+    # the stored status is Pending; report the change from the original status to Nanites
+    projectuser._affiliation_previous_status = previous_status
     projectuser.save()
     complete_queued_change(projectuser, applied, complete_removal)
     logger.info(
@@ -114,6 +116,7 @@ def revert_projectuser(projectuser, previous_status, intent, error):
     reverted_status = previous_status or 'Removed'
     projectuser.status = ProjectUserStatusChoice.objects.get(name=reverted_status)
     projectuser._skip_ad_sync = True
+    projectuser._skip_affiliation_sync = True
     projectuser.save()
     logger.error(
         'Queued ProjectUser AD change failed; reverted.',
