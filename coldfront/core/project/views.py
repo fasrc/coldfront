@@ -71,7 +71,11 @@ from coldfront.core.project.models import (
     ProjectReviewStatusChoice,
 )
 from coldfront.core.project.manager_role_notifications import notify_manager_role_transition
-from coldfront.core.project.utils import generate_usage_history_graph
+from coldfront.core.project.utils import (
+    deactivate_secondary_projectusers,
+    generate_usage_history_graph,
+    reactivate_storage_allocationusers,
+)
 from coldfront.core.project.exceptions import ProjectUserDeactivatedError
 from coldfront.core.publication.models import Publication
 from coldfront.core.research_output.models import ResearchOutput
@@ -845,16 +849,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             actor_username=actor_username,
             actor_role=actor_role,
         )
-        AllocationUser.objects.filter(
-            user=user_obj,
-            allocation__project__status__name__in=['Active', 'Renewal Requested'],
-            allocation__status__name__in=['Active','Pending Deactivation'],
-            allocation__project__projectuser__user=user_obj,
-            allocation__project__projectuser__status__name='Active',
-            allocation__resources__resource_type__name='Storage'
-        ).distinct().update(
-            status=AllocationUserStatusChoice.objects.get(name='Active')
-        )
+        reactivate_storage_allocationusers(user_obj)
         send_email_template(
             subject=f'FASRC account for {user_obj.username} Reactivated',
             template_name='email/projectuser_reactivated.txt',
@@ -1335,15 +1330,9 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     project_user_obj.status = projectuser_status_deactivated
                     project_user_obj.save()
                     action = 'deactivated'
-                    # deactivating the primary group disables the user's whole AD
-                    # account, but doesn't remove them from their other AD groups -
-                    # so other projects' memberships become Deactivated, not Removed
-                    secondary_projectusers = ProjectUser.objects.filter(
-                        user=user_obj,
-                        status__name='Active',
-                        project__status__name__in=['Active', 'New'],
-                    ).exclude(project=project_obj)
-                    secondary_projectusers.update(status=projectuser_status_deactivated)
+                    secondary_projects = ','.join(
+                        deactivate_secondary_projectusers(user_obj, project_obj)
+                    )
                     # get allocations to remove user from in projects where they have been removed
                     allocations_to_remove_user_from = Allocation.objects.filter(
                         allocationuser__user=user_obj,
@@ -1352,9 +1341,6 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         status__name__in=['Active', 'Renewal Requested'],
                         resources__resource_type__name='Storage'
                     ).distinct()
-                    secondary_projects = ','.join(
-                        [sp.project.title for sp in secondary_projectusers]
-                    )
                     log_extra = {'secondary_projects': secondary_projects}
 
                     send_email_template(
