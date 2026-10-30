@@ -16,6 +16,7 @@ from coldfront.core.project.models import (
     ProjectUserStatusChoice,
     ProjectUser,
 )
+from coldfront.plugins.ldap.projectuser_sync import UNREACHABLE_ERRORS
 from coldfront.plugins.ldap.utils import LDAPConn
 
 if 'sftocf' in import_from_settings('INSTALLED_APPS', []):
@@ -97,8 +98,20 @@ def update_new_project(sender, **kwargs):
 def filter_project_users_to_remove(sender, **kwargs):
     users_to_remove = kwargs['users_to_remove']
     usernames = [u['username'] for u in users_to_remove]
-    ldap_conn = LDAPConn()
-    users_main_group = ldap_conn.users_in_primary_group(usernames, kwargs['project'].title)
+    try:
+        ldap_conn = LDAPConn()
+        users_main_group = ldap_conn.users_in_primary_group(usernames, kwargs['project'].title)
+    except UNREACHABLE_ERRORS as e:
+        # fall back to the primary_group flags the daily sync stores, so removal still works
+        logger.warning(
+            'AD unreachable; using stored primary_group flags for project %s: %s',
+            kwargs['project'].title, e,
+        )
+        users_main_group = set(
+            kwargs['project'].projectuser_set.filter(
+                user__username__in=usernames, primary_group=True
+            ).values_list('user__username', flat=True)
+        )
     for user in users_to_remove:
         user['primary_group'] = user['username'] in users_main_group
     users_to_remove = sorted(users_to_remove, key=lambda x: x['primary_group'], reverse=True)

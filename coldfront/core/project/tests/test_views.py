@@ -5,6 +5,8 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import call, patch
 
+from ldap3.core.exceptions import LDAPSocketOpenError
+
 from coldfront.core.test_helpers import utils
 from coldfront.core.test_helpers.factories import (
     setup_models,
@@ -746,6 +748,23 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         self.assertFalse(
             ProjectUser.objects.filter(project=self.project, user=self.nonproj_allocationuser).exists()
         )
+
+    @override_settings(LDAP_PROJECTUSER_AD_SYNC=True)
+    @patch('coldfront.plugins.ldap.projectuser_sync.async_task')
+    @patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent')
+    def test_projectaddusers_ad_unreachable_queues_add(self, mock_apply_ad_intent, mock_async_task):
+        """If AD is unreachable, the user is saved as Pending - Add, the change is queued,
+        and the person adding them is told"""
+        ProjectUserStatusChoice.objects.get_or_create(name='Pending - Add')
+        mock_apply_ad_intent.side_effect = LDAPSocketOpenError('unreachable')
+        self.client.force_login(self.proj_accessmanager)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, data=self.form_data, follow=True)
+        projectuser = ProjectUser.objects.get(project=self.project, user=self.nonproj_allocationuser)
+        self.assertEqual(projectuser.status.name, 'Pending - Add')
+        self.assertContains(response, 'change is queued')
+        mock_async_task.assert_called_once()
+        self.assertEqual(mock_async_task.call_args.kwargs['intent'], 'add')
 
     @patch('coldfront.core.project.views.EMAIL_SENDER', 'test-admin@coldfront.org')
     @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)

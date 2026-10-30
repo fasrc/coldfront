@@ -14,18 +14,25 @@ which deactivates the account). ``projectuser._ad_actor = (username, role)`` is 
 for the account info note. ``projectuser._skip_ad_sync = True`` skips AD entirely; saves that
 mirror AD rather than change it set it.
 
-If AD rejects the change or can't be reached, the save is blocked with a
-ProjectUserStatusChangeError.
+If AD rejects the change, the save is blocked with a ProjectUserStatusChangeError. If AD is
+unreachable, the row is saved as Pending - Add / Pending - Remove, ``projectuser._ad_queued``
+is set, and after commit the apply_projectuser_ad_change task retries the change.
 """
 import logging
 
 from django.db import transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+from django_q.tasks import async_task
+from ldap3.core.exceptions import LDAPBindError, LDAPCommunicationError
 
 from coldfront.core.project.exceptions import ProjectUserStatusChangeError
-from coldfront.core.project.models import ProjectUser
-from coldfront.core.project.utils import reactivate_group_projectusers
+from coldfront.core.project.models import ProjectUser, ProjectUserStatusChoice
+from coldfront.core.project.utils import (
+    deactivate_secondary_projectusers,
+    reactivate_group_projectusers,
+    reactivate_storage_allocationusers,
+)
 from coldfront.core.utils.common import import_from_settings
 from coldfront.plugins.ldap.utils import LDAPConn
 
@@ -35,6 +42,18 @@ ADD = 'add'
 REMOVE = 'remove'
 DEACTIVATE = 'deactivate'
 REACTIVATE = 'reactivate'
+
+PENDING_STATUS = {
+    ADD: 'Pending - Add',
+    REACTIVATE: 'Pending - Add',
+    REMOVE: 'Pending - Remove',
+    DEACTIVATE: 'Pending - Remove',
+}
+
+# errors that mean AD could not be reached, rather than that it rejected the change
+UNREACHABLE_ERRORS = (LDAPCommunicationError, LDAPBindError, OSError)
+
+TASK_NAME = 'coldfront.plugins.ldap.tasks.apply_projectuser_ad_change'
 
 
 def ad_sync_enabled():
@@ -54,7 +73,7 @@ def intent_for_change(old_status, new_status):
 
 
 def apply_ad_intent(username, group_name, intent, actor_username=None, actor_role=None):
-    """Make the AD change for intent. Raises if AD rejects it or can't be reached."""
+    """Make the AD change for intent. Raises on rejection or when AD is unreachable."""
     ldap_conn = LDAPConn()
     if intent == ADD:
         ldap_conn.add_user_to_group(username, group_name)
@@ -80,9 +99,21 @@ def reactivate_user_groups(user):
     reactivate_group_projectusers(user, group_names)
 
 
+def complete_queued_change(projectuser, intent):
+    """Follow-on changes for a queued AD change that has now succeeded. The in-request
+    path does these in the view (or, for the group reactivation, in post_save).
+    """
+    if intent == REACTIVATE:
+        reactivate_user_groups(projectuser.user)
+        reactivate_storage_allocationusers(projectuser.user)
+    elif intent == DEACTIVATE:
+        deactivate_secondary_projectusers(projectuser.user, projectuser.project)
+
+
 @receiver(pre_save, sender=ProjectUser)
 def projectuser_ad_pre_save(sender, instance, raw=False, **kwargs):
     """Make the AD change for a ProjectUser status change before the row is saved"""
+    instance._ad_queued = None
     instance._ad_applied = None
     if raw or getattr(instance, '_skip_ad_sync', False) or not ad_sync_enabled():
         return
@@ -105,6 +136,20 @@ def projectuser_ad_pre_save(sender, instance, raw=False, **kwargs):
     }
     try:
         apply_ad_intent(instance.user.username, instance.project.title, intent, actor_username, actor_role)
+    except UNREACHABLE_ERRORS as e:
+        logger.warning(
+            'AD unreachable; queueing ProjectUser AD change.',
+            extra={**log_extra, 'status': 'queued', 'error': str(e)}
+        )
+        instance._ad_queued = {
+            'intent': intent,
+            'previous_status': old_status,
+            'target_status': new_status,
+            'actor_username': actor_username,
+            'actor_role': actor_role,
+        }
+        instance.status = ProjectUserStatusChoice.objects.get(name=PENDING_STATUS[intent])
+        return
     except ProjectUserStatusChangeError:
         logger.warning('AD rejected ProjectUser change.', extra={**log_extra, 'status': 'failure'})
         raise
@@ -119,9 +164,13 @@ def projectuser_ad_pre_save(sender, instance, raw=False, **kwargs):
 
 @receiver(post_save, sender=ProjectUser)
 def projectuser_ad_post_save(sender, instance, raw=False, **kwargs):
-    """Once the row is committed, reactivate the user's other groups after an applied reactivation"""
+    """Queue the retry task, or reactivate the user's other groups, once the row is committed"""
     if raw:
         return
-    if getattr(instance, '_ad_applied', None) == REACTIVATE:
+    queued = getattr(instance, '_ad_queued', None)
+    if queued:
+        pk = instance.pk
+        transaction.on_commit(lambda: async_task(TASK_NAME, pk, **queued))
+    elif getattr(instance, '_ad_applied', None) == REACTIVATE:
         user = instance.user
         transaction.on_commit(lambda: reactivate_user_groups(user))
