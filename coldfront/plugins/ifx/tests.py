@@ -4,6 +4,7 @@ import requests
 from django.test import TestCase, override_settings
 
 from coldfront.core.project.models import ProjectUser
+from coldfront.core.project.signals import project_projectusers_status_change
 from coldfront.core.test_helpers.factories import (
     ProjectFactory,
     ProjectUserFactory,
@@ -368,6 +369,29 @@ class ProjectUserAffiliationSyncTest(TestCase):
         self.mock_post.return_value.json.return_value = {'detail': 'not a list'}
         self.make_projectuser(self.active)
         mock_logger.error.assert_called_once()
+
+    def test_bulk_signal_syncs_changes(self):
+        projectuser = self.make_projectuser(self.removed)
+        projectusers = list(ProjectUser.objects.filter(pk=projectuser.pk))
+        ProjectUser.objects.filter(pk=projectuser.pk).update(status=self.active)
+        with self.captureOnCommitCallbacks(execute=True):
+            project_projectusers_status_change.send(sender=None, projectusers=projectusers, new_status='Active')
+        self.assertEqual(self.posted_entries()[0]['active'], True)
+
+    def test_bulk_signal_ignores_reactivation(self):
+        projectuser = self.make_projectuser(self.deactivated)
+        projectusers = list(ProjectUser.objects.filter(pk=projectuser.pk))
+        with self.captureOnCommitCallbacks(execute=True):
+            project_projectusers_status_change.send(sender=None, projectusers=projectusers, new_status='Active')
+        self.mock_post.assert_not_called()
+
+    def test_bulk_signal_created(self):
+        unsaved = [ProjectUserFactory.build(project=self.project, user=self.user, status=self.active)]
+        with self.captureOnCommitCallbacks(execute=True):
+            project_projectusers_status_change.send(
+                sender=None, projectusers=unsaved, new_status='Active', created=True
+            )
+        self.assertEqual(self.posted_entries()[0]['active'], True)
 
     def test_group_reactivation_syncs_removed_projectusers(self):
         """The other-group reactivation saves per row, so Removed -> Active is synced"""

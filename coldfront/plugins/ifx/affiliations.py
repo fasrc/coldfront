@@ -18,6 +18,7 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from coldfront.core.project.models import ProjectUser
+from coldfront.core.project.signals import project_projectusers_status_change
 from coldfront.core.utils.common import import_from_settings
 from coldfront.plugins.ifx.models import email_ifx_managers
 
@@ -61,6 +62,19 @@ def projectuser_post_save(sender, instance, created, **kwargs):
     active = classify_change(old_status, instance.status.name)
     if active is not None:
         queue_affiliation_changes([(instance.user, instance.project, active)])
+
+
+@receiver(project_projectusers_status_change)
+def projectusers_status_change(sender, projectusers, new_status, created=False, **kwargs):
+    '''Queue affiliation updates for bulk ProjectUser status changes that bypass post_save'''
+    changes = []
+    for projectuser in projectusers:
+        old_status = None if created else projectuser.status.name
+        active = classify_change(old_status, new_status)
+        if active is not None:
+            changes.append((projectuser.user, projectuser.project, active))
+    if changes:
+        queue_affiliation_changes(changes)
 
 
 def queue_affiliation_changes(changes):
