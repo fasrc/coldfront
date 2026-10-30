@@ -10,9 +10,10 @@ Apply ProjectUser status changes to AD from the ProjectUser pre_save, whatever s
 
 A caller can set ``projectuser._ad_intent`` to override the table; the remove view sets
 ``deactivate`` for a primary-group removal (status Deactivated, AD remove_member_from_group,
-which deactivates the account). ``projectuser._ad_actor = (username, role)`` is passed to AD
-for the account info note. ``projectuser._skip_ad_sync = True`` skips AD entirely; saves that
-mirror AD rather than change it set it.
+which deactivates the account). ``projectuser._ad_actor = (username, role)`` is passed to AD for the account info note.
+``projectuser._skip_ad_sync = True`` skips AD entirely; saves that mirror AD rather than change
+it set it. ``projectuser._ad_complete_removal = True`` (set by the remove view) makes a queued
+removal run the view's removal follow-ups (allocations, Slurm, emails) once AD succeeds.
 
 If AD rejects the change, the save is blocked with a ProjectUserStatusChangeError. If AD is
 unreachable, the row is saved as Pending - Add / Pending - Remove, ``projectuser._ad_queued``
@@ -99,13 +100,31 @@ def reactivate_user_groups(user):
     reactivate_group_projectusers(user, group_names)
 
 
-def complete_queued_change(projectuser, intent):
+def complete_queued_change(projectuser, intent, complete_removal=False):
     """Follow-on changes for a queued AD change that has now succeeded. The in-request
     path does these in the view (or, for the group reactivation, in post_save).
     """
     if intent == REACTIVATE:
         reactivate_user_groups(projectuser.user)
         reactivate_storage_allocationusers(projectuser.user)
+    elif intent in (REMOVE, DEACTIVATE) and complete_removal:
+        # imported here: the view module is heavy and imports plugins of its own
+        from coldfront.core.project.views import ProjectRemoveUsersView
+
+        _, failed = ProjectRemoveUsersView().complete_removal(
+            projectuser.project, projectuser.user, deactivated=intent == DEACTIVATE
+        )
+        for failure in failed:
+            logger.error(
+                'Queued removal follow-up failed.',
+                extra={
+                    'category': 'integration:AD',
+                    'status': 'failure',
+                    'user': projectuser.user.username,
+                    'project': projectuser.project.title,
+                    'error': failure,
+                }
+            )
     elif intent == DEACTIVATE:
         deactivate_secondary_projectusers(projectuser.user, projectuser.project)
 
@@ -147,6 +166,7 @@ def projectuser_ad_pre_save(sender, instance, raw=False, **kwargs):
             'target_status': new_status,
             'actor_username': actor_username,
             'actor_role': actor_role,
+            'complete_removal': bool(getattr(instance, '_ad_complete_removal', False)),
         }
         instance.status = ProjectUserStatusChoice.objects.get(name=PENDING_STATUS[intent])
         return

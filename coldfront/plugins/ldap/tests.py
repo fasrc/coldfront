@@ -485,7 +485,7 @@ class ProjectUserADSyncTests(TestCase):
         self.mock_async_task.assert_called_once_with(
             'coldfront.plugins.ldap.tasks.apply_projectuser_ad_change', projectuser.pk,
             intent='remove', previous_status='Active', target_status='Removed',
-            actor_username='admin', actor_role='(Admin)',
+            actor_username='admin', actor_role='(Admin)', complete_removal=False,
         )
 
     def test_unreachable_new_projectuser_saved_pending_add(self):
@@ -547,10 +547,14 @@ class ApplyProjectUserADChangeTaskTests(TestCase):
         self.mocks['sync_apply'].reset_mock()
         return projectuser
 
-    def run_task(self, projectuser, intent='remove', previous_status='Active', target_status='Removed', attempt=1):
+    def run_task(
+        self, projectuser, intent='remove', previous_status='Active', target_status='Removed',
+        attempt=1, complete_removal=False,
+    ):
         with self.captureOnCommitCallbacks(execute=True):
             apply_projectuser_ad_change(
-                projectuser.pk, intent, previous_status, target_status, 'admin', '(Admin)', attempt
+                projectuser.pk, intent, previous_status, target_status, 'admin', '(Admin)', attempt,
+                complete_removal=complete_removal,
             )
         projectuser.refresh_from_db()
         return projectuser
@@ -595,6 +599,20 @@ class ApplyProjectUserADChangeTaskTests(TestCase):
              'Active', 'Removed', 'admin', '(Admin)', 3),
         )
         self.assertEqual(args.kwargs['schedule_type'], Schedule.ONCE)
+        self.assertEqual(args.kwargs['complete_removal'], False)
+
+    def test_queued_removal_runs_view_follow_ups_when_asked(self):
+        with patch(
+            'coldfront.core.project.views.ProjectRemoveUsersView.complete_removal', return_value=([], [])
+        ) as mock_complete:
+            projectuser = self.run_task(self.pending_projectuser(), complete_removal=True)
+        self.assertEqual(projectuser.status.name, 'Removed')
+        mock_complete.assert_called_once_with(self.project, self.user, deactivated=False)
+
+    def test_queued_removal_without_flag_skips_view_follow_ups(self):
+        with patch('coldfront.core.project.views.ProjectRemoveUsersView.complete_removal') as mock_complete:
+            self.run_task(self.pending_projectuser())
+        mock_complete.assert_not_called()
 
     @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
     def test_attempts_exhausted_reverts_and_emails(self):

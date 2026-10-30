@@ -38,12 +38,12 @@ def id_add_projects():
 
 def apply_projectuser_ad_change(
     projectuser_pk, intent, previous_status, target_status,
-    actor_username=None, actor_role=None, attempt=1,
+    actor_username=None, actor_role=None, attempt=1, complete_removal=False,
 ):
     """Retry a ProjectUser AD change that was queued because AD was unreachable.
 
-    On success the ProjectUser gets target_status. While AD stays unreachable the task
-    reschedules itself every LDAP_PROJECTUSER_RETRY_MINUTES, up to LDAP_PROJECTUSER_MAX_ATTEMPTS
+    On success the ProjectUser gets target_status. If complete_removal is set, the remove view's follow-ups (allocations, Slurm, emails) run then.
+    While AD stays unreachable the task reschedules itself every LDAP_PROJECTUSER_RETRY_MINUTES, up to LDAP_PROJECTUSER_MAX_ATTEMPTS
     attempts (django-q does not retry tasks that raise). If AD rejects the change or the attempts
     run out, the ProjectUser is reverted to previous_status and EMAIL_ADMIN_LIST is emailed.
     """
@@ -81,6 +81,7 @@ def apply_projectuser_ad_change(
             schedule(
                 TASK_NAME, projectuser_pk, intent, previous_status, target_status,
                 actor_username, actor_role, attempt + 1,
+                complete_removal=complete_removal,
                 schedule_type=Schedule.ONCE,
                 next_run=timezone.now() + timedelta(minutes=retry_minutes),
             )
@@ -94,7 +95,7 @@ def apply_projectuser_ad_change(
     projectuser.status = ProjectUserStatusChoice.objects.get(name=target_status)
     projectuser._skip_ad_sync = True
     projectuser.save()
-    complete_queued_change(projectuser, intent)
+    complete_queued_change(projectuser, intent, complete_removal)
     logger.info('Applied queued ProjectUser change to AD.', extra={**log_extra, 'status': 'success'})
 
 
@@ -129,7 +130,8 @@ def revert_projectuser(projectuser, previous_status, intent, error):
         f'Intended change: {intent}\n'
         f'Status: {pending_status} -> {reverted_status}\n'
         f'Error: {error}\n\n'
-        'Allocation changes and user emails made when the change was requested were not undone.\n'
+        'Any allocation changes or emails made when the change was requested were not undone '
+        '(removals made from the project page wait for AD, so they have none).\n'
     )
     try:
         send_email(
