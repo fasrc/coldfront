@@ -77,6 +77,7 @@ from coldfront.core.allocation.signals import (allocation_activate,
 from coldfront.core.allocation.utils import (generate_guauge_data_from_usage,
                                             check_l3_tag,
                                              get_user_resources)
+from coldfront.core.project.exceptions import ProjectUserStatusChangeError
 from coldfront.core.project.models import (Project, ProjectPermission,
                                            ProjectUserStatusChoice)
 from coldfront.core.resource.models import Resource
@@ -1923,7 +1924,13 @@ class AllocationRenewView(LoginRequiredMixin, UserPassesTestMixin, TemplateView)
                             user=user_obj
                         )
                         project_user_obj.status = remove_projuser_status
-                        project_user_obj.save()
+                        try:
+                            project_user_obj.save()
+                        except ProjectUserStatusChangeError as e:
+                            messages.error(
+                                request, f'Could not remove {user_obj.username} from project: {e}'
+                            )
+                            continue
 
                     for alloc_user_obj in update_allocationuser_status_list:
                         alloc_user_obj.status = removed_allocuser_status
