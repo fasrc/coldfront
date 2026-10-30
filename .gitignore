@@ -29,6 +29,7 @@ media/reports*
 .devcontainer/*
 .bin/*
 test.http
+coldfront/config/local_setttings.py
 # logs
 logs/
 *.log
