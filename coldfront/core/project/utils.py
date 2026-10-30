@@ -3,10 +3,48 @@ from datetime import date
 from django.db.models import Q
 from ifxbilling.models import BillingRecord
 
+from coldfront.core.allocation.models import AllocationUser, AllocationUserStatusChoice
+from coldfront.core.project.models import ProjectUser, ProjectUserStatusChoice
 from coldfront.core.utils.common import import_from_settings
 from coldfront.plugins.ifx.models import ProjectOrganization
 
 EMAIL_SENDER = import_from_settings('EMAIL_SENDER')
+
+
+def reactivate_storage_allocationusers(user):
+    """Reactivate the user's AllocationUsers in active storage allocations of projects
+    where they are an Active ProjectUser
+    """
+    AllocationUser.objects.filter(
+        user=user,
+        allocation__project__status__name__in=['Active', 'Renewal Requested'],
+        allocation__status__name__in=['Active', 'Pending Deactivation'],
+        allocation__project__projectuser__user=user,
+        allocation__project__projectuser__status__name='Active',
+        allocation__resources__resource_type__name='Storage'
+    ).distinct().update(
+        status=AllocationUserStatusChoice.objects.get(name='Active')
+    )
+
+
+def secondary_projectusers(user, project):
+    """The user's Active ProjectUsers in active/new projects other than project"""
+    return ProjectUser.objects.filter(
+        user=user,
+        status__name='Active',
+        project__status__name__in=['Active', 'New'],
+    ).exclude(project=project)
+
+
+def deactivate_secondary_projectusers(user, project):
+    """Deactivating a user's primary group disables their whole AD account but leaves their
+    other AD group memberships alone, so their other projects' memberships become Deactivated,
+    not Removed. Returns the titles of the projects changed.
+    """
+    projectusers = secondary_projectusers(user, project).select_related('project')
+    titles = [pu.project.title for pu in projectusers]
+    projectusers.update(status=ProjectUserStatusChoice.objects.get(name='Deactivated'))
+    return titles
 
 
 def generate_usage_history_graph(project):
