@@ -610,6 +610,34 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         msgs = [(m.level_tag, m.message) for m in response.context['messages']]
         self.assertFalse([m for tag, m in msgs if tag in ('error', 'warning')], msgs)
 
+    @override_settings(LDAP_PROJECTUSER_AD_SYNC=True)
+    @patch('coldfront.plugins.ldap.projectuser_sync.async_task')
+    @patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent')
+    @patch('coldfront.core.project.views.allocation_remove_user.send')
+    @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_queued_removal_defers_allocation_slurm_and_email(
+        self, mock_filter, mock_slurm_remove, mock_alloc_remove, mock_apply_ad_intent, mock_async_task
+    ):
+        """With AD unreachable, nothing but the Pending - Remove status changes until the
+        queued task succeeds: allocations, Slurm and the user email all wait"""
+        ProjectUserStatusChoice.objects.get_or_create(name='Pending - Remove')
+        mock_apply_ad_intent.side_effect = LDAPSocketOpenError('unreachable')
+        mail.outbox = []
+
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self._post_cluster_user_removal(mock_filter)
+
+        self.assertEqual(ProjectUser.objects.get(pk=self.npu.pk).status.name, 'Pending - Remove')
+        mock_slurm_remove.assert_not_called()
+        mock_alloc_remove.assert_not_called()
+        for allocation in [self.storage_allocation, self.cluster_allocation]:
+            self.assertEqual(allocation.allocationuser_set.get(user=self.project_user).status.name, 'Active')
+        self.assertEqual(mail.outbox, [])
+        self.assertContains(response, 'change is queued')
+        self.assertContains(response, 'Removed 0 users')
+        self.assertTrue(mock_async_task.call_args.kwargs['complete_removal'])
+
     @patch('coldfront.core.project.views.allocation_remove_user.send')
     @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
