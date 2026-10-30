@@ -10,7 +10,10 @@ Apply ProjectUser status changes to AD from the ProjectUser pre_save, whatever s
 
 A caller can set ``projectuser._ad_intent`` to override the table; the remove view sets
 ``deactivate`` for a primary-group removal (status Deactivated, AD remove_member_from_group,
-which deactivates the account). ``projectuser._ad_actor = (username, role)`` is passed to AD for the account info note.
+which deactivates the account). For removals, AD decides: if the project's group is the user's
+primary group the account is deactivated and the row becomes Deactivated, otherwise the
+membership is removed and the row becomes Removed, whichever the caller expected.
+``projectuser._ad_actor = (username, role)`` is passed to AD for the account info note.
 ``projectuser._skip_ad_sync = True`` skips AD entirely; saves that mirror AD rather than change
 it set it. ``projectuser._ad_complete_removal = True`` (set by the remove view) makes a queued
 removal run the view's removal follow-ups (allocations, Slurm, emails) once AD succeeds.
@@ -44,6 +47,8 @@ REMOVE = 'remove'
 DEACTIVATE = 'deactivate'
 REACTIVATE = 'reactivate'
 
+REMOVAL_STATUS = {REMOVE: 'Removed', DEACTIVATE: 'Deactivated'}
+
 PENDING_STATUS = {
     ADD: 'Pending - Add',
     REACTIVATE: 'Pending - Add',
@@ -74,16 +79,21 @@ def intent_for_change(old_status, new_status):
 
 
 def apply_ad_intent(username, group_name, intent, actor_username=None, actor_role=None):
-    """Make the AD change for intent. Raises on rejection or when AD is unreachable."""
+    """Make the AD change for intent and return the intent actually applied. For a removal that
+    is DEACTIVATE if group_name is the user's primary group, otherwise REMOVE, regardless of
+    which was asked for. Raises on rejection or when AD is unreachable.
+    """
     ldap_conn = LDAPConn()
     if intent == ADD:
         ldap_conn.add_user_to_group(username, group_name)
     elif intent == REACTIVATE:
         ldap_conn.reactivate_user(username, actor_username=actor_username, actor_role=actor_role)
     else:
+        intent = DEACTIVATE if ldap_conn.is_primary_group(username, group_name) else REMOVE
         ldap_conn.remove_member_from_group(
             username, group_name, actor_username=actor_username, actor_role=actor_role
         )
+    return intent
 
 
 def reactivate_user_groups(user):
@@ -103,11 +113,12 @@ def reactivate_user_groups(user):
 def complete_queued_change(projectuser, intent, complete_removal=False):
     """Follow-on changes for a queued AD change that has now succeeded. The in-request
     path does these in the view (or, for the group reactivation, in post_save).
+    intent is the intent AD actually applied.
     """
     if intent == REACTIVATE:
         reactivate_user_groups(projectuser.user)
         reactivate_storage_allocationusers(projectuser.user)
-    elif intent in (REMOVE, DEACTIVATE) and complete_removal:
+    elif intent in REMOVAL_STATUS and complete_removal:
         # imported here: the view module is heavy and imports plugins of its own
         from coldfront.core.project.views import ProjectRemoveUsersView
 
@@ -154,7 +165,7 @@ def projectuser_ad_pre_save(sender, instance, raw=False, **kwargs):
         'actor': actor_username,
     }
     try:
-        apply_ad_intent(instance.user.username, instance.project.title, intent, actor_username, actor_role)
+        applied = apply_ad_intent(instance.user.username, instance.project.title, intent, actor_username, actor_role)
     except UNREACHABLE_ERRORS as e:
         logger.warning(
             'AD unreachable; queueing ProjectUser AD change.',
@@ -178,13 +189,21 @@ def projectuser_ad_pre_save(sender, instance, raw=False, **kwargs):
         raise ProjectUserStatusChangeError(
             f'AD rejected the change for {instance.user.username} in {instance.project.title}: {e}'
         ) from e
+    if applied in REMOVAL_STATUS and applied != intent:
+        # AD's primary group differs from what the caller expected; record what AD did
+        logger.info(
+            'AD applied a different removal than requested.',
+            extra={**log_extra, 'status': 'success', 'applied': applied}
+        )
+        instance.status = ProjectUserStatusChoice.objects.get(name=REMOVAL_STATUS[applied])
     logger.info('Applied ProjectUser change to AD.', extra={**log_extra, 'status': 'success'})
-    instance._ad_applied = intent
+    instance._ad_applied = applied
 
 
 @receiver(post_save, sender=ProjectUser)
 def projectuser_ad_post_save(sender, instance, raw=False, **kwargs):
-    """Queue the retry task, or reactivate the user's other groups, once the row is committed"""
+    """Once the row is committed, queue the retry task, or cascade an applied reactivation or
+    deactivation to the user's other projects"""
     if raw:
         return
     queued = getattr(instance, '_ad_queued', None)
@@ -194,3 +213,8 @@ def projectuser_ad_post_save(sender, instance, raw=False, **kwargs):
     elif getattr(instance, '_ad_applied', None) == REACTIVATE:
         user = instance.user
         transaction.on_commit(lambda: reactivate_user_groups(user))
+    elif getattr(instance, '_ad_applied', None) == DEACTIVATE and not getattr(instance, '_ad_complete_removal', False):
+        # e.g. an admin edit that turned out to be the user's primary group; the remove view
+        # does this cascade itself in complete_removal
+        user, project = instance.user, instance.project
+        transaction.on_commit(lambda: deactivate_secondary_projectusers(user, project))

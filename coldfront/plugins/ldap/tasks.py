@@ -11,6 +11,7 @@ from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.mail import send_email
 from coldfront.plugins.ldap.projectuser_sync import (
     PENDING_STATUS,
+    REMOVAL_STATUS,
     TASK_NAME,
     UNREACHABLE_ERRORS,
     apply_ad_intent,
@@ -42,7 +43,9 @@ def apply_projectuser_ad_change(
 ):
     """Retry a ProjectUser AD change that was queued because AD was unreachable.
 
-    On success the ProjectUser gets target_status. If complete_removal is set, the remove view's follow-ups (allocations, Slurm, emails) run then.
+    On success the ProjectUser gets target_status, except that a removal gets Deactivated or
+    Removed according to whether AD found the project's group to be the user's primary group.
+    If complete_removal is set, the remove view's follow-ups (allocations, Slurm, emails) run then.
     While AD stays unreachable the task reschedules itself every LDAP_PROJECTUSER_RETRY_MINUTES, up to LDAP_PROJECTUSER_MAX_ATTEMPTS
     attempts (django-q does not retry tasks that raise). If AD rejects the change or the attempts
     run out, the ProjectUser is reverted to previous_status and EMAIL_ADMIN_LIST is emailed.
@@ -67,7 +70,7 @@ def apply_projectuser_ad_change(
         return
 
     try:
-        apply_ad_intent(
+        applied = apply_ad_intent(
             projectuser.user.username, projectuser.project.title, intent, actor_username, actor_role
         )
     except UNREACHABLE_ERRORS as e:
@@ -92,11 +95,15 @@ def apply_projectuser_ad_change(
         revert_projectuser(projectuser, previous_status, intent, f'AD rejected the change: {e}')
         return
 
-    projectuser.status = ProjectUserStatusChoice.objects.get(name=target_status)
+    final_status = REMOVAL_STATUS.get(applied, target_status)
+    projectuser.status = ProjectUserStatusChoice.objects.get(name=final_status)
     projectuser._skip_ad_sync = True
     projectuser.save()
-    complete_queued_change(projectuser, intent, complete_removal)
-    logger.info('Applied queued ProjectUser change to AD.', extra={**log_extra, 'status': 'success'})
+    complete_queued_change(projectuser, applied, complete_removal)
+    logger.info(
+        'Applied queued ProjectUser change to AD.',
+        extra={**log_extra, 'status': 'success', 'applied': applied, 'final_status': final_status}
+    )
 
 
 def revert_projectuser(projectuser, previous_status, intent, error):

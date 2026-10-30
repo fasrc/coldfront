@@ -1410,8 +1410,10 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         'actor': request.user.username,
                     }
                 )
+                # AD may have found a different primary group than the form said; its pre_save
+                # then set the status to match, so go by the saved status
                 cluster_removed, cluster_failed = self.complete_removal(
-                    project_obj, user_obj, deactivated=primary_group
+                    project_obj, user_obj, deactivated=project_user_obj.status.name == 'Deactivated'
                 )
                 cluster_removals += cluster_removed
                 failed_user_removals += cluster_failed

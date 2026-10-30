@@ -259,6 +259,14 @@ class LDAPConn:
         )
         return result
 
+    def is_primary_group(self, user_name, group_name):
+        """True if group_name is the user's primary AD group (matching gidNumber), in which case
+        remove_member_from_group deactivates the account instead of removing the membership
+        """
+        user = self.return_user_by_name(user_name, attributes=['gidNumber'])
+        group = self.return_group_by_name(group_name, attributes=['gidNumber'])
+        return user['gidNumber'] == group['gidNumber']
+
     def remove_member_from_group(self, user_name, group_name, actor_username=None, actor_role=None):
         # get group
         group = self.return_group_by_name(group_name)
