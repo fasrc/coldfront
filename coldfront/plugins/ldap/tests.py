@@ -11,6 +11,7 @@ from django_q.models import Schedule
 
 from coldfront.core.project.exceptions import ProjectUserDeactivatedError, ProjectUserStatusChangeError
 from coldfront.core.project.models import ProjectUser
+from coldfront.plugins.ldap.projectuser_sync import apply_ad_intent as real_apply_ad_intent
 from coldfront.plugins.ldap.tasks import apply_projectuser_ad_change
 from coldfront.plugins.ldap.utils import (
     LDAPConn,
@@ -109,6 +110,7 @@ class LDAPConnTest(TestCase):
 class GroupUserCollectionTests(TestCase):
     """Tests for GroupUserCollection class"""
     fixtures = UTIL_FIXTURES
+
 
     def setUp(self):
         setup_models(self)
@@ -380,7 +382,10 @@ class ProjectUserADSyncTests(TestCase):
             name: ProjectUserStatusChoiceFactory(name=name)
             for name in ['Active', 'Removed', 'Deactivated', 'Pending - Add', 'Pending - Remove']
         }
-        apply_patcher = patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent')
+        apply_patcher = patch(
+            'coldfront.plugins.ldap.projectuser_sync.apply_ad_intent',
+            side_effect=lambda username, group_name, intent, *args: intent,
+        )
         self.mock_apply = apply_patcher.start()
         self.addCleanup(apply_patcher.stop)
         task_patcher = patch('coldfront.plugins.ldap.projectuser_sync.async_task')
@@ -488,6 +493,36 @@ class ProjectUserADSyncTests(TestCase):
             actor_username='admin', actor_role='(Admin)', complete_removal=False,
         )
 
+    def test_removal_status_follows_what_ad_applied(self):
+        """The caller expected a primary-group deactivation, but AD only removed the membership"""
+        projectuser = self.make_projectuser('Active')
+        self.mock_apply.side_effect = lambda *args: 'remove'
+        self.set_status(projectuser, 'Deactivated', _ad_intent='deactivate', _ad_complete_removal=True)
+        projectuser.refresh_from_db()
+        self.assertEqual(projectuser.status.name, 'Removed')
+
+    def test_admin_removal_of_primary_group_deactivates_and_cascades(self):
+        """An Active -> Removed edit where AD finds the primary group (so deactivates the
+        account) saves Deactivated and deactivates the user's other projects"""
+        other = ProjectUserFactory(
+            project=ProjectFactory(title='gordon_lab'), user=self.user, status=self.statuses['Active']
+        )
+        projectuser = self.make_projectuser('Active')
+        self.mock_apply.side_effect = lambda *args: 'deactivate'
+        self.set_status(projectuser, 'Removed')
+        projectuser.refresh_from_db()
+        self.assertEqual(projectuser.status.name, 'Deactivated')
+        other.refresh_from_db()
+        self.assertEqual(other.status.name, 'Deactivated')
+
+    def test_apply_ad_intent_reports_primary_group_removal(self):
+        with patch('coldfront.plugins.ldap.projectuser_sync.LDAPConn') as mock_ldap_conn:
+            mock_ldap_conn.return_value.is_primary_group.return_value = True
+            self.assertEqual(real_apply_ad_intent('sdpoisson', 'poisson_lab', 'remove'), 'deactivate')
+            mock_ldap_conn.return_value.is_primary_group.return_value = False
+            self.assertEqual(real_apply_ad_intent('sdpoisson', 'poisson_lab', 'deactivate'), 'remove')
+        self.assertEqual(mock_ldap_conn.return_value.remove_member_from_group.call_count, 2)
+
     def test_unreachable_new_projectuser_saved_pending_add(self):
         self.mock_apply.side_effect = LDAPSocketOpenError('unreachable')
         with self.captureOnCommitCallbacks(execute=True):
@@ -530,10 +565,11 @@ class ApplyProjectUserADChangeTaskTests(TestCase):
             name: ProjectUserStatusChoiceFactory(name=name)
             for name in ['Active', 'Removed', 'Deactivated', 'Pending - Add', 'Pending - Remove']
         }
+        echo_intent = lambda username, group_name, intent, *args: intent  # noqa: E731
         patchers = {
-            'apply': patch('coldfront.plugins.ldap.tasks.apply_ad_intent'),
+            'apply': patch('coldfront.plugins.ldap.tasks.apply_ad_intent', side_effect=echo_intent),
             'schedule': patch('coldfront.plugins.ldap.tasks.schedule'),
-            'sync_apply': patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent'),
+            'sync_apply': patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent', side_effect=echo_intent),
         }
         self.mocks = {}
         for name, patcher in patchers.items():
@@ -613,6 +649,24 @@ class ApplyProjectUserADChangeTaskTests(TestCase):
         with patch('coldfront.core.project.views.ProjectRemoveUsersView.complete_removal') as mock_complete:
             self.run_task(self.pending_projectuser())
         mock_complete.assert_not_called()
+
+    def test_queued_deactivation_follows_what_ad_applied(self):
+        """Queued as a primary-group deactivation, but AD found it isn't the primary group"""
+        other = ProjectUserFactory(
+            project=ProjectFactory(title='gordon_lab'), user=self.user, status=self.statuses['Active']
+        )
+        self.mocks['apply'].side_effect = lambda *args: 'remove'
+        with patch(
+            'coldfront.core.project.views.ProjectRemoveUsersView.complete_removal', return_value=([], [])
+        ) as mock_complete:
+            projectuser = self.run_task(
+                self.pending_projectuser(), intent='deactivate', target_status='Deactivated',
+                complete_removal=True,
+            )
+        self.assertEqual(projectuser.status.name, 'Removed')
+        mock_complete.assert_called_once_with(self.project, self.user, deactivated=False)
+        other.refresh_from_db()
+        self.assertEqual(other.status.name, 'Active')
 
     @patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)
     def test_attempts_exhausted_reverts_and_emails(self):

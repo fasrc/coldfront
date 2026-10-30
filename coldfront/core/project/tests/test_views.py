@@ -638,6 +638,24 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         self.assertContains(response, 'Removed 0 users')
         self.assertTrue(mock_async_task.call_args.kwargs['complete_removal'])
 
+    @override_settings(LDAP_PROJECTUSER_AD_SYNC=True)
+    @patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent', return_value='remove')
+    @patch('coldfront.core.project.views.allocation_remove_user.send')
+    @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_removal_follows_ad_when_primary_group_flag_is_wrong(
+        self, mock_filter, mock_slurm_remove, mock_alloc_remove, mock_apply_ad_intent
+    ):
+        """If the form flags the project as the user's primary group but AD only removes the
+        membership, the user is Removed and gets the ordinary removal follow-ups"""
+        self._set_slurm_cluster()
+        mock_slurm_remove.return_value = [(None, True)]
+
+        self._post_cluster_user_removal(mock_filter, primary_group=True)
+
+        self.assertEqual(ProjectUser.objects.get(pk=self.npu.pk).status.name, 'Removed')
+        mock_slurm_remove.assert_called_once()
+
     @patch('coldfront.core.project.views.allocation_remove_user.send')
     @patch('coldfront.core.project.views.allocation_user_remove_on_slurm.send_robust')
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
