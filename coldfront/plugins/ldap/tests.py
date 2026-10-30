@@ -3,12 +3,15 @@ from unittest.mock import patch
 import pandas as pd
 
 from ldap3.core.timezone import OffsetTzInfo
-from django.test import TestCase, tag
+from django.test import TestCase, override_settings, tag
 from django.contrib.auth import get_user_model
 
+from coldfront.core.project.exceptions import ProjectUserDeactivatedError, ProjectUserStatusChangeError
 from coldfront.core.project.models import ProjectUser
 from coldfront.plugins.ldap.utils import (
     LDAPConn,
+    LDAPUserDeactivatedError,
+    LDAPUserRemovalError,
     GroupUserCollection,
     add_new_projects,
     collect_update_project_status_membership,
@@ -102,7 +105,6 @@ class LDAPConnTest(TestCase):
 class GroupUserCollectionTests(TestCase):
     """Tests for GroupUserCollection class"""
     fixtures = UTIL_FIXTURES
-
 
     def setUp(self):
         setup_models(self)
@@ -357,3 +359,111 @@ class CollectUpdateProjectStatusMembershipTests(TestCase):
         self.run_sync()
         pi_projectuser = self.project.projectuser_set.get(user=self.pi_user)
         self.assertEqual(pi_projectuser.status.name, 'Active')
+
+
+@override_settings(
+    LDAP_PROJECTUSER_AD_SYNC=True,
+    EMAIL_ADMIN_LIST=['admin@example.org'],
+    EMAIL_SENDER='coldfront@example.org',
+)
+class ProjectUserADSyncTests(TestCase):
+    """Tests for writing ProjectUser status changes to AD from pre_save, and the retry task"""
+
+    def setUp(self):
+        self.user = UserFactory(username='sdpoisson')
+        self.project = ProjectFactory(title='poisson_lab')
+        self.statuses = {
+            name: ProjectUserStatusChoiceFactory(name=name)
+            for name in ['Active', 'Removed', 'Deactivated', 'Pending - Add', 'Pending - Remove']
+        }
+        apply_patcher = patch('coldfront.plugins.ldap.projectuser_sync.apply_ad_intent')
+        self.mock_apply = apply_patcher.start()
+        self.addCleanup(apply_patcher.stop)
+
+    def make_projectuser(self, status, project=None):
+        projectuser = ProjectUserFactory(
+            project=project or self.project, user=self.user, status=self.statuses[status]
+        )
+        self.mock_apply.reset_mock()
+        return projectuser
+
+    def set_status(self, projectuser, status, **attrs):
+        projectuser.status = self.statuses[status]
+        for name, value in attrs.items():
+            setattr(projectuser, name, value)
+        with self.captureOnCommitCallbacks(execute=True):
+            projectuser.save()
+        return projectuser
+
+    def assert_applied(self, intent):
+        self.mock_apply.assert_called_once()
+        self.assertEqual(self.mock_apply.call_args.args[:3], ('sdpoisson', 'poisson_lab', intent))
+
+    def test_new_removed_projectuser_makes_no_ad_change(self):
+        ProjectUserFactory(project=self.project, user=self.user, status=self.statuses['Removed'])
+        self.mock_apply.assert_not_called()
+
+    def test_new_active_projectuser_added_to_group(self):
+        ProjectUserFactory(project=self.project, user=self.user, status=self.statuses['Active'])
+        self.assert_applied('add')
+
+    def test_removed_to_active_adds_to_group(self):
+        projectuser = self.make_projectuser('Removed')
+        self.set_status(projectuser, 'Active')
+        self.assert_applied('add')
+
+    def test_deactivated_to_active_reactivates_account(self):
+        projectuser = self.make_projectuser('Deactivated')
+        with patch('coldfront.plugins.ldap.projectuser_sync.reactivate_user_groups') as mock_groups:
+            self.set_status(projectuser, 'Active')
+        self.assert_applied('reactivate')
+        mock_groups.assert_called_once_with(self.user)
+
+    def test_active_to_removed_removes_from_group(self):
+        projectuser = self.make_projectuser('Active')
+        self.set_status(projectuser, 'Removed', _ad_actor=('admin', '(Admin)'))
+        self.assert_applied('remove')
+        self.assertEqual(self.mock_apply.call_args.args[3:], ('admin', '(Admin)'))
+
+    def test_active_to_deactivated_makes_no_ad_change(self):
+        projectuser = self.make_projectuser('Active')
+        self.set_status(projectuser, 'Deactivated')
+        self.mock_apply.assert_not_called()
+
+    def test_explicit_intent_overrides_mapping(self):
+        projectuser = self.make_projectuser('Active')
+        self.set_status(projectuser, 'Deactivated', _ad_intent='deactivate')
+        self.assert_applied('deactivate')
+
+    def test_unchanged_status_makes_no_ad_change(self):
+        projectuser = self.make_projectuser('Active')
+        projectuser.enable_notifications = False
+        projectuser.save()
+        self.mock_apply.assert_not_called()
+
+    def test_skip_flag_makes_no_ad_change(self):
+        projectuser = self.make_projectuser('Active')
+        self.set_status(projectuser, 'Removed', _skip_ad_sync=True)
+        self.mock_apply.assert_not_called()
+        projectuser.refresh_from_db()
+        self.assertEqual(projectuser.status.name, 'Removed')
+
+    @override_settings(LDAP_PROJECTUSER_AD_SYNC=False)
+    def test_disabled_setting_makes_no_ad_change(self):
+        projectuser = self.make_projectuser('Active')
+        self.set_status(projectuser, 'Removed')
+        self.mock_apply.assert_not_called()
+
+    def test_rejection_blocks_save(self):
+        projectuser = self.make_projectuser('Active')
+        self.mock_apply.side_effect = LDAPUserRemovalError('Member not successfully removed from group.')
+        with self.assertRaises(ProjectUserStatusChangeError):
+            self.set_status(projectuser, 'Removed')
+        projectuser.refresh_from_db()
+        self.assertEqual(projectuser.status.name, 'Active')
+
+    def test_deactivated_account_rejection_keeps_its_type(self):
+        projectuser = self.make_projectuser('Removed')
+        self.mock_apply.side_effect = LDAPUserDeactivatedError('user is deactivated')
+        with self.assertRaises(ProjectUserDeactivatedError):
+            self.set_status(projectuser, 'Active')

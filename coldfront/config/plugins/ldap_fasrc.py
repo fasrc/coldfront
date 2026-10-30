@@ -1,6 +1,8 @@
 """
 FASRC-specific LDAP plugin settings
 """
+import sys
+
 from django.core.exceptions import ImproperlyConfigured
 
 from coldfront.config.env import ENV
@@ -22,6 +24,12 @@ AUTH_LDAP_USER_SEARCH_BASE = ENV.str('AUTH_LDAP_USER_SEARCH_BASE')
 AUTH_LDAP_GROUP_SEARCH_BASE = ENV.str('AUTH_LDAP_GROUP_SEARCH_BASE')
 CF_LDAP_PROJECT_GROUP_SAM = ENV.str('CF_LDAP_PROJECT_GROUP_SAM', default=None)
 CF_LDAP_FASSE_GROUP = ENV.str('CF_LDAP_FASSE_GROUP', default=None)
+
+# ProjectUser status changes are written to AD from pre_save.
+# Off during test runs so ProjectUser saves in tests never write to a real AD; tests of the
+# sync turn it on with override_settings and mock LDAPConn.
+TESTING = 'test' in sys.argv or 'test_coverage' in sys.argv
+LDAP_PROJECTUSER_AD_SYNC = not TESTING and ENV.bool('LDAP_PROJECTUSER_AD_SYNC', default=True)
 
 
 LOGGING['handlers']['ldap_fasrc'] = {

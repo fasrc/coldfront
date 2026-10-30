@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 
 from django.db.models import Q
@@ -9,6 +10,38 @@ from coldfront.core.utils.common import import_from_settings
 from coldfront.plugins.ifx.models import ProjectOrganization
 
 EMAIL_SENDER = import_from_settings('EMAIL_SENDER')
+
+logger = logging.getLogger(__name__)
+
+
+def reactivate_group_projectusers(user, group_names):
+    """Reactivate the user's Removed/Deactivated ProjectUsers in active projects whose
+    titles match group_names (the user's AD groups). The AD side is already done, so the
+    saves skip the AD sync; they are saved one at a time so other post_save receivers run.
+    """
+    projectuser_status_active = ProjectUserStatusChoice.objects.get(name='Active')
+    projectusers = ProjectUser.objects.filter(
+        user=user,
+        project__title__in=group_names,
+        project__status__name='Active',
+        status__name__in=['Removed', 'Deactivated'],
+    ).select_related('project')
+    reactivated = []
+    for projectuser in projectusers:
+        projectuser.status = projectuser_status_active
+        projectuser._skip_ad_sync = True
+        projectuser.save()
+        reactivated.append(projectuser.project.title)
+    if reactivated:
+        logger.info(
+            'Reactivated ProjectUsers in AD groups of reactivated user.',
+            extra={
+                'category': 'database_change:ProjectUser',
+                'status': 'success',
+                'user': user.username,
+                'projects': ', '.join(reactivated),
+            }
+        )
 
 
 def reactivate_storage_allocationusers(user):

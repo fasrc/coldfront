@@ -37,9 +37,6 @@ from coldfront.core.allocation.signals import (
 )
 from coldfront.core.project.signals import (
     project_filter_users_to_remove,
-    project_preremove_projectuser,
-    project_reactivate_projectuser,
-    project_make_projectuser,
     project_create,
     project_post_create
 )
@@ -76,7 +73,7 @@ from coldfront.core.project.utils import (
     generate_usage_history_graph,
     reactivate_storage_allocationusers,
 )
-from coldfront.core.project.exceptions import ProjectUserDeactivatedError
+from coldfront.core.project.exceptions import ProjectUserDeactivatedError, ProjectUserStatusChangeError
 from coldfront.core.publication.models import Publication
 from coldfront.core.research_output.models import ResearchOutput
 from coldfront.core.resource.models import ResourceAttribute
@@ -828,27 +825,26 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
 
     def reactivate_user(self, project_obj, user_form_data, actor=None):
         """Full organizational logic for user reactivation
-        - reactivate projectuser entry
-        x reactivate any other projectusers in active projects that still have this user in AD
-          (taken care of by ldap signal)
+        - reactivate projectuser entry; its pre_save reactivates the AD account, and once that
+          succeeds the user's projectusers in their other AD groups are reactivated too
         - reactivate any related allocationuser entries in active storage allocations
         Cluster allocationusers and Slurm associations are left alone on deactivation, so there
         is nothing to restore; slurmrest_sync keeps their status in line with Slurm.
+
+        Raises ProjectUserStatusChangeError if AD rejects the reactivation.
         """
         user_username = user_form_data.get('username')
         user_obj = get_user_model().objects.get(username=user_username)
-        project_obj.projectuser_set.filter(
+        projectuser = project_obj.projectuser_set.filter(
             user=user_obj,
             status__name='Deactivated'
-        ).update(status=ProjectUserStatusChoice.objects.get(name='Active'))
-        actor_username = actor.username if actor else None
-        actor_role = _actor_role_label(actor, project_obj) if actor else None
-        project_reactivate_projectuser.send(
-            sender=self.__class__,
-            user=user_obj,
-            actor_username=actor_username,
-            actor_role=actor_role,
-        )
+        ).first()
+        if projectuser:
+            projectuser.status = ProjectUserStatusChoice.objects.get(name='Active')
+            projectuser._ad_intent = 'reactivate'
+            if actor:
+                projectuser._ad_actor = (actor.username, _actor_role_label(actor, project_obj))
+            projectuser.save()
         reactivate_storage_allocationusers(user_obj)
         send_email_template(
             subject=f'FASRC account for {user_obj.username} Reactivated',
@@ -890,7 +886,11 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                 for form in deactivated_formset:
                     user_form_data = form.cleaned_data
                     if user_form_data['selected']:
-                        self.reactivate_user(project_obj, user_form_data, actor=request.user)
+                        try:
+                            self.reactivate_user(project_obj, user_form_data, actor=request.user)
+                        except ProjectUserStatusChangeError as e:
+                            messages.error(request, f'Could not reactivate {user_form_data["username"]}: {e}')
+                            continue
                         messages.success(
                             request, f'Reactivated {user_form_data["username"]}.'
                         )
@@ -938,7 +938,6 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
             if '__select_all__' in allocation_form_data:
                 allocation_form_data.remove('__select_all__')
             errors = []
-            successes = []
             for form in formset:
                 user_form_data = form.cleaned_data
                 if user_form_data['selected']:
@@ -961,11 +960,13 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                         existing_pu is not None and existing_pu.status.name == 'Active'
                     )
 
+                    # Is the user already in the project? The save's pre_save adds them to the AD group
+                    project_user_obj = existing_pu or ProjectUser(project=project_obj, user=user_obj)
+                    project_user_obj.role = role_choice
+                    project_user_obj.status = projuserstatus_active
+                    project_user_obj._ad_intent = 'add'
                     try:
-                        project_make_projectuser.send(
-                            sender=self.__class__,
-                            user_name=user_obj.username, group_name=project_obj.title
-                        )
+                        project_user_obj.save()
                     except ProjectUserDeactivatedError:
                         errors.append(
                             f"Could not add user {user_obj} to project {project_obj.title}: "
@@ -988,25 +989,6 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
                             "Please contact a Coldfront admin for further assistance."
                         )
                         continue
-                    logger.info(
-                        "AD user added to group.",
-                        extra={
-                            'category': 'integration:AD',
-                            'status': 'success',
-                            'user': user_obj.username,
-                            'project': project_obj.title,
-                        }
-                    )
-                    successes.append(f"User {user_obj} added to AD Group for {project_obj.title}")
-
-                    # Is the user already in the project?
-                    project_user_obj, _ = project_obj.projectuser_set.update_or_create(
-                        user=user_obj,
-                        defaults={
-                            'role': role_choice,
-                            'status': projuserstatus_active,
-                        }
-                    )
                     new_role = project_user_obj.role.name
                     logger.info(
                         "User added to project.",
@@ -1282,15 +1264,16 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     continue
 
                 project_user_obj = project_obj.projectuser_set.get(user=user_obj)
+                primary_group = user_form_data['primary_group']
+                # pre_save removes user from AD group (deactivates AD account if primary group)
+                project_user_obj.status = (
+                    projectuser_status_deactivated if primary_group else projectuser_status_removed
+                )
+                project_user_obj._ad_intent = 'deactivate' if primary_group else 'remove'
+                project_user_obj._ad_actor = (request.user.username, _actor_role_label(request.user, project_obj))
 
                 try:
-                    project_preremove_projectuser.send(
-                        sender=self.__class__,
-                        user_name=user_obj.username,
-                        group_name=project_obj.title,
-                        actor_username=request.user.username,
-                        actor_role=_actor_role_label(request.user, project_obj),
-                    )
+                    project_user_obj.save()
                     logger.info(
                         'AD group member removed or deactivated.',
                         extra={
@@ -1326,9 +1309,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                     }
                 )
 
-                if user_form_data['primary_group']:
-                    project_user_obj.status = projectuser_status_deactivated
-                    project_user_obj.save()
+                if primary_group:
                     action = 'deactivated'
                     secondary_projects = ','.join(
                         deactivate_secondary_projectusers(user_obj, project_obj)
@@ -1352,8 +1333,6 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                         cc=[project_obj.pi.email]
                     )
                 else:
-                    project_user_obj.status = projectuser_status_removed
-                    project_user_obj.save()
                     action = 'removed'
                     # get allocation to remove users from
                     allocations_to_remove_user_from = project_obj.allocation_set.filter(
