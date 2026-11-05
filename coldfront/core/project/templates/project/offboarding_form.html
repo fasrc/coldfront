@@ -40,7 +40,6 @@
         <h5>Storage allocation path: <code>{{ row.path }}</code></h5>
 
         <div class="mb-3">
-          <strong>Does the allocation need to be retained in its current storage location?</strong>
           {{ row.retain|as_crispy_field }}
           <div class="ml-4" data-show-if="{{ row.prefix }}retain=yes">
             {{ row.retain_duration|as_crispy_field }}
@@ -49,7 +48,6 @@
         </div>
 
         <div class="mb-3">
-          <strong>Does the allocation need to be deleted?</strong>
           {{ row.delete|as_crispy_field }}
           <div class="ml-4" data-show-if="{{ row.prefix }}delete=yes">
             <p>Here are some <a href="https://docs.rc.fas.harvard.edu/kb/data-deletion-recommendations/" target="_blank" rel="noopener">recommended steps for deleting data</a>. If you experience issues with deleting data due to permissions issues, please email <a href="mailto:rchelp@rc.fas.harvard.edu">rchelp@rc.fas.harvard.edu</a>.</p>
@@ -58,11 +56,9 @@
         </div>
 
         <div class="mb-3">
-          <strong>Does the allocation need to be moved?</strong>
           {{ row.move|as_crispy_field }}
           <div class="ml-4" data-show-if="{{ row.prefix }}move=yes">
             <p>Note: Please ensure you have acquired all the necessary approvals from the University to migrate the data. Requirements include <a href="https://bpb-us-e1.wpmucdn.com/websites.harvard.edu/dist/f/106/files/2022/10/research_records_and_data_retention_and_maintenance_guidance_rev_2017.pdf" target="_blank" rel="noopener">written approval from the Office for the Vice Provost for Research.</a></p>
-            <strong>Are you migrating the data to another group or storage location at Harvard?</strong>
             {{ row.move_within_harvard|as_crispy_field }}
             <div class="ml-4" data-show-if="{{ row.prefix }}move_within_harvard=yes">
               <p>Note: PIs can migrate data to other storage locations using <a href="https://docs.rc.fas.harvard.edu/kb/globus-file-transfer/" target="_blank" rel="noopener">Globus</a>. Please email <a href="mailto:rchelp@rc.fas.harvard.edu">rchelp@rc.fas.harvard.edu</a> if you have questions about data transfers.</p>
