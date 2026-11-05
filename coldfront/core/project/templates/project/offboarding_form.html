@@ -38,6 +38,7 @@
       {% for row in allocation_rows %}
       <div class="border rounded p-3 mb-3 offboarding-allocation" data-prefix="{{ row.prefix }}">
         <h5>Storage allocation path: <code>{{ row.path }}</code></h5>
+        <p>Resource: <code>{{ row.resource.name|default:"(unknown)" }}</code></p>
 
         <div class="mb-3">
           {{ row.retain|as_crispy_field }}

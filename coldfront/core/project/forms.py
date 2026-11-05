@@ -319,6 +319,7 @@ class ProjectOffboardingForm(forms.Form):
             rows.append({
                 'allocation': allocation,
                 'path': self.allocation_path(allocation),
+                'resource': allocation.get_parent_resource,
                 'prefix': p,
                 **{name: self[p + name] for name in OFFBOARDING_ALLOCATION_FIELD_LABELS},
             })
