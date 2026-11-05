@@ -7,7 +7,6 @@ from django.urls import reverse
 from coldfront.core.test_helpers.factories import (
     ProjectFactory, ProjectUserFactory, UserFactory, setup_models,
 )
-from coldfront.core.project.offboarding import OffboardingForm
 
 logging.disable(logging.CRITICAL)
 
@@ -73,6 +72,15 @@ class OffboardingTests(TestCase):
         self.assertEqual(mail.outbox[0].to, ['tickets@example.edu'])
         self.assertIn('off_lab', mail.outbox[0].body)
         self.assertIn('fully offboard', mail.outbox[0].body)
+
+    @override_settings(EMAIL_TICKET_SYSTEM_ADDRESS='tickets@example.edu', EMAIL_ENABLED=True)
+    def test_email_free_text_not_html_escaped(self):
+        self.client.force_login(self.pi)
+        member_pk = self.project.projectuser_set.get(user=self.member).pk
+        data = {'offboarding_date': '2030-01-01', f'sponsor_{member_pk}': 'Smith & Jones <Lab>'}
+        self.client.post(self.form_url(), data)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('staying; new sponsor: Smith & Jones <Lab>', mail.outbox[0].body)
 
     @override_settings(EMAIL_TICKET_SYSTEM_ADDRESS='')
     def test_missing_ticket_address_does_not_claim_success(self):

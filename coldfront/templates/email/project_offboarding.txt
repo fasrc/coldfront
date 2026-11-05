@@ -1,0 +1,22 @@
+{# Plain-text email: autoescape off so user-entered text (e.g. "Smith & Jones") is not HTML-escaped. #}{% autoescape off %}Offboarding form submitted by {{ submitter.get_full_name|default:submitter.username }} ({{ submitter.username }})
+
+Project: {{ project.title }}
+Email: {{ submitter.email }}
+Alternative email: {{ alternative_email|default:"(none)" }}
+Expected date of offboarding: {{ offboarding_date|date:"Y-m-d" }}
+
+STORAGE
+{% for allocation in allocations %}  Allocation: {{ allocation.path }} (id {{ allocation.pk }})
+    Retain in current location: {{ allocation.retain|yesno:"Yes,No" }}
+{% if allocation.retain %}      Retention period: {{ allocation.retain_duration }}
+      Funding / billing code and contact: {{ allocation.retain_funding }}
+{% endif %}    Delete: {{ allocation.delete|yesno:"Yes,No" }}
+    Move: {{ allocation.move|yesno:"Yes,No" }}
+{% if allocation.move %}{% if allocation.move_within_harvard %}      Moving within Harvard to: {{ allocation.move_recipient }}
+{% else %}      Moving outside Harvard to: {{ allocation.move_destination }}
+{% endif %}{% endif %}{% empty %}  (no active storage allocations)
+{% endfor %}
+ACCOUNTS
+{% for member in members %}  {{ member.username }} ({{ member.full_name }}, {{ member.email }}): {% if member.offboard %}fully offboard{% elif member.sponsor %}staying; new sponsor: {{ member.sponsor }}{% else %}staying; no new sponsor given{% endif %}
+{% empty %}  (no other group members)
+{% endfor %}{% endautoescape %}

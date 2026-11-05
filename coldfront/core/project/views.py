@@ -51,7 +51,9 @@ from coldfront.core.project.forms import (
     ProjectAddUserForm,
     ProjectRemoveUserForm,
     ProjectUserUpdateForm,
+    ProjectOffboardingForm,
     ProjectReviewEmailForm,
+    ProjectOffboardingSelectForm,
     ProjectAttributeAddForm,
     ProjectReactivateUserForm,
     ProjectAttributeDeleteForm,
@@ -1804,6 +1806,92 @@ class ProjectReviewEmailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 
     def get_success_url(self):
         return reverse('project-review-list')
+
+
+class ProjectOffboardingSelectView(LoginRequiredMixin, UserPassesTestMixin, FormView):
+    """Lets a PI pick which of their projects to offboard."""
+    form_class = ProjectOffboardingSelectForm
+    template_name = 'project/offboarding_select.html'
+    login_url = '/'
+
+    def test_func(self):
+        """UserPassesTestMixin Tests"""
+        if self.request.user.userprofile.is_pi:
+            return True
+
+        err = 'Only PIs can offboard a project.'
+        messages.error(self.request, err)
+        return False
+
+    def get_form(self, form_class=None):
+        """Return an instance of the form to be used in this view."""
+        if form_class is None:
+            form_class = self.get_form_class()
+        return form_class(self.request.user, **self.get_form_kwargs())
+
+    def form_valid(self, form):
+        project_obj = form.cleaned_data['project']
+        return HttpResponseRedirect(reverse('project-offboarding', kwargs={'pk': project_obj.pk}))
+
+
+class ProjectOffboardingView(LoginRequiredMixin, UserPassesTestMixin, FormView):
+    """Offboarding questionnaire for a project; answers are emailed to the ticket system."""
+    form_class = ProjectOffboardingForm
+    template_name = 'project/offboarding_form.html'
+    login_url = '/'
+
+    def test_func(self):
+        """UserPassesTestMixin Tests"""
+        if not self.request.user.userprofile.is_pi:
+            err = 'Only PIs can offboard a project.'
+            messages.error(self.request, err)
+            return False
+
+        project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
+        if project_obj.pi_id == self.request.user.pk:
+            return True
+
+        err = 'You can only offboard projects you are the PI of.'
+        messages.error(self.request, err)
+        return False
+
+    def get_form(self, form_class=None):
+        """Return an instance of the form to be used in this view."""
+        if form_class is None:
+            form_class = self.get_form_class()
+        return form_class(self.kwargs.get('pk'), **self.get_form_kwargs())
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        project_obj = get_object_or_404(Project, pk=self.kwargs.get('pk'))
+        context['project'] = project_obj
+        context['allocation_rows'] = context['form'].allocation_rows()
+        context['member_rows'] = context['form'].member_rows()
+        context['select_url'] = reverse('project-offboarding-select')
+        return context
+
+    def form_valid(self, form):
+        # Read at request time (not the module-level constant) so a missing
+        # setting is caught per submission and tests can override it.
+        ticket_address = import_from_settings('EMAIL_TICKET_SYSTEM_ADDRESS', '')
+        if not ticket_address:
+            logger.error('EMAIL_TICKET_SYSTEM_ADDRESS is not configured; offboarding form not sent.')
+            err = 'Offboarding form could not be sent: no ticket system address is configured.'
+            messages.error(self.request, err)
+            return self.form_invalid(form)
+
+        send_email_template(
+            f'Offboarding form: {form.project.title}',
+            'email/project_offboarding.txt',
+            email_template_context(form.email_context(self.request.user)),
+            EMAIL_SENDER,
+            [ticket_address],
+        )
+        messages.success(self.request, 'offboarding form sent.')
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse('home')
 
 
 class ProjectNoteCreateView(NoteCreateView):

@@ -4,8 +4,13 @@ from django import forms
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 
-from coldfront.core.project.models import (Project, ProjectAttribute, ProjectReview,
-                                           ProjectUserRoleChoice)
+from coldfront.core.project.models import (
+    Project,
+    ProjectAttribute,
+    ProjectReview,
+    ProjectUser,
+    ProjectUserRoleChoice,
+)
 from coldfront.core.utils.common import import_from_settings
 
 EMAIL_DIRECTOR_PENDING_PROJECT_REVIEW_EMAIL = import_from_settings(
@@ -219,3 +224,157 @@ class ProjectAttributeUpdateForm(forms.Form):
             proj_attr = ProjectAttribute.objects.get(pk=cleaned_data.get('pk'))
             proj_attr.value = cleaned_data.get('new_value')
             proj_attr.clean()
+
+
+class ProjectOffboardingSelectForm(forms.Form):
+    project = forms.ModelChoiceField(queryset=Project.objects.none(), empty_label=None)
+
+    def __init__(self, request_user, *args, **kwargs):
+        """Only offer New/Active projects the requesting user is PI of."""
+        super().__init__(*args, **kwargs)
+        self.fields['project'].queryset = Project.objects.filter(
+            pi=request_user, status__name__in=['New', 'Active']
+        ).order_by('title')
+
+
+class ProjectOffboardingForm(forms.Form):
+    """Offboarding questionnaire for a project: storage disposition per active
+    storage allocation and account disposition per active group member.
+    """
+    YES_NO = (('yes', 'Yes'), ('no', 'No'))
+    ALLOCATION_FIELD_NAMES = (
+        'retain', 'retain_duration', 'retain_funding', 'delete', 'move',
+        'move_within_harvard', 'move_recipient', 'move_destination',
+    )
+
+    alternative_email = forms.EmailField(required=False, label='Alternative email')
+    offboarding_date = forms.DateField(
+        label='Date project will be completed or when leaving the university',
+        widget=forms.DateInput(attrs={'type': 'date'}),
+    )
+
+    def __init__(self, project_pk, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        project_obj = get_object_or_404(Project, pk=project_pk)
+        self.project = project_obj
+
+        self.allocations = list(project_obj.allocation_set.filter(
+            status__name='Active', resources__resource_type__name='Storage'
+        ).distinct().order_by('resources__name'))
+        self.members = list(ProjectUser.objects.filter(
+            project=project_obj, status__name='Active'
+        ).exclude(user=project_obj.pi).select_related('user').order_by('user__username'))
+
+        for allocation in self.allocations:
+            self._add_allocation_fields(allocation)
+        for project_user in self.members:
+            self.fields[f'offboard_{project_user.pk}'] = forms.BooleanField(required=False)
+            self.fields[f'sponsor_{project_user.pk}'] = forms.CharField(required=False, max_length=255)
+
+    @staticmethod
+    def allocation_prefix(allocation):
+        return f'alloc_{allocation.pk}_'
+
+    @staticmethod
+    def allocation_path(allocation):
+        try:
+            return allocation.path or str(allocation.get_parent_resource)
+        except Exception:  # noqa: BLE001 - missing 'Subdirectory' attribute type, etc.
+            return str(allocation.get_parent_resource)
+
+    def _add_allocation_fields(self, allocation):
+        p = self.allocation_prefix(allocation)
+        radio = forms.RadioSelect
+        self.fields[p + 'retain'] = forms.ChoiceField(choices=self.YES_NO, widget=radio)
+        self.fields[p + 'retain_duration'] = forms.CharField(required=False)
+        self.fields[p + 'retain_funding'] = forms.CharField(
+            required=False, widget=forms.Textarea(attrs={'rows': 3}))
+        self.fields[p + 'delete'] = forms.ChoiceField(choices=self.YES_NO, widget=radio)
+        self.fields[p + 'move'] = forms.ChoiceField(choices=self.YES_NO, widget=radio)
+        self.fields[p + 'move_within_harvard'] = forms.ChoiceField(
+            choices=self.YES_NO, widget=radio, required=False)
+        self.fields[p + 'move_recipient'] = forms.CharField(required=False)
+        self.fields[p + 'move_destination'] = forms.CharField(required=False)
+
+    def allocation_rows(self):
+        """Bound fields grouped per allocation, for template rendering."""
+        rows = []
+        for allocation in self.allocations:
+            p = self.allocation_prefix(allocation)
+            rows.append({
+                'allocation': allocation,
+                'path': self.allocation_path(allocation),
+                'prefix': p,
+                **{name: self[p + name] for name in self.ALLOCATION_FIELD_NAMES},
+            })
+        return rows
+
+    def member_rows(self):
+        return [
+            {
+                'project_user': project_user,
+                'offboard': self[f'offboard_{project_user.pk}'],
+                'sponsor': self[f'sponsor_{project_user.pk}'],
+            }
+            for project_user in self.members
+        ]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        required_msg = 'This field is required.'
+        for allocation in self.allocations:
+            p = self.allocation_prefix(allocation)
+            if cleaned_data.get(p + 'retain') == 'yes':
+                for name in ('retain_duration', 'retain_funding'):
+                    if not cleaned_data.get(p + name, '').strip():
+                        self.add_error(p + name, required_msg)
+            if cleaned_data.get(p + 'move') == 'yes':
+                within = cleaned_data.get(p + 'move_within_harvard')
+                if not within:
+                    self.add_error(p + 'move_within_harvard', required_msg)
+                elif within == 'yes' and not cleaned_data.get(p + 'move_recipient', '').strip():
+                    self.add_error(p + 'move_recipient', required_msg)
+                elif within == 'no' and not cleaned_data.get(p + 'move_destination', '').strip():
+                    self.add_error(p + 'move_destination', required_msg)
+        return cleaned_data
+
+    def email_context(self, user):
+        """Context for the email/project_offboarding.txt template.
+
+        Flattens the per-allocation and per-member fields (whose names are
+        computed from pks) into lists the template can iterate over.
+        """
+        cleaned_data = self.cleaned_data
+        allocations = []
+        for allocation in self.allocations:
+            p = self.allocation_prefix(allocation)
+            allocations.append({
+                'pk': allocation.pk,
+                'path': self.allocation_path(allocation),
+                'retain': cleaned_data[p + 'retain'] == 'yes',
+                'retain_duration': cleaned_data[p + 'retain_duration'],
+                'retain_funding': cleaned_data[p + 'retain_funding'],
+                'delete': cleaned_data[p + 'delete'] == 'yes',
+                'move': cleaned_data[p + 'move'] == 'yes',
+                'move_within_harvard': cleaned_data[p + 'move_within_harvard'] == 'yes',
+                'move_recipient': cleaned_data[p + 'move_recipient'],
+                'move_destination': cleaned_data[p + 'move_destination'],
+            })
+        members = [
+            {
+                'username': project_user.user.username,
+                'full_name': project_user.user.get_full_name(),
+                'email': project_user.user.email,
+                'offboard': cleaned_data[f'offboard_{project_user.pk}'],
+                'sponsor': cleaned_data[f'sponsor_{project_user.pk}'].strip(),
+            }
+            for project_user in self.members
+        ]
+        return {
+            'submitter': user,
+            'project': self.project,
+            'alternative_email': cleaned_data.get('alternative_email'),
+            'offboarding_date': cleaned_data['offboarding_date'],
+            'allocations': allocations,
+            'members': members,
+        }
