@@ -1898,7 +1898,7 @@ class ProjectOffboardingView(LoginRequiredMixin, UserPassesTestMixin, FormView):
             EMAIL_SENDER,
             [ticket_address],
         )
-        messages.success(self.request, 'offboarding form sent.')
+        messages.success(self.request, 'Offboarding form sent. FASRC staff will contact you about next steps.')
         return super().form_valid(form)
 
     def get_success_url(self):

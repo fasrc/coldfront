@@ -45,9 +45,9 @@ class OffboardingTests(TestCase):
 
     def test_navbar_shows_management_for_pi_only(self):
         self.client.force_login(self.pi)
-        self.assertContains(self.client.get('/'), 'Decommission a Project')
+        self.assertContains(self.client.get('/'), 'Request Project Decommission')
         self.client.force_login(self.member)
-        self.assertNotContains(self.client.get('/'), 'Decommission a Project')
+        self.assertNotContains(self.client.get('/'), 'Request Project Decommission')
 
     def test_select_redirects_to_form(self):
         self.client.force_login(self.pi)
@@ -75,10 +75,11 @@ class OffboardingTests(TestCase):
                 self.client.force_login(user)
                 resp = self.client.get(detail_url)
                 self.assertEqual(resp.status_code, 200)
+                # Match the button id: PIs also see the same text in the navbar.
                 if visible:
-                    self.assertContains(resp, 'Request Project Decommission')
+                    self.assertContains(resp, 'id="request-decommission"')
                 else:
-                    self.assertNotContains(resp, 'Request Project Decommission')
+                    self.assertNotContains(resp, 'id="request-decommission"')
 
     @override_settings(EMAIL_TICKET_SYSTEM_ADDRESS='tickets@example.edu', EMAIL_ENABLED=True)
     def test_submit_sends_email_and_redirects(self):

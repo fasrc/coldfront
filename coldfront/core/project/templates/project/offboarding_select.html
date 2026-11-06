@@ -1,10 +1,10 @@
 {% extends "common/base.html" %}
 {% load crispy_forms_tags %}
 
-{% block title %}Decommission a Project{% endblock %}
+{% block title %}Request Project Decommission{% endblock %}
 
 {% block content %}
-<h2>Decommission a Project</h2>
+<h2>Request Project Decommission</h2>
 <hr>
 {% if form.project.field.queryset.exists %}
 <p>Select the project you would like to offboard. Each project requires a separate form.</p>
