@@ -1,0 +1,21 @@
+{% extends "common/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Request Project Decommission{% endblock %}
+
+{% block content %}
+<h2>Request Project Decommission</h2>
+<hr>
+{% if form.project.field.queryset.exists %}
+<p>Select the project you would like to offboard. Each project requires a separate form.</p>
+<form method="post">
+  {% csrf_token %}
+  {{ form|crispy }}
+  <a class="btn btn-secondary" href="{% url 'home' %}" role="button">Go Back</a>
+  <input class="btn btn-primary" type="submit" value="Continue" />
+</form>
+{% else %}
+<div class="alert alert-info">You are not the PI of any active projects.</div>
+<a class="btn btn-secondary" href="{% url 'home' %}" role="button">Go Back</a>
+{% endif %}
+{% endblock %}
