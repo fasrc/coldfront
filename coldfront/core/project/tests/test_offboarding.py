@@ -30,6 +30,7 @@ class OffboardingTests(TestCase):
         cls.other.userprofile.save()
         cls.member = UserFactory(username='member1')
         ProjectUserFactory(user=cls.member, project=cls.project)
+        cls.admin = UserFactory(username='admin_off', is_superuser=True)
 
     def form_url(self):
         return reverse('project-offboarding', kwargs={'pk': self.project.pk})
@@ -60,6 +61,24 @@ class OffboardingTests(TestCase):
     def test_other_pi_cannot_offboard_project(self):
         self.client.force_login(self.other)
         self.assertNotEqual(self.client.get(self.form_url()).status_code, 200)
+
+    def test_admin_can_open_form_go_back_to_project(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(self.form_url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['select_url'], reverse('project-detail', kwargs={'pk': self.project.pk}))
+
+    def test_detail_button_visible_to_pi_and_admin_only(self):
+        detail_url = reverse('project-detail', kwargs={'pk': self.project.pk})
+        for user, visible in ((self.pi, True), (self.admin, True), (self.member, False)):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                resp = self.client.get(detail_url)
+                self.assertEqual(resp.status_code, 200)
+                if visible:
+                    self.assertContains(resp, 'Request Project Decommission')
+                else:
+                    self.assertNotContains(resp, 'Request Project Decommission')
 
     @override_settings(EMAIL_TICKET_SYSTEM_ADDRESS='tickets@example.edu', EMAIL_ENABLED=True)
     def test_submit_sends_email_and_redirects(self):

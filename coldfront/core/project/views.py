@@ -236,6 +236,10 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
         context['is_allowed_to_update_permissions'] = self.object.has_perm(
             self.request.user, ProjectPermission.GENERAL_MANAGER
         )
+        # Same rule as ProjectOffboardingView.test_func: admins, or this project's PI.
+        context['is_allowed_to_request_decommission'] = self.request.user.is_superuser or (
+            self.request.user.userprofile.is_pi and self.object.pi_id == self.request.user.pk
+        )
 
         attributes = self.object.projectattribute_set.all().order_by('proj_attr_type__name')
 
@@ -1842,6 +1846,9 @@ class ProjectOffboardingView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 
     def test_func(self):
         """UserPassesTestMixin Tests"""
+        if self.request.user.is_superuser:
+            return True
+
         if not self.request.user.userprofile.is_pi:
             err = 'Only PIs can offboard a project.'
             messages.error(self.request, err)
@@ -1867,7 +1874,11 @@ class ProjectOffboardingView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         context['project'] = project_obj
         context['allocation_rows'] = context['form'].allocation_rows()
         context['member_rows'] = context['form'].member_rows()
-        context['select_url'] = reverse('project-offboarding-select')
+        # The project picker is PI-only; admins who aren't PIs go back to the project page.
+        if self.request.user.userprofile.is_pi:
+            context['select_url'] = reverse('project-offboarding-select')
+        else:
+            context['select_url'] = reverse('project-detail', kwargs={'pk': project_obj.pk})
         return context
 
     def form_valid(self, form):
