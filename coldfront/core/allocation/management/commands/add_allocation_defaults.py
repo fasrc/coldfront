@@ -82,6 +82,7 @@ class Command(BaseCommand):
             ('RawShares', 'Text', False, False, False),
             ('RawUsage', 'Int', False, False, False),
             ('L3', 'Boolean', False, False, False),
+            ('Globus UUID', 'Text', False, True, False),
             # UBCCR defaults
             ('Cloud Account Name', 'Text', False, False, False),
             # ('CLOUD_USAGE_NOTIFICATION', 'Yes/No', False, True),
