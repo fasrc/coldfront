@@ -5,6 +5,7 @@ from django.test import TestCase, override_settings
 from ifxurls.urls import getIfxUrl
 
 from coldfront.core.project.models import ProjectUser
+from coldfront.core.project.signals import project_projectusers_status_change
 from coldfront.core.test_helpers.factories import (
     ProjectFactory,
     ProjectUserFactory,
@@ -387,3 +388,46 @@ class ProjectUserAffiliationSyncTest(TestCase):
         self.make_projectuser(self.active)
         mock_logger.error.assert_called_once()
 
+    def test_bulk_signal_syncs_changes(self):
+        projectuser = self.make_projectuser(self.removed)
+        projectusers = list(ProjectUser.objects.filter(pk=projectuser.pk))
+        ProjectUser.objects.filter(pk=projectuser.pk).update(status=self.active)
+        with self.captureOnCommitCallbacks(execute=True):
+            project_projectusers_status_change.send(sender=None, projectusers=projectusers, new_status='Active')
+        self.assertEqual(self.posted_entries()[0]['active'], True)
+
+    def test_bulk_signal_ignores_reactivation(self):
+        projectuser = self.make_projectuser(self.deactivated)
+        projectusers = list(ProjectUser.objects.filter(pk=projectuser.pk))
+        with self.captureOnCommitCallbacks(execute=True):
+            project_projectusers_status_change.send(sender=None, projectusers=projectusers, new_status='Active')
+        self.mock_post.assert_not_called()
+
+    def test_bulk_signal_created(self):
+        unsaved = [ProjectUserFactory.build(project=self.project, user=self.user, status=self.active)]
+        with self.captureOnCommitCallbacks(execute=True):
+            project_projectusers_status_change.send(
+                sender=None, projectusers=unsaved, new_status='Active', created=True
+            )
+        self.assertEqual(self.posted_entries()[0]['active'], True)
+
+    @patch('coldfront.plugins.ldap.signals.LDAPConn')
+    def test_ad_reactivation_syncs_removed_group_projectusers(self, mock_ldap_conn):
+        """The LDAP reactivation receiver bulk-reactivates the user's other AD-group projects;
+        only rows that were Removed (not Deactivated) are additions"""
+        from coldfront.plugins.ldap.signals import reactivate_user
+
+        self.make_projectuser(self.removed)
+        other_project = ProjectFactory(title='poisson_lab_2')
+        ProjectOrganization.objects.create(
+            project=other_project,
+            organization=OrganizationFactory(name='Poisson Center', rank='center', ifxorg='IFXORG0002'),
+        )
+        self.make_projectuser(self.deactivated, project=other_project)
+        mock_ldap_conn.return_value.return_user_by_name.return_value = {'memberOf': [
+            'CN=poisson_lab,OU=RC,OU=Domain Groups,DC=rc,DC=domain',
+            'CN=poisson_lab_2,OU=RC,OU=Domain Groups,DC=rc,DC=domain',
+        ]}
+        with self.captureOnCommitCallbacks(execute=True):
+            reactivate_user(sender=None, user=self.user)
+        self.assertEqual(self.posted_entries(), [{'ifxid': 'IFXID0001', 'ifxorg': 'IFXORG0001', 'active': True}])

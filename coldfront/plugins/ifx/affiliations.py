@@ -20,6 +20,7 @@ from django.dispatch import receiver
 from ifxurls.urls import getIfxUrl
 
 from coldfront.core.project.models import ProjectUser
+from coldfront.core.project.signals import project_projectusers_status_change
 from coldfront.core.utils.common import import_from_settings
 from coldfront.plugins.ifx.models import email_ifx_managers
 
@@ -63,6 +64,19 @@ def projectuser_post_save(sender, instance, created, **kwargs):
     active = classify_change(old_status, instance.status.name)
     if active is not None:
         sync_affiliations_on_commit([(instance.user, instance.project, active)])
+
+
+@receiver(project_projectusers_status_change)
+def projectusers_status_change(sender, projectusers, new_status, created=False, **kwargs):
+    '''Send affiliation updates for bulk ProjectUser status changes that bypass post_save'''
+    changes = []
+    for projectuser in projectusers:
+        old_status = None if created else projectuser.status.name
+        active = classify_change(old_status, new_status)
+        if active is not None:
+            changes.append((projectuser.user, projectuser.project, active))
+    if changes:
+        sync_affiliations_on_commit(changes)
 
 
 def sync_affiliations_on_commit(changes):

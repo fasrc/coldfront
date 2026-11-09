@@ -34,6 +34,7 @@ from coldfront.core.project.models import (
     ProjectUser,
 )
 from coldfront.core.project.exceptions import ProjectUserDeactivatedError
+from coldfront.core.project.signals import project_projectusers_status_change
 
 
 logger = logging.getLogger(__name__)
@@ -730,8 +731,14 @@ def collect_update_project_status_membership():
         pis_to_deactivate = ProjectUser.objects.filter(
             reduce(operator.or_, (
                 Q(project=p) & Q(user=p.pi) for p in projects_to_deactivate)
-            ))
+            )).select_related('project', 'status', 'user')
+        removed_pis = list(pis_to_deactivate)
         pis_to_deactivate.update(status=ProjectUserStatusChoice.objects.get(name='Removed'))
+        project_projectusers_status_change.send(
+            sender=collect_update_project_status_membership,
+            projectusers=removed_pis,
+            new_status='Removed',
+        )
         logger.info('deactivated PIs: %s',
             [(pi.project.title, pi.user.username) for pi in pis_to_deactivate],
             extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
@@ -839,8 +846,17 @@ def collect_update_project_status_membership():
 
                 # reactivate as Active if their AD account is enabled, otherwise
                 # Deactivated (still a group member, but the AD account is disabled)
-                present_projectusers.filter(user__username__in=active_ad_usernames).update(
+                readded_projectusers = present_projectusers.filter(
+                    user__username__in=active_ad_usernames
+                ).select_related('project', 'status', 'user')
+                readded_projectusers_list = list(readded_projectusers)
+                readded_projectusers.update(
                     role=projectuser_role_user, status=projectuserstatus_active
+                )
+                project_projectusers_status_change.send(
+                    sender=collect_update_project_status_membership,
+                    projectusers=readded_projectusers_list,
+                    new_status='Active',
                 )
                 present_projectusers.filter(user__username__in=disabled_ad_usernames).update(
                     role=projectuser_role_user, status=projectuserstatus_deactivated
@@ -864,14 +880,15 @@ def collect_update_project_status_membership():
                 pk__in=[pu.user.pk for pu in present_projectusers]
             )
             if missing_projectusers.exists():
-                ProjectUser.objects.bulk_create([
+                new_active_projectusers = [
                     ProjectUser(
                         project=group.project,
                         user=user,
                         role=projectuser_role_user,
                         status=projectuserstatus_active
                     ) for user in missing_projectusers if user.username in active_ad_usernames
-                ] + [
+                ]
+                ProjectUser.objects.bulk_create(new_active_projectusers + [
                     ProjectUser(
                         project=group.project,
                         user=user,
@@ -879,6 +896,12 @@ def collect_update_project_status_membership():
                         status=projectuserstatus_deactivated
                     ) for user in missing_projectusers if user.username in disabled_ad_usernames
                 ])
+                project_projectusers_status_change.send(
+                    sender=collect_update_project_status_membership,
+                    projectusers=new_active_projectusers,
+                    new_status='Active',
+                    created=True,
+                )
                 logger.info(
                     "added projectusers to project %s: %s",
                     group.project.title, [u.username for u in missing_projectusers],
@@ -944,6 +967,12 @@ def collect_update_project_status_membership():
     projectuserstatus_removed = ProjectUserStatusChoice.objects.get(name='Removed')
     projectusers_to_remove_queryset = ProjectUser.objects.filter(pk__in=[pu.pk for pu in projectusers_to_remove])
     projectusers_to_remove_queryset.update(status=projectuserstatus_removed)
+    # projectusers_to_remove still holds each ProjectUser's pre-removal status
+    project_projectusers_status_change.send(
+        sender=collect_update_project_status_membership,
+        projectusers=projectusers_to_remove,
+        new_status='Removed',
+    )
     projuser_remove_log = [
         {"uname":pu.user.username, "lab": pu.project.title} for pu in projectusers_to_remove
     ]
@@ -1074,6 +1103,12 @@ def add_new_projects(groupusercollections, errortracker):
                 )
                 for user in users_to_add
         ])
+        project_projectusers_status_change.send(
+            sender=import_projects_projectusers,
+            projectusers=added_projectusers,
+            new_status='Active',
+            created=True,
+        )
         logger.info('added projectusers: %s', added_projectusers,
                 extra={ 'category': 'database_change:ProjectUser', 'status': 'success' }
         )

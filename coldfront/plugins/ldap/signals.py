@@ -10,6 +10,7 @@ from coldfront.core.project.signals import (
     project_create,
     project_post_create,
     project_reactivate_projectuser,
+    project_projectusers_status_change,
     project_user_manager_ldap_groups_grant,
     project_user_manager_ldap_groups_revoke,
 )
@@ -66,10 +67,15 @@ def reactivate_user(sender, **kwargs):
         project__title__in=user_group_names,
         project__status__name='Active',
         status__name__in=['Removed', 'Deactivated'],
-    )
-    projects = ', '.join([pu.project.title for pu in projectuser_entries])
+    ).select_related('project', 'status', 'user')
+    # read before the update, so each ProjectUser still holds its pre-change status
+    reactivated_projectusers = list(projectuser_entries)
+    projects = ', '.join([pu.project.title for pu in reactivated_projectusers])
     projectuser_entries.update(
         status=ProjectUserStatusChoice.objects.get(name='Active')
+    )
+    project_projectusers_status_change.send(
+        sender=reactivate_user, projectusers=reactivated_projectusers, new_status='Active'
     )
     logger.info(
         'Reactivated AD user and related ProjectUsers.',
