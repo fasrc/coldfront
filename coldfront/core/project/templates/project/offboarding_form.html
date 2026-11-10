@@ -40,25 +40,28 @@
         <h5>Storage allocation path: <code>{{ row.path }}</code></h5>
         <p>Resource: <code>{{ row.resource.name|default:"(unknown)" }}</code></p>
 
-        <div class="mb-3">
-          {{ row.retain|as_crispy_field }}
-          <div class="ml-4" data-show-if="{{ row.prefix }}retain=yes">
-            {{ row.retain_duration|as_crispy_field }}
-            {{ row.retain_funding|as_crispy_field }}
-          </div>
-        </div>
+        <p class="font-weight-bold mb-1">{{ row.action.label }} <span class="text-danger">*</span></p>
+        {% if row.action.errors %}<div class="text-danger mb-2">{{ row.action.errors|striptags }}</div>{% endif %}
+        {% for radio in row.action %}
+        <div class="form-check mb-2">
+          <input type="radio" class="form-check-input" name="{{ radio.data.name }}" id="{{ radio.id_for_label }}"
+                 value="{{ radio.data.value }}" {% if radio.data.selected %}checked{% endif %}>
+          <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
 
-        <div class="mb-3">
-          {{ row.delete|as_crispy_field }}
-          <div class="ml-4" data-show-if="{{ row.prefix }}delete=yes">
+          {% if radio.data.value == 'retain' %}
+          <div class="ml-2 mt-2" data-show-if="{{ row.prefix }}action=retain">
+            {{ row.retain_duration|as_crispy_field }}
+            {{ row.retain_contact_name|as_crispy_field }}
+            {{ row.retain_contact_email|as_crispy_field }}
+            {{ row.retain_billing_code|as_crispy_field }}
+          </div>
+          {% elif radio.data.value == 'delete' %}
+          <div class="ml-2 mt-2" data-show-if="{{ row.prefix }}action=delete">
             <p>Here are some <a href="https://docs.rc.fas.harvard.edu/kb/data-deletion-recommendations/" target="_blank" rel="noopener">recommended steps for deleting data</a>. If you experience issues with deleting data due to permissions issues, please email <a href="mailto:rchelp@rc.fas.harvard.edu">rchelp@rc.fas.harvard.edu</a>.</p>
             <p>For protected data (<a href="https://privsec.harvard.edu/data-security-levels-research-data-examples" target="_blank" rel="noopener">Level 3</a>), PIs are responsible for informing FAS RC if and when the data requires disposal. <a href="mailto:rchelp@rc.fas.harvard.edu">Please email FAS RC</a> to discuss destruction options.</p>
           </div>
-        </div>
-
-        <div class="mb-3">
-          {{ row.move|as_crispy_field }}
-          <div class="ml-4" data-show-if="{{ row.prefix }}move=yes">
+          {% elif radio.data.value == 'move' %}
+          <div class="ml-2 mt-2" data-show-if="{{ row.prefix }}action=move">
             <p>Note: Please ensure you have acquired all the necessary approvals from the University to migrate the data. Requirements include <a href="https://bpb-us-e1.wpmucdn.com/websites.harvard.edu/dist/f/106/files/2022/10/research_records_and_data_retention_and_maintenance_guidance_rev_2017.pdf" target="_blank" rel="noopener">written approval from the Office for the Vice Provost for Research.</a></p>
             {{ row.move_within_harvard|as_crispy_field }}
             <div class="ml-4" data-show-if="{{ row.prefix }}move_within_harvard=yes">
@@ -70,7 +73,9 @@
               <p>Note: We recommend if the project is completed, data be deposited into a <a href="https://www.rc.fas.harvard.edu/services/research-data-management/" target="_blank" rel="noopener">Data Repository</a>.</p>
             </div>
           </div>
+          {% endif %}
         </div>
+        {% endfor %}
       </div>
       {% empty %}
       <p class="text-muted">This project has no active storage allocations.</p>

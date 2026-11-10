@@ -9,7 +9,8 @@ STORAGE
 {% for allocation in allocations %}  Allocation: {{ allocation.path }} (id {{ allocation.pk }})
     Retain in current location: {{ allocation.retain|yesno:"Yes,No" }}
 {% if allocation.retain %}      Retention period: {{ allocation.retain_duration }}
-      Funding / billing code and contact: {{ allocation.retain_funding }}
+      Department contact: {{ allocation.retain_contact_name }} <{{ allocation.retain_contact_email }}>
+      Billing/funding code: {{ allocation.retain_billing_code }}
 {% endif %}    Delete: {{ allocation.delete|yesno:"Yes,No" }}
     Move: {{ allocation.move|yesno:"Yes,No" }}
 {% if allocation.move %}{% if allocation.move_within_harvard %}      Moving within Harvard to: {{ allocation.move_recipient }}

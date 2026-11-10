@@ -1,4 +1,5 @@
 import datetime
+import re
 
 from django import forms
 from django.db.models.functions import Lower
@@ -11,6 +12,7 @@ from coldfront.core.project.models import (
     ProjectUser,
     ProjectUserRoleChoice,
 )
+from coldfront.core.allocation.forms import ExpenseCodeField
 from coldfront.core.utils.common import import_from_settings
 
 EMAIL_DIRECTOR_PENDING_PROJECT_REVIEW_EMAIL = import_from_settings(
@@ -238,11 +240,11 @@ class ProjectOffboardingSelectForm(forms.Form):
 
 
 OFFBOARDING_ALLOCATION_FIELD_LABELS = {
-    'retain': 'Does the allocation need to be retained in its current storage location?',
+    'action': 'How should this allocation be handled?',
     'retain_duration': 'How long does the data need to be retained?',
-    'retain_funding': 'Funding / billing code and contact',
-    'delete': 'Does the allocation need to be deleted?',
-    'move': 'Does the allocation need to be moved?',
+    'retain_contact_name': 'Department contact name',
+    'retain_contact_email': 'Department contact email',
+    'retain_billing_code': '33-digit billing/funding code',
     'move_within_harvard': 'Are you migrating the data to another group or storage location at Harvard?',
     'move_recipient': 'Recipient group or contact at Harvard',
     'move_destination': 'Destination outside Harvard',
@@ -254,6 +256,11 @@ class ProjectOffboardingForm(forms.Form):
     storage allocation and account disposition per active group member.
     """
     YES_NO = (('yes', 'Yes'), ('no', 'No'))
+    ALLOCATION_ACTIONS = (
+        ('retain', 'Retain the allocation in its current storage location'),
+        ('delete', 'Delete the allocation'),
+        ('move', 'Move the allocation'),
+    )
 
     alternative_email = forms.EmailField(required=False, label='Alternative email')
     offboarding_date = forms.DateField(
@@ -294,16 +301,17 @@ class ProjectOffboardingForm(forms.Form):
         p = self.allocation_prefix(allocation)
         labels = OFFBOARDING_ALLOCATION_FIELD_LABELS
         radio = forms.RadioSelect
-        self.fields[p + 'retain'] = forms.ChoiceField(
-            label=labels['retain'], choices=self.YES_NO, widget=radio)
+        # retain/delete/move are mutually exclusive, so they are a single required choice.
+        self.fields[p + 'action'] = forms.ChoiceField(
+            label=labels['action'], choices=self.ALLOCATION_ACTIONS, widget=radio)
         self.fields[p + 'retain_duration'] = forms.CharField(
             label=labels['retain_duration'], required=False)
-        self.fields[p + 'retain_funding'] = forms.CharField(
-            label=labels['retain_funding'], required=False, widget=forms.Textarea(attrs={'rows': 3}))
-        self.fields[p + 'delete'] = forms.ChoiceField(
-            label=labels['delete'], choices=self.YES_NO, widget=radio)
-        self.fields[p + 'move'] = forms.ChoiceField(
-            label=labels['move'], choices=self.YES_NO, widget=radio)
+        self.fields[p + 'retain_contact_name'] = forms.CharField(
+            label=labels['retain_contact_name'], required=False, max_length=255)
+        self.fields[p + 'retain_contact_email'] = forms.EmailField(
+            label=labels['retain_contact_email'], required=False)
+        self.fields[p + 'retain_billing_code'] = ExpenseCodeField(
+            label=labels['retain_billing_code'], required=False)
         self.fields[p + 'move_within_harvard'] = forms.ChoiceField(
             label=labels['move_within_harvard'], choices=self.YES_NO, widget=radio, required=False)
         self.fields[p + 'move_recipient'] = forms.CharField(
@@ -340,11 +348,18 @@ class ProjectOffboardingForm(forms.Form):
         required_msg = 'This field is required.'
         for allocation in self.allocations:
             p = self.allocation_prefix(allocation)
-            if cleaned_data.get(p + 'retain') == 'yes':
-                for name in ('retain_duration', 'retain_funding'):
-                    if not cleaned_data.get(p + name, '').strip():
+            action = cleaned_data.get(p + 'action')
+            if action == 'retain':
+                for name in ('retain_duration', 'retain_contact_name', 'retain_contact_email',
+                             'retain_billing_code'):
+                    if not cleaned_data.get(p + name, '').strip() and not self.has_error(p + name):
                         self.add_error(p + name, required_msg)
-            if cleaned_data.get(p + 'move') == 'yes':
+                code = cleaned_data.get(p + 'retain_billing_code', '')
+                if code and not self.has_error(p + 'retain_billing_code'):
+                    digits = re.sub(r'[^0-9xX]', '', code)
+                    cleaned_data[p + 'retain_billing_code'] = '-'.join(
+                        [digits[:3], digits[3:8], digits[8:12], digits[12:18], digits[18:24], digits[24:28], digits[28:33]])
+            if action == 'move':
                 within = cleaned_data.get(p + 'move_within_harvard')
                 if not within:
                     self.add_error(p + 'move_within_harvard', required_msg)
@@ -367,11 +382,13 @@ class ProjectOffboardingForm(forms.Form):
             allocations.append({
                 'pk': allocation.pk,
                 'path': self.allocation_path(allocation),
-                'retain': cleaned_data[p + 'retain'] == 'yes',
+                'retain': cleaned_data[p + 'action'] == 'retain',
                 'retain_duration': cleaned_data[p + 'retain_duration'],
-                'retain_funding': cleaned_data[p + 'retain_funding'],
-                'delete': cleaned_data[p + 'delete'] == 'yes',
-                'move': cleaned_data[p + 'move'] == 'yes',
+                'retain_contact_name': cleaned_data[p + 'retain_contact_name'],
+                'retain_contact_email': cleaned_data[p + 'retain_contact_email'],
+                'retain_billing_code': cleaned_data[p + 'retain_billing_code'],
+                'delete': cleaned_data[p + 'action'] == 'delete',
+                'move': cleaned_data[p + 'action'] == 'move',
                 'move_within_harvard': cleaned_data[p + 'move_within_harvard'] == 'yes',
                 'move_recipient': cleaned_data[p + 'move_recipient'],
                 'move_destination': cleaned_data[p + 'move_destination'],
