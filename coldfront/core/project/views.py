@@ -1874,29 +1874,16 @@ class ProjectOffboardingView(LoginRequiredMixin, UserPassesTestMixin, FormView):
         context['project'] = project_obj
         context['allocation_rows'] = context['form'].allocation_rows()
         context['member_rows'] = context['form'].member_rows()
-        # The project picker is PI-only; admins who aren't PIs go back to the project page.
-        if self.request.user.userprofile.is_pi:
-            context['select_url'] = reverse('project-offboarding-select')
-        else:
-            context['select_url'] = reverse('project-detail', kwargs={'pk': project_obj.pk})
+        context['select_url'] = reverse('project-detail', kwargs={'pk': project_obj.pk})
         return context
 
     def form_valid(self, form):
-        # Read at request time (not the module-level constant) so a missing
-        # setting is caught per submission and tests can override it.
-        ticket_address = import_from_settings('EMAIL_TICKET_SYSTEM_ADDRESS', '')
-        if not ticket_address:
-            logger.error('EMAIL_TICKET_SYSTEM_ADDRESS is not configured; offboarding form not sent.')
-            err = 'Offboarding form could not be sent: no ticket system address is configured.'
-            messages.error(self.request, err)
-            return self.form_invalid(form)
-
         send_email_template(
             f'Offboarding form: {form.project.title}',
             'email/project_offboarding.txt',
             email_template_context(form.email_context(self.request.user)),
             EMAIL_SENDER,
-            [ticket_address],
+            [EMAIL_TICKET_SYSTEM_ADDRESS],
         )
         messages.success(self.request, 'Offboarding form sent. FASRC staff will contact you about next steps.')
         return super().form_valid(form)
