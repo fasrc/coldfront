@@ -1,14 +1,17 @@
-from datetime import datetime
-from unittest.mock import patch
+from datetime import datetime, timezone as dt_timezone
+from unittest.mock import MagicMock, patch
 import pandas as pd
 
+from ldap3 import MODIFY_REPLACE
 from ldap3.core.timezone import OffsetTzInfo
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 from django.contrib.auth import get_user_model
 
 from coldfront.core.project.models import ProjectUser
 from coldfront.plugins.ldap.utils import (
     LDAPConn,
+    LDAPException,
+    datetime_to_filetime,
     GroupUserCollection,
     add_new_projects,
     collect_update_project_status_membership,
@@ -357,3 +360,46 @@ class CollectUpdateProjectStatusMembershipTests(TestCase):
         self.run_sync()
         pi_projectuser = self.project.projectuser_set.get(user=self.pi_user)
         self.assertEqual(pi_projectuser.status.name, 'Active')
+
+
+class SetUserExpirationTest(SimpleTestCase):
+    """Unit tests for LDAPConn.set_user_expiration with a mocked connection"""
+
+    def setUp(self):
+        self.ldap_conn = LDAPConn.__new__(LDAPConn)  # skip __init__ (no AD bind)
+        self.ldap_conn.conn = MagicMock()
+        self.ldap_conn.return_user_by_name = MagicMock(
+            return_value={'distinguishedName': 'CN=jdoe,OU=Users', 'info': ['']}
+        )
+        self.expiration = datetime(2026, 12, 1, 4, 59, 59, tzinfo=dt_timezone.utc)
+
+    def test_datetime_to_filetime_unix_epoch(self):
+        self.assertEqual(
+            datetime_to_filetime(datetime(1970, 1, 1, tzinfo=dt_timezone.utc)),
+            116444736000000000,
+        )
+
+    def test_datetime_to_filetime_naive_raises(self):
+        with self.assertRaises(ValueError):
+            datetime_to_filetime(datetime(2026, 12, 1))
+
+    def test_set_user_expiration_writes_account_expires(self):
+        self.ldap_conn.conn.modify.return_value = True
+        self.ldap_conn.set_user_expiration('jdoe', self.expiration)
+        self.ldap_conn.conn.modify.assert_called_once_with(
+            'CN=jdoe,OU=Users',
+            changes={'accountExpires': [(MODIFY_REPLACE, [str(datetime_to_filetime(self.expiration))])]},
+        )
+
+    def test_set_user_expiration_appends_info_note_with_actor(self):
+        self.ldap_conn.conn.modify.return_value = True
+        self.ldap_conn.set_user_expiration('jdoe', self.expiration, actor_username='pi1', actor_role='GM')
+        self.assertEqual(self.ldap_conn.conn.modify.call_count, 2)
+        info_change = self.ldap_conn.conn.modify.call_args_list[1].args[1]['info'][0][1][0]
+        self.assertIn('pi1GM set expiration to', info_change)
+
+    def test_set_user_expiration_failure_raises(self):
+        self.ldap_conn.conn.modify.return_value = False
+        self.ldap_conn.conn.last_error = 'insufficientAccessRights'
+        with self.assertRaises(LDAPException):
+            self.ldap_conn.set_user_expiration('jdoe', self.expiration)

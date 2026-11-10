@@ -69,6 +69,17 @@ Project User Detail
                 PIs cannot opt out of receiving emails.
               </td>
             </tr>
+            {% if project_user_update_form.expiration %}
+              <tr>
+                <th scope="row"><label for="{{ project_user_update_form.expiration.id_for_label }}">Account Expiration:</label></th>
+                <td>{{project_user_update_form.expiration}}
+                  <small class="form-text text-muted">{{project_user_update_form.expiration.help_text}}</small>
+                  {% if not project_user_obj.user.expiration %}
+                    <small class="form-text text-warning">This external account currently has no expiration date.</small>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endif %}
           {% endif %}
         </table>
       </div>

@@ -26,3 +26,8 @@ project_user_manager_ldap_groups_grant = django.dispatch.Signal()
 
 project_user_manager_ldap_groups_revoke = django.dispatch.Signal()
     # providing_args=["user_name", "project_title"]
+
+project_user_expiration_update = django.dispatch.Signal()
+    # providing_args=["user", "expiration", "actor_username", "actor_role"]
+    # expiration is a timezone-aware datetime. Receivers should raise on failure
+    # so the caller can avoid saving a value the directory didn't accept.

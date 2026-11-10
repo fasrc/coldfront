@@ -4,7 +4,7 @@ utility functions for LDAP interaction
 import logging
 import operator
 from functools import reduce
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 
 from django.db.models import Q
 from django.utils import timezone
@@ -43,6 +43,14 @@ username_ignore_list = import_from_settings('username_ignore_list', [])
 def now_filetime():
     FILETIME_EPOCH = datetime(1601, 1, 1)
     return int((datetime.utcnow() - FILETIME_EPOCH).total_seconds() * 10**7)
+
+def datetime_to_filetime(dt):
+    """Convert a timezone-aware datetime to an AD FILETIME (100ns intervals since 1601-01-01 UTC)."""
+    if timezone.is_naive(dt):
+        raise ValueError('datetime_to_filetime requires a timezone-aware datetime')
+    FILETIME_EPOCH = datetime(1601, 1, 1, tzinfo=dt_timezone.utc)
+    delta = dt - FILETIME_EPOCH
+    return (delta.days * 86400 + delta.seconds) * 10**7 + delta.microseconds * 10
 
 class LDAPException(Exception):
     """The base exception class for all LDAPExceptions"""
@@ -409,6 +417,48 @@ class LDAPConn:
         )
         if actor_username:
             self._append_info_note(user_dn, user.get('info'), actor_username, actor_role or 'CF', 'enabled')
+        return result
+
+    def set_user_expiration(self, username, expiration, actor_username=None, actor_role=None):
+        """Set the AD accountExpires attribute for a user.
+
+        expiration: timezone-aware datetime at which the account expires.
+        Raises LDAPException if the user can't be found or the modify fails.
+        """
+        user = self.return_user_by_name(username)
+        user_dn = user['distinguishedName']
+        result = self.conn.modify(
+            user_dn,
+            changes={'accountExpires': [(MODIFY_REPLACE, [str(datetime_to_filetime(expiration))])]}
+        )
+        if not result:
+            reason = self.conn.last_error
+            logger.error(
+                'Failed to set user expiration.',
+                extra={
+                    'category': 'integration:AD',
+                    'status': 'failure',
+                    'username': username,
+                    'error': reason,
+                }
+            )
+            raise LDAPException(f'Failed to set expiration for user {username}: {reason}')
+        logger.info(
+            'Set user expiration.',
+            extra={
+                'category': 'integration:AD',
+                'status': 'success',
+                'username': username,
+                'user_dn': user_dn,
+                'actor': actor_username,
+                'expiration': expiration.isoformat(),
+            }
+        )
+        if actor_username:
+            self._append_info_note(
+                user_dn, user.get('info'), actor_username, actor_role or 'CF',
+                f'set expiration to {timezone.localdate(expiration):%Y-%m-%d}',
+            )
         return result
 
     def users_in_primary_group(self, usernames, groupname):

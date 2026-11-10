@@ -1,6 +1,9 @@
+import datetime
 import logging
 
+from django.contrib.auth.models import Group
 from django.core import mail
+from django.utils import timezone
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import call, patch
@@ -1087,6 +1090,153 @@ class ProjectUserDetailViewTest(ProjectViewTestBase):
         self.assertNotIn('General Manager', role_names)
         self.assertIn('Access Manager', role_names)
         self.assertIn('Storage Manager', role_names)
+
+
+class ProjectUserDetailExpirationTest(ProjectViewTestBase):
+    """Tests for editing an external user's expiration on ProjectUserDetail"""
+    def setUp(self):
+        self.url = reverse(
+            'project-user-detail',
+            kwargs={'pk': self.project.pk, 'project_user_pk': self.npu.pk},
+        )
+        self.target = self.npu.user
+        self.target.expiration = None
+        self.target.save()
+        self.client.force_login(self.proj_generalmanager)
+        # The ldap plugin's receiver pushes expiration to AD; mock the connection.
+        patcher = patch('coldfront.plugins.ldap.signals.LDAPConn')
+        self.mock_ldapconn = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.mock_set_expiration = self.mock_ldapconn.return_value.set_user_expiration
+
+    def make_external(self):
+        self.target.groups.add(Group.objects.get_or_create(name='external')[0])
+
+    def post_data(self, expiration):
+        return {
+            'role': self.npu.role.pk,
+            'enable_notifications': 'on',
+            'expiration': expiration.isoformat() if expiration else '',
+        }
+
+    def test_expiration_field_hidden_when_user_not_external(self):
+        response = self.client.get(self.url)
+        self.assertNotIn('expiration', response.context['project_user_update_form'].fields)
+
+    def test_expiration_field_shown_when_user_external(self):
+        self.make_external()
+        response = self.client.get(self.url)
+        self.assertIn('expiration', response.context['project_user_update_form'].fields)
+
+    def test_expiration_post_within_90_days_saves(self):
+        self.make_external()
+        new_date = timezone.localdate() + datetime.timedelta(days=90)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertEqual(timezone.localdate(self.target.expiration), new_date)
+
+    def test_expiration_post_pushes_to_ad(self):
+        self.make_external()
+        new_date = timezone.localdate() + datetime.timedelta(days=30)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.mock_set_expiration.assert_called_once()
+        args, kwargs = self.mock_set_expiration.call_args
+        self.assertEqual(args[0], self.target.username)
+        self.assertEqual(timezone.localdate(args[1]), new_date)
+        self.assertEqual(kwargs['actor_username'], self.proj_generalmanager.username)
+
+    def test_expiration_ad_failure_saves_nothing(self):
+        """If AD rejects the write, neither the expiration nor other fields are saved."""
+        self.make_external()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        self.mock_set_expiration.side_effect = Exception('insufficientAccessRights')
+        new_date = timezone.localdate() + datetime.timedelta(days=30)
+        data = self.post_data(new_date)
+        del data['enable_notifications']
+        response = self.client.post(self.url, data=data, follow=True)
+        self.target.refresh_from_db()
+        self.npu.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.assertTrue(self.npu.enable_notifications)
+        self.assertContains(response, 'Could not update the account expiration in AD')
+
+    def test_expiration_unchanged_within_cap_saves_other_fields_without_ad_push(self):
+        self.make_external()
+        existing = timezone.now() + datetime.timedelta(days=30)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(timezone.localdate(existing))
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertFalse(self.npu.enable_notifications)
+        self.assertEqual(self.target.expiration, existing)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_expiration_post_over_90_days_rejected(self):
+        self.make_external()
+        new_date = timezone.localdate() + datetime.timedelta(days=91)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_expiration_post_past_date_rejected(self):
+        self.make_external()
+        new_date = timezone.localdate() - datetime.timedelta(days=1)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+
+    def test_expiration_post_ignored_when_user_not_external(self):
+        new_date = timezone.localdate() + datetime.timedelta(days=30)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_expiration_required_for_external_user(self):
+        self.make_external()
+        response = self.client.get(self.url)
+        self.assertTrue(response.context['project_user_update_form'].fields['expiration'].required)
+
+    def test_expiration_blank_post_rejected_and_saves_nothing(self):
+        """A blank expiration for an external user blocks the whole update."""
+        self.make_external()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(None)
+        del data['enable_notifications']
+        response = self.client.post(self.url, data=data, follow=True)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertTrue(self.npu.enable_notifications)
+        self.assertIsNone(self.target.expiration)
+        self.assertContains(response, 'This field is required.')
+        self.mock_set_expiration.assert_not_called()
+
+    def test_expiration_unchanged_over_cap_rejected_and_saves_nothing(self):
+        """An existing expiration beyond the cap (e.g. synced from AD) must be
+        brought within 90 days before any other update is saved."""
+        self.make_external()
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(timezone.localdate(existing))
+        del data['enable_notifications']
+        response = self.client.post(self.url, data=data, follow=True)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertTrue(self.npu.enable_notifications)
+        self.assertEqual(self.target.expiration, existing)
+        self.assertContains(response, 'cannot be more than 90 days')
+        self.mock_set_expiration.assert_not_called()
 
 
 class ProjectUpdateEmailNotificationTest(ProjectViewTestBase):
