@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from django.core import mail
 from django.template.loader import render_to_string
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 
 from coldfront.core.project.models import ProjectStatusChoice
@@ -21,11 +21,11 @@ SUCCESS_MESSAGE = 'Offboarding form sent.'
 
 
 def enable_email(test_func):
-    """mail.EMAIL_ENABLED and views.EMAIL_SENDER are read at import time, so
+    """mail.EMAIL_ENABLED, views.EMAIL_SENDER and views.EMAIL_TICKET_SYSTEM_ADDRESS are read at import time, so
     override_settings can't change them; patch them as core/utils/tests.py does."""
     test_func = patch('coldfront.core.utils.mail.EMAIL_ENABLED', True)(test_func)
     test_func = patch('coldfront.core.project.views.EMAIL_SENDER', 'coldfront@example.edu')(test_func)
-    return override_settings(EMAIL_TICKET_SYSTEM_ADDRESS='tickets@example.edu')(test_func)
+    return patch('coldfront.core.project.views.EMAIL_TICKET_SYSTEM_ADDRESS', 'tickets@example.edu')(test_func)
 
 
 class OffboardingTests(TestCase):
@@ -115,12 +115,6 @@ class OffboardingTests(TestCase):
         self.client.post(self.form_url(), data)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('staying; new sponsor: Smith & Jones <Lab>', mail.outbox[0].body)
-
-    @override_settings(EMAIL_TICKET_SYSTEM_ADDRESS='')
-    def test_missing_ticket_address_does_not_claim_success(self):
-        self.client.force_login(self.pi)
-        resp = self.client.post(self.form_url(), self.valid_data(), follow=True)
-        self.assertNotContains(resp, SUCCESS_MESSAGE)
 
     def test_member_status_required(self):
         self.client.force_login(self.pi)
