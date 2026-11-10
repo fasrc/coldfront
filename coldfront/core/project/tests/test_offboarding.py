@@ -51,7 +51,7 @@ class OffboardingTests(TestCase):
     def valid_data(self, **extra):
         data = {
             'offboarding_date': '2030-01-01',
-            f'offboard_{self.project.projectuser_set.get(user=self.member).pk}': 'on',
+            f'status_{self.project.projectuser_set.get(user=self.member).pk}': 'offboard',
         }
         data.update(extra)
         return data
@@ -110,7 +110,8 @@ class OffboardingTests(TestCase):
     def test_email_free_text_not_html_escaped(self):
         self.client.force_login(self.pi)
         member_pk = self.project.projectuser_set.get(user=self.member).pk
-        data = {'offboarding_date': '2030-01-01', f'sponsor_{member_pk}': 'Smith & Jones <Lab>'}
+        data = {'offboarding_date': '2030-01-01', f'status_{member_pk}': 'sponsor',
+                f'sponsor_{member_pk}': 'Smith & Jones <Lab>'}
         self.client.post(self.form_url(), data)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('staying; new sponsor: Smith & Jones <Lab>', mail.outbox[0].body)
@@ -120,6 +121,27 @@ class OffboardingTests(TestCase):
         self.client.force_login(self.pi)
         resp = self.client.post(self.form_url(), self.valid_data(), follow=True)
         self.assertNotContains(resp, SUCCESS_MESSAGE)
+
+    def test_member_status_required(self):
+        self.client.force_login(self.pi)
+        member_pk = self.project.projectuser_set.get(user=self.member).pk
+        resp = self.client.post(self.form_url(), {'offboarding_date': '2030-01-01'})
+        self.assertIn(f'status_{member_pk}', resp.context['form'].errors)
+
+    def test_new_sponsor_requires_name(self):
+        self.client.force_login(self.pi)
+        member_pk = self.project.projectuser_set.get(user=self.member).pk
+        for sponsor in ('', '   '):
+            resp = self.client.post(self.form_url(), {
+                'offboarding_date': '2030-01-01', f'status_{member_pk}': 'sponsor',
+                f'sponsor_{member_pk}': sponsor})
+            self.assertIn(f'sponsor_{member_pk}', resp.context['form'].errors)
+
+    @enable_email
+    def test_offboard_status_needs_no_sponsor(self):
+        self.client.force_login(self.pi)
+        resp = self.client.post(self.form_url(), self.valid_data())
+        self.assertRedirects(resp, reverse('home'), fetch_redirect_response=False)
 
     def test_date_required(self):
         self.client.force_login(self.pi)

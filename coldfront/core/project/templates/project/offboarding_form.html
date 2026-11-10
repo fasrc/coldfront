@@ -87,16 +87,29 @@
     <div class="card-header"><h4>5. Accounts</h4></div>
     <div class="card-body">
       {% if member_rows %}
-      <p>Indicate which group members no longer need access. Check <em>Fully offboard</em> for members who have left Harvard and no longer require access to the HPC cluster or storage. For each member who is staying at Harvard, indicate a new sponsor.</p>
+      <p>For each group member, choose either <em>Fully offboard</em> (they have left Harvard and no longer require access to the HPC cluster or storage) or <em>Needs a new sponsor</em> (they are staying at Harvard), and give the new sponsor's name.</p>
       <p class="text-muted">We require written approval from the sponsor before we can add a lab member to their group. The sponsor must have an <a href="https://research.fas.harvard.edu/pi-eligibility" target="_blank" rel="noopener">active FAS RC PI level account</a>. If the lab member needs to access any FAS RC resources (fairshare, cluster, software, storage etc.) they will require an active sponsor.</p>
       <table class="table">
-        <thead><tr><th>Group member</th><th>Fully offboard</th><th>New sponsor</th></tr></thead>
+        <thead><tr><th>Group member</th><th>Access</th></tr></thead>
         <tbody>
         {% for row in member_rows %}
           <tr>
             <td>{{ row.project_user.user.get_full_name }} ({{ row.project_user.user.username }})</td>
-            <td>{{ row.offboard }}</td>
-            <td>{{ row.sponsor }}</td>
+            <td>
+              {% if row.status.errors %}<div class="text-danger">{{ row.status.errors|striptags }}</div>{% endif %}
+              {% for radio in row.status %}
+              <div class="form-check">
+                <input type="radio" class="form-check-input" name="{{ radio.data.name }}" id="{{ radio.id_for_label }}"
+                       value="{{ radio.data.value }}" {% if radio.data.selected %}checked{% endif %}>
+                <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+                {% if radio.data.value == 'sponsor' %}
+                <div class="mt-2" data-show-if="{{ row.status.html_name }}=sponsor">
+                  {{ row.sponsor|as_crispy_field }}
+                </div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </td>
           </tr>
         {% endfor %}
         </tbody>

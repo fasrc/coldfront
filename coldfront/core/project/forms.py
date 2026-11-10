@@ -300,6 +300,10 @@ class ProjectOffboardingForm(forms.Form):
     storage allocation and account disposition per active group member.
     """
     YES_NO = (('yes', 'Yes'), ('no', 'No'))
+    MEMBER_STATUSES = (
+        ('offboard', 'Fully offboard'),
+        ('sponsor', 'Needs a new sponsor'),
+    )
     ALLOCATION_ACTIONS = (
         ('retain', 'Retain the allocation in its current storage location'),
         ('delete', 'Delete the allocation'),
@@ -327,8 +331,10 @@ class ProjectOffboardingForm(forms.Form):
         for allocation in self.allocations:
             self._add_allocation_fields(allocation)
         for project_user in self.members:
-            self.fields[f'offboard_{project_user.pk}'] = forms.BooleanField(required=False)
-            self.fields[f'sponsor_{project_user.pk}'] = forms.CharField(required=False, max_length=255)
+            self.fields[f'status_{project_user.pk}'] = forms.ChoiceField(
+                choices=self.MEMBER_STATUSES, widget=forms.RadioSelect)
+            self.fields[f'sponsor_{project_user.pk}'] = forms.CharField(
+                label='Name of new sponsor', required=False, max_length=255)
 
     @staticmethod
     def allocation_prefix(allocation):
@@ -380,7 +386,7 @@ class ProjectOffboardingForm(forms.Form):
         return [
             {
                 'project_user': project_user,
-                'offboard': self[f'offboard_{project_user.pk}'],
+                'status': self[f'status_{project_user.pk}'],
                 'sponsor': self[f'sponsor_{project_user.pk}'],
             }
             for project_user in self.members
@@ -410,6 +416,17 @@ class ProjectOffboardingForm(forms.Form):
                     self.add_error(p + 'move_recipient', required_msg)
                 elif within == 'no' and not cleaned_data.get(p + 'move_destination', '').strip():
                     self.add_error(p + 'move_destination', required_msg)
+        for project_user in self.members:
+            status = cleaned_data.get(f'status_{project_user.pk}')
+            sponsor_field = f'sponsor_{project_user.pk}'
+            if status == 'sponsor' and not cleaned_data.get(sponsor_field, '').strip() \
+                    and not self.has_error(sponsor_field):
+                self.add_error(
+                    sponsor_field, 
+                    'Please provide the name of the new sponsor, or TBD if not yet known.'
+                )
+            elif status == 'offboard':
+                cleaned_data[sponsor_field] = ''
         return cleaned_data
 
     def email_context(self, user):
@@ -441,7 +458,7 @@ class ProjectOffboardingForm(forms.Form):
                 'username': project_user.user.username,
                 'full_name': project_user.user.get_full_name(),
                 'email': project_user.user.email,
-                'offboard': cleaned_data[f'offboard_{project_user.pk}'],
+                'offboard': cleaned_data[f'status_{project_user.pk}'] == 'offboard',
                 'sponsor': cleaned_data[f'sponsor_{project_user.pk}'].strip(),
             }
             for project_user in self.members
