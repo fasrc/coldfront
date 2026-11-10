@@ -4,6 +4,7 @@ import re
 from django import forms
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
+from django.utils.safestring import mark_safe
 
 from coldfront.core.project.models import (
     Project,
@@ -239,6 +240,49 @@ class ProjectOffboardingSelectForm(forms.Form):
         ).order_by('title')
 
 
+RETENTION_UNITS = (('days', 'days'), ('weeks', 'weeks'), ('months', 'months'), ('years', 'years'))
+
+
+class RetentionDurationWidget(forms.MultiWidget):
+    """Number input next to a unit drop-down."""
+
+    def __init__(self, attrs=None):
+        widgets = [
+            forms.NumberInput(attrs={'min': 1, 'class': 'form-control', 'style': 'max-width: 8rem'}),
+            forms.Select(choices=RETENTION_UNITS, attrs={'class': 'form-control', 'style': 'max-width: 10rem'}),
+        ]
+        super().__init__(widgets, attrs)
+
+    def decompress(self, value):
+        if value:
+            number, _, unit = str(value).partition(' ')
+            return [number, unit if unit.endswith('s') else unit + 's']
+        return [None, 'years']
+
+    def render(self, name, value, attrs=None, renderer=None):
+        # lay the two inputs out side by side
+        html = super().render(name, value, attrs, renderer)
+        return mark_safe(f'<div class="form-inline">{html}</div>')
+
+
+class RetentionDurationField(forms.MultiValueField):
+    """A positive whole number plus a unit (days/weeks/months/years); cleans to e.g. "10 years"."""
+    widget = RetentionDurationWidget
+
+    def __init__(self, **kwargs):
+        fields = (
+            forms.IntegerField(min_value=1, required=False),
+            forms.ChoiceField(choices=RETENTION_UNITS, required=False),
+        )
+        super().__init__(fields=fields, require_all_fields=False, required=False, **kwargs)
+
+    def compress(self, data_list):
+        if not data_list or not data_list[0]:
+            return ''
+        number, unit = data_list[0], data_list[1] or 'years'
+        return f'{number} {unit[:-1] if number == 1 else unit}'
+
+
 OFFBOARDING_ALLOCATION_FIELD_LABELS = {
     'action': 'How should this allocation be handled?',
     'retain_duration': 'How long does the data need to be retained?',
@@ -304,8 +348,7 @@ class ProjectOffboardingForm(forms.Form):
         # retain/delete/move are mutually exclusive, so they are a single required choice.
         self.fields[p + 'action'] = forms.ChoiceField(
             label=labels['action'], choices=self.ALLOCATION_ACTIONS, widget=radio)
-        self.fields[p + 'retain_duration'] = forms.CharField(
-            label=labels['retain_duration'], required=False)
+        self.fields[p + 'retain_duration'] = RetentionDurationField(label=labels['retain_duration'])
         self.fields[p + 'retain_contact_name'] = forms.CharField(
             label=labels['retain_contact_name'], required=False, max_length=255)
         self.fields[p + 'retain_contact_email'] = forms.EmailField(

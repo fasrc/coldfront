@@ -167,7 +167,7 @@ class OffboardingStorageChoiceTests(TestCase):
 
     def test_only_selected_option_subfields_required(self):
         # blank retain/move sub-fields don't matter when "delete" is chosen
-        self.assertTrue(self.build_form(action='delete', retain_duration='').is_valid())
+        self.assertTrue(self.build_form(action='delete', retain_duration_0='').is_valid())
 
     def test_move_requires_within_harvard_answer_and_destination(self):
         self.assertIn(self.prefix + 'move_within_harvard', self.build_form(action='move').errors)
@@ -182,7 +182,7 @@ class OffboardingStorageChoiceTests(TestCase):
 
     def retain_answers(self, **extra):
         answers = {
-            'action': 'retain', 'retain_duration': '2 years',
+            'action': 'retain', 'retain_duration_0': '2', 'retain_duration_1': 'years',
             'retain_contact_name': 'Dept Admin', 'retain_contact_email': 'admin@example.edu',
             'retain_billing_code': '1' * 33,
         }
@@ -238,6 +238,20 @@ class OffboardingStorageChoiceTests(TestCase):
     def test_email_plan_line_move(self):
         body = self.render_email(action='move', move_within_harvard='no', move_destination='Dataverse')
         self.assertIn('    Plan: Move\n      Moving outside Harvard to: Dataverse\n', body)
+
+    def test_retention_duration_combines_number_and_unit(self):
+        for number, unit, expected in (('10', 'years', '10 years'), ('1', 'months', '1 month'),
+                                       ('3', 'weeks', '3 weeks'), ('30', 'days', '30 days')):
+            form = self.build_form(**self.retain_answers(retain_duration_0=number, retain_duration_1=unit))
+            self.assertTrue(form.is_valid(), form.errors)
+            self.assertEqual(form.cleaned_data[self.prefix + 'retain_duration'], expected)
+
+    def test_retention_duration_invalid(self):
+        for number, unit in (('0', 'years'), ('-2', 'years'), ('1.5', 'years'), ('abc', 'days'),
+                             ('2', 'decades'), ('', 'years')):
+            with self.subTest(number=number, unit=unit):
+                form = self.build_form(**self.retain_answers(retain_duration_0=number, retain_duration_1=unit))
+                self.assertIn(self.prefix + 'retain_duration', form.errors)
 
     def test_billing_code_label(self):
         label = self.build_form()[self.prefix + 'retain_billing_code'].label
