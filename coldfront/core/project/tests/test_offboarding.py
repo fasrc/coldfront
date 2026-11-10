@@ -2,6 +2,7 @@ import logging
 from unittest.mock import patch
 
 from django.core import mail
+from django.template.loader import render_to_string
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -216,6 +217,27 @@ class OffboardingStorageChoiceTests(TestCase):
         form = self.build_form(**self.retain_answers(retain_contact_email='not-an-email'))
         self.assertFalse(form.is_valid())
         self.assertIn(self.prefix + 'retain_contact_email', form.errors)
+
+    def render_email(self, **answers):
+        form = self.build_form(**answers)
+        self.assertTrue(form.is_valid(), form.errors)
+        return render_to_string('email/project_offboarding.txt', form.email_context(self.pi))
+
+    def test_email_plan_line_retain(self):
+        body = self.render_email(**self.retain_answers())
+        self.assertIn('    Plan: Retain in current location\n      Retention period: 2 years\n', body)
+        self.assertIn('      Department contact: Dept Admin <admin@example.edu>\n', body)
+        self.assertNotIn('Delete:', body)
+        self.assertNotIn('Move:', body)
+
+    def test_email_plan_line_delete(self):
+        body = self.render_email(action='delete')
+        self.assertIn(f'(id {self.allocation.pk})\n    Plan: Delete\n', body)
+        self.assertNotIn('Retention period', body)
+
+    def test_email_plan_line_move(self):
+        body = self.render_email(action='move', move_within_harvard='no', move_destination='Dataverse')
+        self.assertIn('    Plan: Move\n      Moving outside Harvard to: Dataverse\n', body)
 
     def test_billing_code_label(self):
         label = self.build_form()[self.prefix + 'retain_billing_code'].label

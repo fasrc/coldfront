@@ -7,13 +7,13 @@ Expected date of offboarding: {{ offboarding_date|date:"Y-m-d" }}
 
 STORAGE
 {% for allocation in allocations %}  Allocation: {{ allocation.path }} (id {{ allocation.pk }})
-    Retain in current location: {{ allocation.retain|yesno:"Yes,No" }}
-{% if allocation.retain %}      Retention period: {{ allocation.retain_duration }}
+{% if allocation.retain %}    Plan: Retain in current location
+      Retention period: {{ allocation.retain_duration }}
       Department contact: {{ allocation.retain_contact_name }} <{{ allocation.retain_contact_email }}>
       Billing/funding code: {{ allocation.retain_billing_code }}
-{% endif %}    Delete: {{ allocation.delete|yesno:"Yes,No" }}
-    Move: {{ allocation.move|yesno:"Yes,No" }}
-{% if allocation.move %}{% if allocation.move_within_harvard %}      Moving within Harvard to: {{ allocation.move_recipient }}
+{% elif allocation.delete %}    Plan: Delete
+{% elif allocation.move %}    Plan: Move
+{% if allocation.move_within_harvard %}      Moving within Harvard to: {{ allocation.move_recipient }}
 {% else %}      Moving outside Harvard to: {{ allocation.move_destination }}
 {% endif %}{% endif %}{% empty %}  (no active storage allocations)
 {% endfor %}
