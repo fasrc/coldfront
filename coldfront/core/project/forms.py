@@ -302,7 +302,7 @@ class ProjectOffboardingForm(forms.Form):
     YES_NO = (('yes', 'Yes'), ('no', 'No'))
     MEMBER_STATUSES = (
         ('offboard', 'Fully offboard'),
-        ('sponsor', 'Needs a new sponsor'),
+        ('sponsor', 'New sponsor'),
     )
     ALLOCATION_ACTIONS = (
         ('retain', 'Retain the allocation in its current storage location'),
