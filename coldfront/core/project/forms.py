@@ -243,6 +243,10 @@ class ProjectOffboardingSelectForm(forms.Form):
 RETENTION_UNITS = (('days', 'days'), ('weeks', 'weeks'), ('months', 'months'), ('years', 'years'))
 
 
+# Longest allowed retention (10 years), expressed in each unit.
+RETENTION_MAXIMUMS = {'days': 3650, 'weeks': 521, 'months': 120, 'years': 10}
+
+
 class RetentionDurationWidget(forms.MultiWidget):
     """Number input next to a unit drop-down."""
 
@@ -280,6 +284,9 @@ class RetentionDurationField(forms.MultiValueField):
         if not data_list or not data_list[0]:
             return ''
         number, unit = data_list[0], data_list[1] or 'years'
+        if number > RETENTION_MAXIMUMS[unit]:
+            raise forms.ValidationError(
+                'The maximum retention time is 10 years (120 months, 521 weeks, or 3650 days).')
         return f'{number} {unit[:-1] if number == 1 else unit}'
 
 

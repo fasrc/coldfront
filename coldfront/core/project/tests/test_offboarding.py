@@ -275,6 +275,16 @@ class OffboardingStorageChoiceTests(TestCase):
             self.assertTrue(form.is_valid(), form.errors)
             self.assertEqual(form.cleaned_data[self.prefix + 'retain_duration'], expected)
 
+    def test_retention_duration_maximum(self):
+        for number, unit in (('10', 'years'), ('120', 'months'), ('521', 'weeks'), ('3650', 'days')):
+            with self.subTest(number=number, unit=unit, ok=True):
+                form = self.build_form(**self.retain_answers(retain_duration_0=number, retain_duration_1=unit))
+                self.assertTrue(form.is_valid(), form.errors)
+        for number, unit in (('11', 'years'), ('121', 'months'), ('522', 'weeks'), ('3651', 'days')):
+            with self.subTest(number=number, unit=unit, ok=False):
+                form = self.build_form(**self.retain_answers(retain_duration_0=number, retain_duration_1=unit))
+                self.assertIn(self.prefix + 'retain_duration', form.errors)
+
     def test_retention_duration_invalid(self):
         for number, unit in (('0', 'years'), ('-2', 'years'), ('1.5', 'years'), ('abc', 'days'),
                              ('2', 'decades'), ('', 'years')):
