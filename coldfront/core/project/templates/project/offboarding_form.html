@@ -87,7 +87,7 @@
     <div class="card-header"><h4>5. Accounts</h4></div>
     <div class="card-body">
       {% if member_rows %}
-      <p>For each group member, choose either <em>Fully offboard</em> (they have left Harvard and no longer require access to the HPC cluster or storage) or <em>Needs a new sponsor</em> (they are staying at Harvard), and give the new sponsor's name.</p>
+      <p>For each group member whose primary group is this one, choose either <em>Fully offboard</em> (they have left Harvard and no longer require access to the HPC cluster or storage) or <em>Needs a new sponsor</em> (they are staying at Harvard), and give the new sponsor's name.</p>
       <p class="text-muted">We require written approval from the sponsor before we can add a lab member to their group. The sponsor must have an <a href="https://research.fas.harvard.edu/pi-eligibility" target="_blank" rel="noopener">active FAS RC PI level account</a>. If the lab member needs to access any FAS RC resources (fairshare, cluster, software, storage etc.) they will require an active sponsor.</p>
       <table class="table">
         <thead><tr><th>Group member</th><th>Access</th></tr></thead>
@@ -115,7 +115,7 @@
         </tbody>
       </table>
       {% else %}
-      <p class="text-muted">This project has no other group members.</p>
+      <p class="text-muted">No group members have this group as their primary group.</p>
       {% endif %}
     </div>
   </div>

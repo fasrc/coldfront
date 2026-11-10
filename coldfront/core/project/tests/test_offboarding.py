@@ -42,7 +42,7 @@ class OffboardingTests(TestCase):
         cls.other.userprofile.is_pi = True
         cls.other.userprofile.save()
         cls.member = UserFactory(username='member1')
-        ProjectUserFactory(user=cls.member, project=cls.project)
+        ProjectUserFactory(user=cls.member, project=cls.project, primary_group=True)
         cls.admin = UserFactory(username='admin_off', is_superuser=True)
 
     def form_url(self):
@@ -142,6 +142,13 @@ class OffboardingTests(TestCase):
         self.client.force_login(self.pi)
         resp = self.client.post(self.form_url(), self.valid_data())
         self.assertRedirects(resp, reverse('home'), fetch_redirect_response=False)
+
+    def test_only_primary_group_members_listed(self):
+        non_primary = UserFactory(username='not_primary')
+        ProjectUserFactory(user=non_primary, project=self.project, primary_group=False)
+        self.client.force_login(self.pi)
+        members = [row['project_user'].user for row in self.client.get(self.form_url()).context['member_rows']]
+        self.assertEqual(members, [self.member])
 
     def test_date_required(self):
         self.client.force_login(self.pi)

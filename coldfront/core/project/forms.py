@@ -324,8 +324,9 @@ class ProjectOffboardingForm(forms.Form):
         self.allocations = list(project_obj.allocation_set.filter(
             status__name='Active', resources__resource_type__name='Storage'
         ).distinct().order_by('resources__name'))
+        # only members whose primary group is this project need an offboarding decision
         self.members = list(ProjectUser.objects.filter(
-            project=project_obj, status__name='Active'
+            project=project_obj, status__name='Active', primary_group=True
         ).exclude(user=project_obj.pi).select_related('user').order_by('user__username'))
 
         for allocation in self.allocations:
