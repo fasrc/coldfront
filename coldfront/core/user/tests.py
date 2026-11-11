@@ -1,6 +1,9 @@
+import datetime
+
 from django.contrib.auth.models import Group
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from coldfront.core.test_helpers.factories import (
     UserFactory,
@@ -76,3 +79,27 @@ class TestUserProfileExternalStatus(TestCase):
     def test_internal_user_shows_no(self):
         user = UserFactory(username='internal_user')
         self.assertEqual(self._get_status_cell(user).get_text(strip=True), 'No')
+
+
+class TestUserProfileExpiration(TestCase):
+    """Test that the user profile page shows the account expiration when set."""
+
+    def _get_soup(self, user):
+        return utils.login_and_get_soup(self.client, user, reverse('user-profile'))
+
+    def test_expiration_shown_when_set(self):
+        user = UserFactory(username='expiring_user')
+        user.expiration = timezone.now() + datetime.timedelta(days=30)
+        user.save()
+        header = self._get_soup(user).find('th', string='Account Expiration:')
+        self.assertIsNotNone(header)
+        self.assertEqual(
+            header.find_next_sibling('td').get_text(strip=True),
+            timezone.localdate(user.expiration).isoformat(),
+        )
+
+    def test_expiration_hidden_when_unset(self):
+        user = UserFactory(username='nonexpiring_user')
+        user.expiration = None
+        user.save()
+        self.assertIsNone(self._get_soup(user).find('th', string='Account Expiration:'))
