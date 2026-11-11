@@ -1119,9 +1119,12 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
             'expiration': expiration.isoformat() if expiration else '',
         }
 
-    def test_expiration_field_hidden_when_user_not_external(self):
+    def test_expiration_field_optional_when_user_not_external(self):
         response = self.client.get(self.url)
-        self.assertNotIn('expiration', response.context['project_user_update_form'].fields)
+        fields = response.context['project_user_update_form'].fields
+        self.assertIn('expiration', fields)
+        self.assertFalse(fields['expiration'].required)
+        self.assertNotIn('max', fields['expiration'].widget.attrs)
 
     def test_expiration_field_shown_when_user_external(self):
         self.make_external()
@@ -1192,12 +1195,73 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         self.target.refresh_from_db()
         self.assertIsNone(self.target.expiration)
 
-    def test_expiration_post_ignored_when_user_not_external(self):
-        new_date = timezone.localdate() + datetime.timedelta(days=30)
+    def test_non_external_expiration_over_90_days_saves_and_pushes_to_ad(self):
+        new_date = timezone.localdate() + datetime.timedelta(days=400)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertEqual(timezone.localdate(self.target.expiration), new_date)
+        self.mock_set_expiration.assert_called_once()
+        self.assertEqual(self.mock_set_expiration.call_args.args[0], self.target.username)
+
+    def test_non_external_blank_expiration_saves_other_fields(self):
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(None)
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertFalse(self.npu.enable_notifications)
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_non_external_blank_expiration_clears_existing_and_pushes_to_ad(self):
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        self.client.post(self.url, data=self.post_data(None))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_called_once()
+        self.assertEqual(self.mock_set_expiration.call_args.args, (self.target.username, None))
+
+    def test_non_external_clear_ad_failure_keeps_existing(self):
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        self.mock_set_expiration.side_effect = Exception('insufficientAccessRights')
+        self.client.post(self.url, data=self.post_data(None))
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.expiration, existing)
+
+    def test_non_external_unchanged_past_expiration_accepted(self):
+        """An already-expired date left as is doesn't block other updates."""
+        existing = timezone.now() - datetime.timedelta(days=5)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(timezone.localdate(existing))
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.npu.refresh_from_db()
+        self.assertFalse(self.npu.enable_notifications)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_non_external_past_expiration_rejected(self):
+        new_date = timezone.localdate() - datetime.timedelta(days=1)
         self.client.post(self.url, data=self.post_data(new_date))
         self.target.refresh_from_db()
         self.assertIsNone(self.target.expiration)
         self.mock_set_expiration.assert_not_called()
+
+    @override_settings(LANGUAGE_CODE='en-gb')
+    def test_existing_expiration_renders_as_iso_date_in_any_locale(self):
+        existing = timezone.now() + datetime.timedelta(days=45)
+        self.target.expiration = existing
+        self.target.save()
+        response = self.client.get(self.url)
+        self.assertContains(response, f'value="{timezone.localdate(existing).isoformat()}"')
 
     def test_expiration_required_for_external_user(self):
         self.make_external()

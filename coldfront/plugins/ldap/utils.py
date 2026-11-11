@@ -44,6 +44,9 @@ def now_filetime():
     FILETIME_EPOCH = datetime(1601, 1, 1)
     return int((datetime.utcnow() - FILETIME_EPOCH).total_seconds() * 10**7)
 
+# accountExpires value meaning "never expires" (max int64).
+AD_ACCOUNT_NEVER_EXPIRES = '9223372036854775807'
+
 def datetime_to_filetime(dt):
     """Convert a timezone-aware datetime to an AD FILETIME (100ns intervals since 1601-01-01 UTC)."""
     if timezone.is_naive(dt):
@@ -397,7 +400,7 @@ class LDAPConn:
         result = self.conn.modify(
             user_dn,
             changes={
-                'accountExpires': [(MODIFY_REPLACE, ['9223372036854775807'])],
+                'accountExpires': [(MODIFY_REPLACE, [AD_ACCOUNT_NEVER_EXPIRES])],
                 'userAccountControl': [(MODIFY_REPLACE, ['512'])]
             }
         )
@@ -422,14 +425,19 @@ class LDAPConn:
     def set_user_expiration(self, username, expiration, actor_username=None, actor_role=None):
         """Set the AD accountExpires attribute for a user.
 
-        expiration: timezone-aware datetime at which the account expires.
+        expiration: timezone-aware datetime at which the account expires, or None to
+        clear the expiration (account never expires).
         Raises LDAPException if the user can't be found or the modify fails.
         """
         user = self.return_user_by_name(username)
         user_dn = user['distinguishedName']
+        if expiration is None:
+            account_expires = AD_ACCOUNT_NEVER_EXPIRES
+        else:
+            account_expires = str(datetime_to_filetime(expiration))
         result = self.conn.modify(
             user_dn,
-            changes={'accountExpires': [(MODIFY_REPLACE, [str(datetime_to_filetime(expiration))])]}
+            changes={'accountExpires': [(MODIFY_REPLACE, [account_expires])]}
         )
         if not result:
             reason = self.conn.last_error
@@ -451,14 +459,15 @@ class LDAPConn:
                 'username': username,
                 'user_dn': user_dn,
                 'actor': actor_username,
-                'expiration': expiration.isoformat(),
+                'expiration': expiration.isoformat() if expiration else 'never',
             }
         )
         if actor_username:
-            self._append_info_note(
-                user_dn, user.get('info'), actor_username, actor_role or 'CF',
-                f'set expiration to {timezone.localdate(expiration):%Y-%m-%d}',
+            action = (
+                f'set expiration to {timezone.localdate(expiration):%Y-%m-%d}'
+                if expiration else 'cleared expiration'
             )
+            self._append_info_note(user_dn, user.get('info'), actor_username, actor_role or 'CF', action)
         return result
 
     def users_in_primary_group(self, usernames, groupname):

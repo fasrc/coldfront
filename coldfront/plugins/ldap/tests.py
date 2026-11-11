@@ -398,6 +398,17 @@ class SetUserExpirationTest(SimpleTestCase):
         info_change = self.ldap_conn.conn.modify.call_args_list[1].args[1]['info'][0][1][0]
         self.assertIn('pi1GM set expiration to', info_change)
 
+    def test_set_user_expiration_none_sets_never_expires(self):
+        self.ldap_conn.conn.modify.return_value = True
+        self.ldap_conn.set_user_expiration('jdoe', None, actor_username='pi1', actor_role='GM')
+        first_call = self.ldap_conn.conn.modify.call_args_list[0]
+        self.assertEqual(
+            first_call.kwargs['changes'],
+            {'accountExpires': [(MODIFY_REPLACE, ['9223372036854775807'])]},
+        )
+        info_change = self.ldap_conn.conn.modify.call_args_list[1].args[1]['info'][0][1][0]
+        self.assertIn('pi1GM cleared expiration', info_change)
+
     def test_set_user_expiration_failure_raises(self):
         self.ldap_conn.conn.modify.return_value = False
         self.ldap_conn.conn.last_error = 'insufficientAccessRights'

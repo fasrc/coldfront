@@ -113,31 +113,41 @@ class ProjectUserUpdateForm(forms.Form):
     expiration = forms.DateField(
         label='Account Expiration',
         required=False,
-        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        # type="date" inputs only accept ISO dates; pin the format so a non-ISO locale
+        # can't render the current value as blank (which would clear it on save).
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
     )
 
     def __init__(self, request_user, project_pk, *args, target_user=None, **kwargs):
         """If user is not PI or Admin, only show Access Manager, Storage Manager, and User roles.
-        The expiration field is only offered when target_user is an external user."""
+
+        The expiration field is only offered when target_user is given. For external users it
+        is required and capped at EXTERNAL_EXPIRATION_MAX_DAYS; for everyone else it is
+        optional and uncapped.
+        """
         super().__init__(*args, **kwargs)
         project_obj = get_object_or_404(Project, pk=project_pk)
         roles = ProjectUserRoleChoice.objects.exclude(name='PI')
         if not project_obj.pi == request_user and not request_user.is_superuser:
             self.fields['role'].queryset = roles.exclude(name='General Manager')
 
-        if target_user is None or not is_external_user(target_user):
+        self.target_is_external = target_user is not None and is_external_user(target_user)
+        if target_user is None:
             del self.fields['expiration']
-        else:
+            return
+        today = timezone.localdate()
+        self.fields['expiration'].widget.attrs['min'] = (today + datetime.timedelta(days=1)).isoformat()
+        if self.target_is_external:
             self.fields['expiration'].required = True
-            today = timezone.localdate()
             max_date = today + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)
-            self.fields['expiration'].widget.attrs.update({
-                'min': (today + datetime.timedelta(days=1)).isoformat(),
-                'max': max_date.isoformat(),
-            })
+            self.fields['expiration'].widget.attrs['max'] = max_date.isoformat()
             self.fields['expiration'].help_text = (
                 f'Required for external accounts. Must be no more than {EXTERNAL_EXPIRATION_MAX_DAYS} '
                 f'days from today (latest: {max_date:%Y-%m-%d}).'
+            )
+        else:
+            self.fields['expiration'].help_text = (
+                'Optional. Leave blank for an account that never expires.'
             )
 
     def clean_expiration(self):
@@ -145,13 +155,22 @@ class ProjectUserUpdateForm(forms.Form):
         EXTERNAL_EXPIRATION_MAX_DAYS from today. This applies on every save, including
         when the submitted date is unchanged from the current (e.g. AD-synced) value.
         Blank values are rejected by required=True before this runs.
+
+        For non-external users the date is optional: blank clears the expiration (the
+        account never expires), an unchanged date is accepted as is, and a new date only
+        has to be in the future.
         """
         new_date = self.cleaned_data.get('expiration')
+        if not self.target_is_external:
+            if new_date is None or new_date == self.initial.get('expiration'):
+                return new_date
         if new_date is None:
             return None
         today = timezone.localdate()
         if new_date <= today:
             raise forms.ValidationError('Expiration date must be in the future.')
+        if not self.target_is_external:
+            return new_date
         max_date = today + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)
         if new_date > max_date:
             raise forms.ValidationError(

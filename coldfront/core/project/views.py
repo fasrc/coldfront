@@ -1535,15 +1535,20 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
 
             # Push any expiration change to the directory (AD via the ldap plugin)
             # before saving anything, so a rejected write leaves the user unchanged.
+            # A blank date (None) clears the expiration; the form only allows that for
+            # non-external users.
+            expiration_changed = False
             new_expiration_dt = None
             if 'expiration' in project_user_update_form.fields:
                 old_expiration = _expiration_as_date(project_user_obj.user)
                 new_expiration = form_data.get('expiration')
-                if new_expiration and new_expiration != old_expiration:
-                    # End of the chosen day in the server's local timezone.
-                    new_expiration_dt = timezone.make_aware(
-                        datetime.datetime.combine(new_expiration, datetime.time(23, 59, 59))
-                    )
+                expiration_changed = new_expiration != old_expiration
+                if expiration_changed:
+                    if new_expiration:
+                        # End of the chosen day in the server's local timezone.
+                        new_expiration_dt = timezone.make_aware(
+                            datetime.datetime.combine(new_expiration, datetime.time(23, 59, 59))
+                        )
                     try:
                         project_user_expiration_update.send(
                             sender=self.__class__,
@@ -1554,7 +1559,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                         )
                     except Exception as e:
                         logger.exception(
-                            'Failed to push external user expiration to directory.',
+                            'Failed to push user expiration to directory.',
                             extra={
                                 'category': 'integration:AD',
                                 'status': 'failure',
@@ -1583,12 +1588,12 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             new_role = form_data.get('role')
             project_user_obj.role = new_role
             project_user_obj.save()
-            if new_expiration_dt:
+            if expiration_changed:
                 target_user = project_user_obj.user
                 target_user.expiration = new_expiration_dt
                 target_user.save(update_fields=['expiration'])
                 logger.info(
-                    'External user expiration changed.',
+                    'User expiration changed.',
                     extra={
                         'category': 'database_change:IfxUser',
                         'status': 'success',
