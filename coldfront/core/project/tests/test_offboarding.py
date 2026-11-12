@@ -94,15 +94,16 @@ class OffboardingTests(TestCase):
         self.assertRedirects(
             resp, reverse('project-offboarding', kwargs={'pk': other_project.pk}), fetch_redirect_response=False)
 
-    def test_admin_menu_has_decommission_link_pi_menu_not_duplicated(self):
-        self.client.force_login(self.admin)
-        resp = self.client.get('/')
-        self.assertContains(resp, 'id="navbar-decommission-admin"')
-        self.assertNotContains(resp, 'id="navbar-management-menu"')
-        self.client.force_login(self.pi)
-        resp = self.client.get('/')
-        self.assertContains(resp, 'id="navbar-management-menu"')
-        self.assertNotContains(resp, 'id="navbar-decommission-admin"')
+    def test_management_menu_shown_to_pi_and_admin_only(self):
+        for user, visible in ((self.pi, True), (self.admin, True), (self.member, False)):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                resp = self.client.get('/')
+                if visible:
+                    self.assertContains(resp, 'id="navbar-management-menu"')
+                    self.assertContains(resp, 'id="navbar-decommission"')
+                else:
+                    self.assertNotContains(resp, 'id="navbar-management-menu"')
 
     def test_non_pi_denied(self):
         self.client.force_login(self.member)
@@ -187,7 +188,7 @@ class OffboardingTests(TestCase):
         member_pk = self.project.projectuser_set.get(user=self.member).pk
         base = {f'status_{member_pk}': 'offboard'}
         resp = self.client.post(self.form_url(), {**base, 'offboarding_date': limit.isoformat()})
-        self.assertNotIn('offboarding_date', resp.context['form'].errors if resp.context else {})
+        self.assertRedirects(resp, reverse('home'), fetch_redirect_response=False)
         too_late = limit + datetime.timedelta(days=1)
         resp = self.client.post(self.form_url(), {**base, 'offboarding_date': too_late.isoformat()})
         self.assertEqual(resp.status_code, 200)
