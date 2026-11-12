@@ -1,0 +1,155 @@
+{% extends "common/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Offboarding Form{% endblock %}
+
+{% block content %}
+<h2>Offboarding Form</h2>
+<hr>
+<form method="post">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+
+  <div class="card mb-3">
+    <div class="card-header"><h4>1. Project</h4></div>
+    <div class="card-body">
+      <p><strong>{{ project.title }}</strong></p>
+      <p class="text-muted">If this is your primary project, please note that additional projects may exist and require offboarding. They will each require a separate form.</p>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><h4>2. Email</h4></div>
+    <div class="card-body">
+      <p>{{ request.user.email }}</p>
+      {{ form.alternative_email|as_crispy_field }}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><h4>3. Expected date of offboarding</h4></div>
+    <div class="card-body">{{ form.offboarding_date|as_crispy_field }}</div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><h4>4. Storage</h4></div>
+    <div class="card-body">
+      <p>Please indicate how to proceed with the remaining data storage.</p>
+      {% for row in allocation_rows %}
+      <div class="border rounded p-3 mb-3 offboarding-allocation" data-prefix="{{ row.prefix }}">
+        <h5>Storage allocation path: <code>{{ row.path }}</code></h5>
+        <p>Resource: <code>{{ row.resource.name|default:"(unknown)" }}</code></p>
+
+        <p class="font-weight-bold mb-1">{{ row.action.label }} <span class="text-danger">*</span></p>
+        {% if row.action.errors %}<div class="text-danger mb-2">{{ row.action.errors|striptags }}</div>{% endif %}
+        {% for radio in row.action %}
+        <div class="form-check mb-2">
+          <input type="radio" class="form-check-input" name="{{ radio.data.name }}" id="{{ radio.id_for_label }}"
+                 value="{{ radio.data.value }}" {% if radio.data.selected %}checked{% endif %}>
+          <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+
+          {% if radio.data.value == 'retain' %}
+          <div class="ml-2 mt-2" data-show-if="{{ row.prefix }}action=retain">
+            {{ row.retain_duration|as_crispy_field }}
+            {{ row.retain_contact_name|as_crispy_field }}
+            {{ row.retain_contact_email|as_crispy_field }}
+            {{ row.retain_billing_code|as_crispy_field }}
+          </div>
+          {% elif radio.data.value == 'delete' %}
+          <div class="ml-2 mt-2" data-show-if="{{ row.prefix }}action=delete">
+            <p>Here are some <a href="https://docs.rc.fas.harvard.edu/kb/data-deletion-recommendations/" target="_blank" rel="noopener">recommended steps for deleting data</a>. If you experience issues with deleting data due to permissions issues, please email <a href="mailto:rchelp@rc.fas.harvard.edu">rchelp@rc.fas.harvard.edu</a>.</p>
+            <p>For protected data (<a href="https://privsec.harvard.edu/data-security-levels-research-data-examples" target="_blank" rel="noopener">Level 3</a>), PIs are responsible for informing FAS RC if and when the data requires disposal. <a href="mailto:rchelp@rc.fas.harvard.edu">Please email FAS RC</a> to discuss destruction options.</p>
+          </div>
+          {% elif radio.data.value == 'move' %}
+          <div class="ml-2 mt-2" data-show-if="{{ row.prefix }}action=move">
+            <p>Note: Please ensure you have acquired all the necessary approvals from the University to migrate the data. Requirements include <a href="https://bpb-us-e1.wpmucdn.com/websites.harvard.edu/dist/f/106/files/2022/10/research_records_and_data_retention_and_maintenance_guidance_rev_2017.pdf" target="_blank" rel="noopener">written approval from the Office for the Vice Provost for Research.</a></p>
+            {{ row.move_within_harvard|as_crispy_field }}
+            <div class="ml-4" data-show-if="{{ row.prefix }}move_within_harvard=yes">
+              <p>Note: PIs can migrate data to other storage locations using <a href="https://docs.rc.fas.harvard.edu/kb/globus-file-transfer/" target="_blank" rel="noopener">Globus</a>. Please email <a href="mailto:rchelp@rc.fas.harvard.edu">rchelp@rc.fas.harvard.edu</a> if you have questions about data transfers.</p>
+              {{ row.move_recipient|as_crispy_field }}
+            </div>
+            <div class="ml-4" data-show-if="{{ row.prefix }}move_within_harvard=no">
+              {{ row.move_destination|as_crispy_field }}
+              <p>Note: We recommend if the project is completed, data be deposited into a <a href="https://www.rc.fas.harvard.edu/services/research-data-management/" target="_blank" rel="noopener">Data Repository</a>.</p>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% empty %}
+      <p class="text-muted">This project has no active storage allocations.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><h4>5. Accounts</h4></div>
+    <div class="card-body">
+      {% if member_rows %}
+      <p>These are the project members who have this project listed as their primary group. For each project member listed, choose either <em>Fully offboard</em> (they have left Harvard and no longer require access to the HPC cluster or storage) or <em>New sponsor</em> (they are staying at Harvard), and give the new sponsor's name.</p>
+      <p class="text-muted">We require written approval from the sponsor before we can add a lab member to their group. The sponsor must have an <a href="https://research.fas.harvard.edu/pi-eligibility" target="_blank" rel="noopener">active FAS RC PI level account</a>. If the lab member needs to access any FAS RC resources (fairshare, cluster, software, storage etc.) they will require an active sponsor.</p>
+      <table class="table">
+        <thead><tr><th>Group member</th><th>Access</th></tr></thead>
+        <tbody>
+        {% for row in member_rows %}
+          <tr>
+            <td>{{ row.project_user.user.get_full_name }} ({{ row.project_user.user.username }})</td>
+            <td>
+              {% if row.status.errors %}<div class="text-danger">{{ row.status.errors|striptags }}</div>{% endif %}
+              {% for radio in row.status %}
+              <div class="form-check">
+                <input type="radio" class="form-check-input" name="{{ radio.data.name }}" id="{{ radio.id_for_label }}"
+                       value="{{ radio.data.value }}" {% if radio.data.selected %}checked{% endif %}>
+                <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+                {% if radio.data.value == 'sponsor' %}
+                <div class="mt-2" data-show-if="{{ row.status.html_name }}=sponsor">
+                  {{ row.sponsor|as_crispy_field }}
+                </div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="text-muted">No group members have this group as their primary group.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><h4>6. Resources and Help</h4></div>
+    <div class="card-body">
+      <p>Please email <a href="mailto:rchelp@rc.fas.harvard.edu">rchelp@rc.fas.harvard.edu</a> if you have any questions.</p>
+      <p>Additional resources:</p>
+      <ul>
+        <li><a href="https://docs.rc.fas.harvard.edu/kb/offboarding/" target="_blank" rel="noopener">Offboarding procedures</a></li>
+        <li><a href="https://research.harvard.edu/files/2022/10/research_records_and_data_retention_and_maintenance_guidance_rev_2017.pdf" target="_blank" rel="noopener">Data Retention FAQs</a></li>
+        <li><a href="https://docs.rc.fas.harvard.edu/kb/fas-rc-research-data-retention-and-deletion-policy/" target="_blank" rel="noopener">FAS RC Data Retention and Deletion Policy</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <a class="btn btn-secondary" href="{{ select_url }}" role="button">Go Back</a>
+  <input class="btn btn-primary" type="submit" value="Submit" />
+</form>
+
+<script>
+  // Show conditional blocks only when their controlling radio has the given value.
+  function updateOffboardingVisibility() {
+    document.querySelectorAll('[data-show-if]').forEach(function (el) {
+      var parts = el.dataset.showIf.split('=');
+      var checked = document.querySelector('input[name="' + parts[0] + '"]:checked');
+      var parentOk = true;
+      var parent = el.parentElement.closest('[data-show-if]');
+      if (parent) { parentOk = parent.style.display !== 'none'; }
+      el.style.display = (parentOk && checked && checked.value === parts[1]) ? '' : 'none';
+    });
+  }
+  document.addEventListener('change', updateOffboardingVisibility);
+  updateOffboardingVisibility();
+</script>
+{% endblock %}
