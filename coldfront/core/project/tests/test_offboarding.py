@@ -1,3 +1,4 @@
+import datetime
 import logging
 from unittest.mock import patch
 
@@ -7,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from coldfront.core.project.models import ProjectStatusChoice
-from coldfront.core.project.forms import ProjectOffboardingForm
+from coldfront.core.project.forms import ProjectOffboardingForm, offboarding_date_limit
 from coldfront.core.test_helpers.factories import (
     AllocationFactory, ResourceFactory, ResourceTypeFactory, ProjectFactory, ProjectUserFactory, UserFactory, setup_models,
 )
@@ -17,6 +18,8 @@ logging.disable(logging.CRITICAL)
 UTIL_FIXTURES = [
     "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
 ]
+# a valid offboarding date: inside the two-year limit
+FUTURE_DATE = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
 SUCCESS_MESSAGE = 'Offboarding form sent.'
 
 
@@ -50,7 +53,7 @@ class OffboardingTests(TestCase):
 
     def valid_data(self, **extra):
         data = {
-            'offboarding_date': '2030-01-01',
+            'offboarding_date': FUTURE_DATE,
             f'status_{self.project.projectuser_set.get(user=self.member).pk}': 'offboard',
         }
         data.update(extra)
@@ -144,7 +147,7 @@ class OffboardingTests(TestCase):
     def test_email_free_text_not_html_escaped(self):
         self.client.force_login(self.pi)
         member_pk = self.project.projectuser_set.get(user=self.member).pk
-        data = {'offboarding_date': '2030-01-01', f'status_{member_pk}': 'sponsor',
+        data = {'offboarding_date': FUTURE_DATE, f'status_{member_pk}': 'sponsor',
                 f'sponsor_{member_pk}': 'Smith & Jones <Lab>'}
         self.client.post(self.form_url(), data)
         self.assertEqual(len(mail.outbox), 1)
@@ -153,7 +156,7 @@ class OffboardingTests(TestCase):
     def test_member_status_required(self):
         self.client.force_login(self.pi)
         member_pk = self.project.projectuser_set.get(user=self.member).pk
-        resp = self.client.post(self.form_url(), {'offboarding_date': '2030-01-01'})
+        resp = self.client.post(self.form_url(), {'offboarding_date': FUTURE_DATE})
         self.assertIn(f'status_{member_pk}', resp.context['form'].errors)
 
     def test_new_sponsor_requires_name(self):
@@ -161,7 +164,7 @@ class OffboardingTests(TestCase):
         member_pk = self.project.projectuser_set.get(user=self.member).pk
         for sponsor in ('', '   '):
             resp = self.client.post(self.form_url(), {
-                'offboarding_date': '2030-01-01', f'status_{member_pk}': 'sponsor',
+                'offboarding_date': FUTURE_DATE, f'status_{member_pk}': 'sponsor',
                 f'sponsor_{member_pk}': sponsor})
             self.assertIn(f'sponsor_{member_pk}', resp.context['form'].errors)
 
@@ -177,6 +180,27 @@ class OffboardingTests(TestCase):
         self.client.force_login(self.pi)
         members = [row['project_user'].user for row in self.client.get(self.form_url()).context['member_rows']]
         self.assertEqual(members, [self.member])
+
+    def test_offboarding_date_limited_to_two_years(self):
+        self.client.force_login(self.pi)
+        limit = offboarding_date_limit()
+        member_pk = self.project.projectuser_set.get(user=self.member).pk
+        base = {f'status_{member_pk}': 'offboard'}
+        resp = self.client.post(self.form_url(), {**base, 'offboarding_date': limit.isoformat()})
+        self.assertNotIn('offboarding_date', resp.context['form'].errors if resp.context else {})
+        too_late = limit + datetime.timedelta(days=1)
+        resp = self.client.post(self.form_url(), {**base, 'offboarding_date': too_late.isoformat()})
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('offboarding_date', resp.context['form'].errors)
+
+    def test_offboarding_date_limit_helper(self):
+        self.assertEqual(offboarding_date_limit(datetime.date(2026, 11, 12)), datetime.date(2028, 11, 12))
+        self.assertEqual(offboarding_date_limit(datetime.date(2028, 2, 29)), datetime.date(2030, 2, 28))
+
+    def test_offboarding_date_input_has_max_attribute(self):
+        self.client.force_login(self.pi)
+        resp = self.client.get(self.form_url())
+        self.assertContains(resp, f'max="{offboarding_date_limit().isoformat()}"')
 
     def test_date_required(self):
         self.client.force_login(self.pi)
@@ -201,7 +225,7 @@ class OffboardingStorageChoiceTests(TestCase):
         cls.prefix = f'alloc_{cls.allocation.pk}_'
 
     def build_form(self, **answers):
-        data = {'offboarding_date': '2030-01-01'}
+        data = {'offboarding_date': FUTURE_DATE}
         data.update({self.prefix + k: v for k, v in answers.items()})
         return ProjectOffboardingForm(self.project.pk, data)
 

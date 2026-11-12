@@ -306,6 +306,15 @@ OFFBOARDING_ALLOCATION_FIELD_LABELS = {
 }
 
 
+def offboarding_date_limit(today=None):
+    """Latest allowed offboarding date: two years from today."""
+    today = today or datetime.date.today()
+    try:
+        return today.replace(year=today.year + 2)
+    except ValueError:  # Feb 29 -> Feb 28
+        return today.replace(year=today.year + 2, day=28)
+
+
 class ProjectOffboardingForm(forms.Form):
     """Offboarding questionnaire for a project: storage disposition per active
     storage allocation and account disposition per active group member.
@@ -331,6 +340,7 @@ class ProjectOffboardingForm(forms.Form):
         super().__init__(*args, **kwargs)
         project_obj = get_object_or_404(Project, pk=project_pk)
         self.project = project_obj
+        self.fields['offboarding_date'].widget.attrs['max'] = offboarding_date_limit().isoformat()
 
         self.allocations = list(project_obj.allocation_set.filter(
             status__name='Active', resources__resource_type__name='Storage'
@@ -403,6 +413,15 @@ class ProjectOffboardingForm(forms.Form):
             }
             for project_user in self.members
         ]
+
+    def clean_offboarding_date(self):
+        date = self.cleaned_data['offboarding_date']
+        limit = offboarding_date_limit()
+        if date > limit:
+            raise forms.ValidationError(
+                f'The expected date of offboarding cannot be more than two years from today '
+                f'(latest allowed: {limit.isoformat()}).')
+        return date
 
     def clean(self):
         cleaned_data = super().clean()
