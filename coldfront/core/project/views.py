@@ -1472,6 +1472,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                     'expiration': _expiration_as_date(project_user_obj.user),
                 },
                 target_user=project_user_obj.user,
+                is_primary_project=project_user_obj.primary_group,
             )
             context = {}
             context['project_obj'] = project_obj
@@ -1517,6 +1518,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                     'expiration': _expiration_as_date(project_user_obj.user),
                 },
                 target_user=project_user_obj.user,
+                is_primary_project=project_user_obj.primary_group,
             )
 
             if not project_user_update_form.is_valid():

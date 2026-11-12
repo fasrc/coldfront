@@ -1102,6 +1102,9 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         self.target = self.npu.user
         self.target.expiration = None
         self.target.save()
+        # Non-external users can only have expiration set from their primary project.
+        self.npu.primary_group = True
+        self.npu.save()
         self.client.force_login(self.proj_generalmanager)
         # The ldap plugin's receiver pushes expiration to AD; mock the connection.
         patcher = patch('coldfront.plugins.ldap.signals.LDAPConn')
@@ -1194,6 +1197,57 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         self.client.post(self.url, data=self.post_data(new_date))
         self.target.refresh_from_db()
         self.assertIsNone(self.target.expiration)
+
+    def make_non_primary(self):
+        self.npu.primary_group = False
+        self.npu.save()
+
+    def test_non_external_expiration_field_hidden_outside_primary_project(self):
+        self.make_non_primary()
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        response = self.client.get(self.url)
+        self.assertNotIn('expiration', response.context['project_user_update_form'].fields)
+        self.assertContains(response, timezone.localdate(existing).isoformat())
+        self.assertContains(response, "can only be changed from the user's primary project")
+
+    def test_non_external_expiration_post_ignored_outside_primary_project(self):
+        self.make_non_primary()
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        new_date = timezone.localdate() + datetime.timedelta(days=30)
+        data = self.post_data(new_date)
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.target.refresh_from_db()
+        self.npu.refresh_from_db()
+        self.assertEqual(self.target.expiration, existing)
+        self.assertFalse(self.npu.enable_notifications)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_non_external_blank_post_outside_primary_project_does_not_clear(self):
+        self.make_non_primary()
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        self.client.post(self.url, data=self.post_data(None))
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.expiration, existing)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_external_expiration_settable_outside_primary_project(self):
+        self.make_non_primary()
+        self.make_external()
+        response = self.client.get(self.url)
+        self.assertIn('expiration', response.context['project_user_update_form'].fields)
+        new_date = timezone.localdate() + datetime.timedelta(days=30)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertEqual(timezone.localdate(self.target.expiration), new_date)
 
     def test_non_external_expiration_over_90_days_saves_and_pushes_to_ad(self):
         new_date = timezone.localdate() + datetime.timedelta(days=400)

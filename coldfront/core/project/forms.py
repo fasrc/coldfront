@@ -118,12 +118,13 @@ class ProjectUserUpdateForm(forms.Form):
         widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
     )
 
-    def __init__(self, request_user, project_pk, *args, target_user=None, **kwargs):
+    def __init__(self, request_user, project_pk, *args, target_user=None, is_primary_project=False, **kwargs):
         """If user is not PI or Admin, only show Access Manager, Storage Manager, and User roles.
 
         The expiration field is only offered when target_user is given. For external users it
-        is required and capped at EXTERNAL_EXPIRATION_MAX_DAYS; for everyone else it is
-        optional and uncapped.
+        is required and capped at EXTERNAL_EXPIRATION_MAX_DAYS, and can be set from any of
+        their projects. For everyone else it is optional and uncapped, and only offered when
+        this project is the user's primary project (is_primary_project).
         """
         super().__init__(*args, **kwargs)
         project_obj = get_object_or_404(Project, pk=project_pk)
@@ -132,7 +133,7 @@ class ProjectUserUpdateForm(forms.Form):
             self.fields['role'].queryset = roles.exclude(name='General Manager')
 
         self.target_is_external = target_user is not None and is_external_user(target_user)
-        if target_user is None:
+        if target_user is None or not (self.target_is_external or is_primary_project):
             del self.fields['expiration']
             return
         today = timezone.localdate()

@@ -79,6 +79,13 @@ Project User Detail
                   {% endif %}
                 </td>
               </tr>
+            {% elif project_user_obj.user.expiration %}
+              <tr>
+                <th scope="row">Account Expiration:</th>
+                <td>{{ project_user_obj.user.expiration|date:"Y-m-d"|default:"None" }}
+                  <small class="form-text text-muted">This account's expiration can only be changed from the user's primary project.</small>
+                </td>
+              </tr>
             {% endif %}
           {% endif %}
         </table>
