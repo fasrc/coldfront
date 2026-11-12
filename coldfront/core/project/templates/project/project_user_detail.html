@@ -72,14 +72,11 @@ Project User Detail
             {% if project_user_update_form.expiration %}
               <tr>
                 <th scope="row"><label for="{{ project_user_update_form.expiration.id_for_label }}">Account Expiration:</label></th>
-                <td>{{project_user_update_form.expiration}}
-                  <small class="form-text text-muted">{{project_user_update_form.expiration.help_text}}</small>
-                  {% if project_user_update_form.target_is_external and not project_user_obj.user.expiration %}
-                    <small class="form-text text-warning">This external account currently has no expiration date.</small>
-                  {% endif %}
+                <td>{{ project_user_update_form.expiration }}
+                  <small class="form-text text-muted">{{ project_user_update_form.expiration.help_text }}</small>
                 </td>
               </tr>
-            {% elif project_user_obj.user.expiration %}
+            {% else %}
               <tr>
                 <th scope="row">Account Expiration:</th>
                 <td>{{ project_user_obj.user.expiration|date:"Y-m-d"|default:"None" }}

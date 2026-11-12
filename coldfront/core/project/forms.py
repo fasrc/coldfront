@@ -101,11 +101,6 @@ EXTERNAL_USER_GROUP = 'external'
 EXTERNAL_EXPIRATION_MAX_DAYS = 90
 
 
-def is_external_user(user):
-    """True if the user belongs to the 'external' auth group."""
-    return user.groups.filter(name=EXTERNAL_USER_GROUP).exists()
-
-
 class ProjectUserUpdateForm(forms.Form):
     role = forms.ModelChoiceField(
         queryset=ProjectUserRoleChoice.objects.exclude(name='PI'), empty_label=None)
@@ -113,18 +108,19 @@ class ProjectUserUpdateForm(forms.Form):
     expiration = forms.DateField(
         label='Account Expiration',
         required=False,
-        # type="date" inputs only accept ISO dates; pin the format so a non-ISO locale
-        # can't render the current value as blank (which would clear it on save).
+        # type="date" inputs only accept ISO dates; pinning the format keeps the current
+        # value visible in any locale (a blank field would clear the expiration on save).
         widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
     )
 
-    def __init__(self, request_user, project_pk, *args, target_user=None, is_primary_project=False, **kwargs):
+    def __init__(self, request_user, project_pk, *args, **kwargs):
         """If user is not PI or Admin, only show Access Manager, Storage Manager, and User roles.
 
-        The expiration field is only offered when target_user is given. For external users it
-        is required and capped at EXTERNAL_EXPIRATION_MAX_DAYS, and can be set from any of
-        their projects. For everyone else it is optional and uncapped, and only offered when
-        this project is the user's primary project (is_primary_project).
+        How the expiration can be edited depends on two values the view passes in `initial`:
+        - is_external: the date is required and capped at EXTERNAL_EXPIRATION_MAX_DAYS,
+          and can be set from any of the user's projects.
+        - primary_group: for non-external users the date is optional and uncapped, but only
+          editable from their primary project; elsewhere the field is removed.
         """
         super().__init__(*args, **kwargs)
         project_obj = get_object_or_404(Project, pk=project_pk)
@@ -132,51 +128,41 @@ class ProjectUserUpdateForm(forms.Form):
         if not project_obj.pi == request_user and not request_user.is_superuser:
             self.fields['role'].queryset = roles.exclude(name='General Manager')
 
-        self.target_is_external = target_user is not None and is_external_user(target_user)
-        if target_user is None or not (self.target_is_external or is_primary_project):
-            del self.fields['expiration']
-            return
-        today = timezone.localdate()
-        self.fields['expiration'].widget.attrs['min'] = (today + datetime.timedelta(days=1)).isoformat()
-        if self.target_is_external:
+        self.is_external = self.initial.get('is_external', False)
+        if self.is_external:
             self.fields['expiration'].required = True
-            max_date = today + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)
-            self.fields['expiration'].widget.attrs['max'] = max_date.isoformat()
             self.fields['expiration'].help_text = (
-                f'Required for external accounts. Must be no more than {EXTERNAL_EXPIRATION_MAX_DAYS} '
-                f'days from today (latest: {max_date:%Y-%m-%d}).'
+                f'Required for external accounts. Must be no more than '
+                f'{EXTERNAL_EXPIRATION_MAX_DAYS} days from today.'
             )
+        elif self.initial.get('primary_group'):
+            self.fields['expiration'].help_text = 'Optional. Leave blank for an account that never expires.'
         else:
-            self.fields['expiration'].help_text = (
-                'Optional. Leave blank for an account that never expires.'
-            )
+            del self.fields['expiration']
 
     def clean_expiration(self):
-        """External users must have an expiration in the future and no more than
-        EXTERNAL_EXPIRATION_MAX_DAYS from today. This applies on every save, including
-        when the submitted date is unchanged from the current (e.g. AD-synced) value.
-        Blank values are rejected by required=True before this runs.
+        """Validate the expiration date.
 
-        For non-external users the date is optional: blank clears the expiration (the
-        account never expires), an unchanged date is accepted as is, and a new date only
-        has to be in the future.
+        External users: the date must be in the future and no more than
+        EXTERNAL_EXPIRATION_MAX_DAYS from today on every save, even if unchanged.
+        Others: blank clears the expiration, an unchanged date is accepted as is,
+        and a new date only has to be in the future.
         """
         new_date = self.cleaned_data.get('expiration')
-        if not self.target_is_external:
-            if new_date is None or new_date == self.initial.get('expiration'):
-                return new_date
         if new_date is None:
+            # Blank: required=True already rejects this for external users.
             return None
+        if not self.is_external and new_date == self.initial.get('expiration'):
+            return new_date
+
         today = timezone.localdate()
         if new_date <= today:
             raise forms.ValidationError('Expiration date must be in the future.')
-        if not self.target_is_external:
-            return new_date
         max_date = today + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)
-        if new_date > max_date:
+        if self.is_external and new_date > max_date:
             raise forms.ValidationError(
-                f'Expiration date cannot be more than {EXTERNAL_EXPIRATION_MAX_DAYS} '
-                f'days from today ({max_date:%Y-%m-%d}).'
+                f'Expiration date cannot be more than {EXTERNAL_EXPIRATION_MAX_DAYS} days '
+                f'from today ({max_date:%Y-%m-%d}).'
             )
         return new_date
 

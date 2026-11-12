@@ -48,6 +48,7 @@ from coldfront.core.project.signals import (
 from coldfront.core.department.models import Department
 from coldfront.core.grant.models import Grant
 from coldfront.core.project.forms import (
+    EXTERNAL_USER_GROUP,
     ProjectReviewForm,
     ProjectSearchForm,
     ProjectAddUserForm,
@@ -1429,11 +1430,14 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 
 
-def _expiration_as_date(user):
-    """Return the user's expiration as a local date, or None if unset."""
-    if not user.expiration:
-        return None
-    return timezone.localdate(user.expiration)
+def _expiration_initial(project_user):
+    """Initial values ProjectUserUpdateForm uses to decide how the expiration can be edited."""
+    user = project_user.user
+    return {
+        'expiration': timezone.localdate(user.expiration) if user.expiration else None,
+        'is_external': user.groups.filter(name=EXTERNAL_USER_GROUP).exists(),
+        'primary_group': project_user.primary_group,
+    }
 
 
 class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
@@ -1469,10 +1473,8 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                 initial={
                     'role': project_user_obj.role,
                     'enable_notifications': project_user_obj.enable_notifications,
-                    'expiration': _expiration_as_date(project_user_obj.user),
-                },
-                target_user=project_user_obj.user,
-                is_primary_project=project_user_obj.primary_group,
+                    **_expiration_initial(project_user_obj),
+                }
             )
             context = {}
             context['project_obj'] = project_obj
@@ -1515,10 +1517,8 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                 initial={
                     'role': project_user_obj.role.name,
                     'enable_notifications': project_user_obj.enable_notifications,
-                    'expiration': _expiration_as_date(project_user_obj.user),
+                    **_expiration_initial(project_user_obj),
                 },
-                target_user=project_user_obj.user,
-                is_primary_project=project_user_obj.primary_group,
             )
 
             if not project_user_update_form.is_valid():
@@ -1532,80 +1532,61 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                     )
                 )
             form_data = project_user_update_form.cleaned_data
-            username = project_user_obj.user.username
-            requester_uname = self.request.user.username
 
-            # Push any expiration change to the directory (AD via the ldap plugin)
-            # before saving anything, so a rejected write leaves the user unchanged.
-            # A blank date (None) clears the expiration; the form only allows that for
-            # non-external users.
-            expiration_changed = False
-            new_expiration_dt = None
-            if 'expiration' in project_user_update_form.fields:
-                old_expiration = _expiration_as_date(project_user_obj.user)
-                new_expiration = form_data.get('expiration')
-                expiration_changed = new_expiration != old_expiration
-                if expiration_changed:
-                    if new_expiration:
-                        # End of the chosen day in the server's local timezone.
-                        new_expiration_dt = timezone.make_aware(
-                            datetime.datetime.combine(new_expiration, datetime.time(23, 59, 59))
+            # Push an expiration change to AD (via the ldap plugin) before saving anything,
+            # so a rejected write leaves the user unchanged. If the form has no expiration
+            # field (non-external user outside their primary project), nothing changes.
+            old_expiration = project_user_update_form.initial['expiration']
+            new_expiration = form_data.get('expiration', old_expiration)
+            if new_expiration != old_expiration:
+                if new_expiration is None:
+                    expiration_dt = None  # cleared: the account never expires
+                else:
+                    # End of the chosen day in the server's local timezone.
+                    expiration_dt = timezone.make_aware(
+                        datetime.datetime.combine(new_expiration, datetime.time(23, 59, 59))
+                    )
+                try:
+                    project_user_expiration_update.send(
+                        sender=self.__class__,
+                        user=project_user_obj.user,
+                        expiration=expiration_dt,
+                        actor_username=request.user.username,
+                        actor_role=_actor_role_label(request.user, project_obj),
+                    )
+                except Exception:
+                    logger.exception(
+                        'Failed to push account expiration to AD.',
+                        extra={
+                            'category': 'integration:AD',
+                            'status': 'failure',
+                            'project': project_obj.title,
+                            'changed_user': project_user_obj.user.username,
+                            'requester': request.user.username,
+                        }
+                    )
+                    messages.error(
+                        request,
+                        'Could not update the account expiration in AD; no changes were saved.'
+                    )
+                    return HttpResponseRedirect(
+                        reverse(
+                            'project-user-detail',
+                            kwargs={'pk': pk, 'project_user_pk': project_user_obj.pk},
                         )
-                    try:
-                        project_user_expiration_update.send(
-                            sender=self.__class__,
-                            user=project_user_obj.user,
-                            expiration=new_expiration_dt,
-                            actor_username=requester_uname,
-                            actor_role=_actor_role_label(self.request.user, project_obj),
-                        )
-                    except Exception as e:
-                        logger.exception(
-                            'Failed to push user expiration to directory.',
-                            extra={
-                                'category': 'integration:AD',
-                                'status': 'failure',
-                                'project': project_obj.title,
-                                'changed_user': username,
-                                'requester': requester_uname,
-                                'error': str(e),
-                            }
-                        )
-                        messages.error(
-                            request,
-                            'Could not update the account expiration in AD; no changes were saved. '
-                            'Please try again or contact FASRC support.'
-                        )
-                        return HttpResponseRedirect(
-                            reverse(
-                                'project-user-detail',
-                                kwargs={'pk': pk, 'project_user_pk': project_user_obj.pk},
-                            )
-                        )
+                    )
+                project_user_obj.user.expiration = expiration_dt
+                project_user_obj.user.save(update_fields=['expiration'])
 
             project_user_obj.enable_notifications = form_data.get(
                 'enable_notifications'
             )
             old_role = project_user_obj.role.name
             new_role = form_data.get('role')
+            username = project_user_obj.user.username
+            requester_uname = self.request.user.username
             project_user_obj.role = new_role
             project_user_obj.save()
-            if expiration_changed:
-                target_user = project_user_obj.user
-                target_user.expiration = new_expiration_dt
-                target_user.save(update_fields=['expiration'])
-                logger.info(
-                    'User expiration changed.',
-                    extra={
-                        'category': 'database_change:IfxUser',
-                        'status': 'success',
-                        'project': project_obj.title,
-                        'changed_user': username,
-                        'requester': requester_uname,
-                        'old_expiration': str(old_expiration),
-                        'new_expiration': str(new_expiration),
-                    }
-                )
             if old_role != new_role:
                 logger.info(
                     'ProjectUser role changed.',
