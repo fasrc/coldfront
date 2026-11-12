@@ -10,6 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from ldap3 import Connection, Server, ALL_ATTRIBUTES, MODIFY_REPLACE
+from ldap3.core.exceptions import LDAPCommunicationError
 from ldap3.utils.conv import escape_filter_chars
 from ldap3.extend.microsoft.addMembersToGroups import ad_add_members_to_groups
 from ldap3.extend.microsoft.removeMembersFromGroups import ad_remove_members_from_groups
@@ -238,9 +239,12 @@ class LDAPConn:
         try:
             result = ad_add_members_to_groups(
                 self.conn, [member_dn], group_dn, fix=True, raise_error=True)
+        except LDAPCommunicationError:
+            # AD is unreachable; let callers tell an outage from a rejection
+            raise
         except Exception as e:
             logger.exception("Error encountered while adding user to group: %s", e)
-            raise LDAPUserAdditionError("Error adding user to group.")
+            raise LDAPUserAdditionError("Error adding user to group.") from e
         if not self.member_in_group(member_dn, group_dn) or not result:
             raise LDAPUserAdditionError("Member not successfully added to group.")
         logger.info(
@@ -254,6 +258,14 @@ class LDAPConn:
             }
         )
         return result
+
+    def is_primary_group(self, user_name, group_name):
+        """True if group_name is the user's primary AD group (matching gidNumber), in which case
+        remove_member_from_group deactivates the account instead of removing the membership
+        """
+        user = self.return_user_by_name(user_name, attributes=['gidNumber'])
+        group = self.return_group_by_name(group_name, attributes=['gidNumber'])
+        return user['gidNumber'] == group['gidNumber']
 
     def remove_member_from_group(self, user_name, group_name, actor_username=None, actor_role=None):
         # get group
@@ -283,6 +295,9 @@ class LDAPConn:
             result = ad_remove_members_from_groups(
                 self.conn, [member_dn], group_dn, fix=True, raise_error=True
             )
+        except LDAPCommunicationError:
+            # AD is unreachable; let callers tell an outage from a rejection
+            raise
         except Exception as e:
             logger.exception("Error encountered while removing user from group: %s", e)
             raise LDAPUserRemovalError("Error removing user from group.") from e

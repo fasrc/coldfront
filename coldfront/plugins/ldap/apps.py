@@ -7,3 +7,4 @@ class LdapConfig(AppConfig):
 
     def ready(self):
         import coldfront.plugins.ldap.signals
+        import coldfront.plugins.ldap.projectuser_sync  # noqa: F401  registers ProjectUser AD receivers
