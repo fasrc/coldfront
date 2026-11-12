@@ -427,7 +427,8 @@ class LDAPConn:
 
         expiration: timezone-aware datetime at which the account expires, or None to
         clear the expiration (account never expires).
-        Raises LDAPException if the user can't be found or the modify fails.
+        Raises ValueError (from return_user_by_name) if the user can't be found, and
+        LDAPException if the modify fails.
         """
         user = self.return_user_by_name(username)
         user_dn = user['distinguishedName']

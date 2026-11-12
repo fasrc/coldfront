@@ -1,5 +1,8 @@
+import datetime
+
 from django import template
 from django.conf import settings
+from django.utils import timezone
 from django.utils.safestring import mark_safe
 
 register = template.Library()
@@ -54,6 +57,20 @@ def convert_status_to_icon(project):
         return mark_safe('<h4><span class="badge badge-success"><i class="fas fa-check-circle"></i></span></h4>')
 
 
+
+
+@register.filter
+def days_until(value):
+    """Whole days from today until a date or datetime, in the server's local timezone.
+
+    Negative if the value is in the past; None if the value is empty.
+    usage example {{ user.expiration|days_until }}
+    """
+    if not value:
+        return None
+    if isinstance(value, datetime.datetime):
+        value = timezone.localdate(value)
+    return (value - timezone.localdate()).days
 
 
 @register.filter('get_value_from_dict')

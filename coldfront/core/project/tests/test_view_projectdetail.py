@@ -1,5 +1,8 @@
+import datetime
+
 from django.contrib.auth.models import Group
 from django.urls import reverse
+from django.utils import timezone
 
 from coldfront.core.project.tests.test_views import ProjectViewTestBase
 from coldfront.core.test_helpers import utils
@@ -275,3 +278,57 @@ class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
         username_cell, name_cell = self._get_cells(soup, self.pi_user.username)
         self.assertNotIn('External', username_cell.get_text())
         self.assertNotIn('External', name_cell.get_text())
+
+
+class ProjectDetailViewExpirationBadgeTest(ProjectViewTestBase):
+    """Test that ProjectDetailView badges users whose accounts expire within 30 days."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super(ProjectDetailViewExpirationBadgeTest, cls).setUpTestData()
+        cls.url = f'/project/{cls.project.pk}/'
+        active_status = ProjectUserStatusChoiceFactory(name='Active')
+        cls.expiring_user = UserFactory(username='expiring_user')
+        cls.expiring_user.groups.add(Group.objects.get_or_create(name='external')[0])
+        ProjectUserFactory(user=cls.expiring_user, project=cls.project, status=active_status)
+
+    def _set_expiration_days_out(self, days):
+        self.expiring_user.expiration = timezone.now() + datetime.timedelta(days=days)
+        self.expiring_user.save()
+
+    def _badges(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        table = soup.find('table', {'id': 'projectuser_table'})
+        row = next(tr for tr in table.find_all('tr') if 'expiring_user' in tr.get_text())
+        return [badge.get_text(strip=True) for badge in row.find_all('td')[0].find_all('span', class_='badge')]
+
+    def test_badge_shown_after_external_badge_when_expiring_within_30_days(self):
+        self._set_expiration_days_out(12)
+        days_left = (timezone.localdate(self.expiring_user.expiration) - timezone.localdate()).days
+        self.assertEqual(self._badges(), ['External', f'exp. {days_left} days'])
+
+    def test_badge_is_red(self):
+        self._set_expiration_days_out(12)
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        self.assertIsNotNone(soup.find('span', class_='badge-danger', string=lambda s: s and s.startswith('exp.')))
+
+    def test_badge_uses_singular_day(self):
+        self.expiring_user.expiration = timezone.make_aware(
+            datetime.datetime.combine(timezone.localdate() + datetime.timedelta(days=1), datetime.time(12)))
+        self.expiring_user.save()
+        self.assertIn('exp. 1 day', self._badges())
+
+    def test_no_badge_at_30_days_or_more(self):
+        self.expiring_user.expiration = timezone.make_aware(
+            datetime.datetime.combine(timezone.localdate() + datetime.timedelta(days=30), datetime.time(12)))
+        self.expiring_user.save()
+        self.assertEqual(self._badges(), ['External'])
+
+    def test_no_badge_without_expiration(self):
+        self.expiring_user.expiration = None
+        self.expiring_user.save()
+        self.assertEqual(self._badges(), ['External'])
+
+    def test_no_badge_when_already_expired(self):
+        self._set_expiration_days_out(-3)
+        self.assertEqual(self._badges(), ['External'])
