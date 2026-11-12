@@ -34,6 +34,14 @@
             {% endif %}
           </div>
         </li>
+        {% if request.user.userprofile.is_pi or request.user.is_superuser %}
+        <li id="navbar-management-menu" class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" data-toggle="dropdown">Management</a>
+          <div class="dropdown-menu">
+            <a id="navbar-decommission" class="dropdown-item" href="{% url 'project-offboarding-select' %}">Request Project Decommission</a>
+          </div>
+        </li>
+        {% endif %}
         {% if request.user.is_superuser %}
           {% include 'common/navbar_admin.html' %}
           {% include 'coldfront_notifications/navbar.html' %}

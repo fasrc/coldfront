@@ -3,6 +3,8 @@ from django.urls import path
 import coldfront.core.project.views as project_views
 
 urlpatterns = [
+    path('offboarding/', project_views.ProjectOffboardingSelectView.as_view(), name='project-offboarding-select'),
+    path('<int:pk>/offboarding/', project_views.ProjectOffboardingView.as_view(), name='project-offboarding'),
     path('<int:pk>/', project_views.ProjectDetailView.as_view(), name='project-detail'),
     path('<int:pk>/archive', project_views.ProjectArchiveProjectView.as_view(), name='project-archive'),
     path('<int:pk>/unarchive', project_views.ProjectUnArchiveProjectView.as_view(), name='project-unarchive'),

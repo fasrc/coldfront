@@ -1,12 +1,20 @@
 import datetime
+import re
 
 from django import forms
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.safestring import mark_safe
 
-from coldfront.core.project.models import (Project, ProjectAttribute, ProjectReview,
-                                           ProjectUserRoleChoice)
+from coldfront.core.project.models import (
+    Project,
+    ProjectAttribute,
+    ProjectReview,
+    ProjectUser,
+    ProjectUserRoleChoice,
+)
+from coldfront.core.allocation.forms import ExpenseCodeField
 from coldfront.core.utils.common import import_from_settings
 
 EMAIL_DIRECTOR_PENDING_PROJECT_REVIEW_EMAIL = import_from_settings(
@@ -276,3 +284,278 @@ class ProjectAttributeUpdateForm(forms.Form):
             proj_attr = ProjectAttribute.objects.get(pk=cleaned_data.get('pk'))
             proj_attr.value = cleaned_data.get('new_value')
             proj_attr.clean()
+
+
+class ProjectOffboardingSelectForm(forms.Form):
+    project = forms.ModelChoiceField(queryset=Project.objects.none(), empty_label=None)
+
+    def __init__(self, request_user, *args, **kwargs):
+        """Offer New/Active projects: the requesting user's own, or every one for a superuser."""
+        super().__init__(*args, **kwargs)
+        projects = Project.objects.filter(status__name__in=['New', 'Active'])
+        if request_user.is_superuser:
+            projects = projects.select_related('pi')
+            self.fields['project'].label_from_instance = lambda p: f'{p.title} (PI: {p.pi.username})'
+        else:
+            projects = projects.filter(pi=request_user)
+        self.fields['project'].queryset = projects.order_by('title')
+
+
+RETENTION_UNITS = (('days', 'days'), ('weeks', 'weeks'), ('months', 'months'), ('years', 'years'))
+
+
+# Longest allowed retention (10 years), expressed in each unit.
+RETENTION_MAXIMUMS = {'days': 3650, 'weeks': 521, 'months': 120, 'years': 10}
+
+
+class RetentionDurationWidget(forms.MultiWidget):
+    """Number input next to a unit drop-down."""
+
+    def __init__(self, attrs=None):
+        widgets = [
+            forms.NumberInput(attrs={'min': 1, 'class': 'form-control', 'style': 'max-width: 8rem'}),
+            forms.Select(choices=RETENTION_UNITS, attrs={'class': 'form-control', 'style': 'max-width: 10rem'}),
+        ]
+        super().__init__(widgets, attrs)
+
+    def decompress(self, value):
+        if value:
+            number, _, unit = str(value).partition(' ')
+            return [number, unit if unit.endswith('s') else unit + 's']
+        return [None, 'years']
+
+    def render(self, name, value, attrs=None, renderer=None):
+        # lay the two inputs out side by side
+        html = super().render(name, value, attrs, renderer)
+        return mark_safe(f'<div class="form-inline">{html}</div>')
+
+
+class RetentionDurationField(forms.MultiValueField):
+    """A positive whole number plus a unit (days/weeks/months/years); cleans to e.g. "10 years"."""
+    widget = RetentionDurationWidget
+
+    def __init__(self, **kwargs):
+        fields = (
+            forms.IntegerField(min_value=1, required=False),
+            forms.ChoiceField(choices=RETENTION_UNITS, required=False),
+        )
+        super().__init__(fields=fields, require_all_fields=False, required=False, **kwargs)
+
+    def compress(self, data_list):
+        if not data_list or not data_list[0]:
+            return ''
+        number, unit = data_list[0], data_list[1] or 'years'
+        if number > RETENTION_MAXIMUMS[unit]:
+            raise forms.ValidationError(
+                'The maximum retention time is 10 years (120 months, 521 weeks, or 3650 days).')
+        return f'{number} {unit[:-1] if number == 1 else unit}'
+
+
+OFFBOARDING_ALLOCATION_FIELD_LABELS = {
+    'action': 'How should this allocation be handled?',
+    'retain_duration': 'How long does the data need to be retained?',
+    'retain_contact_name': 'Department contact name',
+    'retain_contact_email': 'Department contact email',
+    'retain_billing_code': '33-digit billing/funding code',
+    'move_within_harvard': 'Are you migrating the data to another group or storage location at Harvard?',
+    'move_recipient': 'Recipient group or contact at Harvard',
+    'move_destination': 'Destination outside Harvard',
+}
+
+
+def offboarding_date_limit(today=None):
+    """Latest allowed offboarding date: two years from today."""
+    today = today or datetime.date.today()
+    try:
+        return today.replace(year=today.year + 2)
+    except ValueError:  # Feb 29 -> Feb 28
+        return today.replace(year=today.year + 2, day=28)
+
+
+class ProjectOffboardingForm(forms.Form):
+    """Offboarding questionnaire for a project: storage disposition per active
+    storage allocation and account disposition per active group member.
+    """
+    YES_NO = (('yes', 'Yes'), ('no', 'No'))
+    MEMBER_STATUSES = (
+        ('offboard', 'Fully offboard'),
+        ('sponsor', 'New sponsor'),
+    )
+    ALLOCATION_ACTIONS = (
+        ('retain', 'Retain the allocation in its current storage location'),
+        ('delete', 'Delete the allocation'),
+        ('move', 'Move the allocation'),
+    )
+
+    alternative_email = forms.EmailField(required=False, label='Alternative email')
+    offboarding_date = forms.DateField(
+        label='Date project will be completed or when leaving the university',
+        widget=forms.DateInput(attrs={'type': 'date'}),
+    )
+
+    def __init__(self, project_pk, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        project_obj = get_object_or_404(Project, pk=project_pk)
+        self.project = project_obj
+        self.fields['offboarding_date'].widget.attrs['max'] = offboarding_date_limit().isoformat()
+
+        self.allocations = list(project_obj.allocation_set.filter(
+            status__name='Active', resources__resource_type__name='Storage'
+        ).distinct().order_by('resources__name'))
+        # only members whose primary group is this project need an offboarding decision
+        self.members = list(ProjectUser.objects.filter(
+            project=project_obj, status__name='Active', primary_group=True
+        ).exclude(user=project_obj.pi).select_related('user').order_by('user__username'))
+
+        for allocation in self.allocations:
+            self._add_allocation_fields(allocation)
+        for project_user in self.members:
+            self.fields[f'status_{project_user.pk}'] = forms.ChoiceField(
+                choices=self.MEMBER_STATUSES, widget=forms.RadioSelect)
+            self.fields[f'sponsor_{project_user.pk}'] = forms.CharField(
+                label='Name of new sponsor', required=False, max_length=255)
+
+    @staticmethod
+    def allocation_prefix(allocation):
+        return f'alloc_{allocation.pk}_'
+
+    @staticmethod
+    def allocation_path(allocation):
+        try:
+            return allocation.path or str(allocation.get_parent_resource)
+        except Exception:  # noqa: BLE001 - missing 'Subdirectory' attribute type, etc.
+            return str(allocation.get_parent_resource)
+
+    def _add_allocation_fields(self, allocation):
+        p = self.allocation_prefix(allocation)
+        labels = OFFBOARDING_ALLOCATION_FIELD_LABELS
+        radio = forms.RadioSelect
+        # retain/delete/move are mutually exclusive, so they are a single required choice.
+        self.fields[p + 'action'] = forms.ChoiceField(
+            label=labels['action'], choices=self.ALLOCATION_ACTIONS, widget=radio)
+        self.fields[p + 'retain_duration'] = RetentionDurationField(label=labels['retain_duration'])
+        self.fields[p + 'retain_contact_name'] = forms.CharField(
+            label=labels['retain_contact_name'], required=False, max_length=255)
+        self.fields[p + 'retain_contact_email'] = forms.EmailField(
+            label=labels['retain_contact_email'], required=False)
+        self.fields[p + 'retain_billing_code'] = ExpenseCodeField(
+            label=labels['retain_billing_code'], required=False)
+        self.fields[p + 'move_within_harvard'] = forms.ChoiceField(
+            label=labels['move_within_harvard'], choices=self.YES_NO, widget=radio, required=False)
+        self.fields[p + 'move_recipient'] = forms.CharField(
+            label=labels['move_recipient'], required=False)
+        self.fields[p + 'move_destination'] = forms.CharField(
+            label=labels['move_destination'], required=False)
+
+    def allocation_rows(self):
+        """Bound fields grouped per allocation, for template rendering."""
+        rows = []
+        for allocation in self.allocations:
+            p = self.allocation_prefix(allocation)
+            rows.append({
+                'allocation': allocation,
+                'path': self.allocation_path(allocation),
+                'resource': allocation.get_parent_resource,
+                'prefix': p,
+                **{name: self[p + name] for name in OFFBOARDING_ALLOCATION_FIELD_LABELS},
+            })
+        return rows
+
+    def member_rows(self):
+        return [
+            {
+                'project_user': project_user,
+                'status': self[f'status_{project_user.pk}'],
+                'sponsor': self[f'sponsor_{project_user.pk}'],
+            }
+            for project_user in self.members
+        ]
+
+    def clean_offboarding_date(self):
+        date = self.cleaned_data['offboarding_date']
+        limit = offboarding_date_limit()
+        if date > limit:
+            raise forms.ValidationError(
+                f'The expected date of offboarding cannot be more than two years from today '
+                f'(latest allowed: {limit.isoformat()}).')
+        return date
+
+    def clean(self):
+        cleaned_data = super().clean()
+        required_msg = 'This field is required.'
+        for allocation in self.allocations:
+            p = self.allocation_prefix(allocation)
+            action = cleaned_data.get(p + 'action')
+            if action == 'retain':
+                for name in ('retain_duration', 'retain_contact_name', 'retain_contact_email',
+                             'retain_billing_code'):
+                    if not cleaned_data.get(p + name, '').strip() and not self.has_error(p + name):
+                        self.add_error(p + name, required_msg)
+                code = cleaned_data.get(p + 'retain_billing_code', '')
+                if code and not self.has_error(p + 'retain_billing_code'):
+                    digits = re.sub(r'[^0-9xX]', '', code)
+                    cleaned_data[p + 'retain_billing_code'] = '-'.join(
+                        [digits[:3], digits[3:8], digits[8:12], digits[12:18], digits[18:24], digits[24:28], digits[28:33]])
+            if action == 'move':
+                within = cleaned_data.get(p + 'move_within_harvard')
+                if not within:
+                    self.add_error(p + 'move_within_harvard', required_msg)
+                elif within == 'yes' and not cleaned_data.get(p + 'move_recipient', '').strip():
+                    self.add_error(p + 'move_recipient', required_msg)
+                elif within == 'no' and not cleaned_data.get(p + 'move_destination', '').strip():
+                    self.add_error(p + 'move_destination', required_msg)
+        for project_user in self.members:
+            status = cleaned_data.get(f'status_{project_user.pk}')
+            sponsor_field = f'sponsor_{project_user.pk}'
+            if status == 'sponsor' and not cleaned_data.get(sponsor_field, '').strip() \
+                    and not self.has_error(sponsor_field):
+                self.add_error(
+                    sponsor_field, 
+                    'Please provide the name of the new sponsor, or TBD if not yet known.'
+                )
+            elif status == 'offboard':
+                cleaned_data[sponsor_field] = ''
+        return cleaned_data
+
+    def email_context(self, user):
+        """Context for the email/project_offboarding.txt template.
+
+        Flattens the per-allocation and per-member fields (whose names are
+        computed from pks) into lists the template can iterate over.
+        """
+        cleaned_data = self.cleaned_data
+        allocations = []
+        for allocation in self.allocations:
+            p = self.allocation_prefix(allocation)
+            allocations.append({
+                'pk': allocation.pk,
+                'path': self.allocation_path(allocation),
+                'retain': cleaned_data[p + 'action'] == 'retain',
+                'retain_duration': cleaned_data[p + 'retain_duration'],
+                'retain_contact_name': cleaned_data[p + 'retain_contact_name'],
+                'retain_contact_email': cleaned_data[p + 'retain_contact_email'],
+                'retain_billing_code': cleaned_data[p + 'retain_billing_code'],
+                'delete': cleaned_data[p + 'action'] == 'delete',
+                'move': cleaned_data[p + 'action'] == 'move',
+                'move_within_harvard': cleaned_data[p + 'move_within_harvard'] == 'yes',
+                'move_recipient': cleaned_data[p + 'move_recipient'],
+                'move_destination': cleaned_data[p + 'move_destination'],
+            })
+        members = [
+            {
+                'username': project_user.user.username,
+                'full_name': project_user.user.get_full_name(),
+                'email': project_user.user.email,
+                'offboard': cleaned_data[f'status_{project_user.pk}'] == 'offboard',
+                'sponsor': cleaned_data[f'sponsor_{project_user.pk}'].strip(),
+            }
+            for project_user in self.members
+        ]
+        return {
+            'submitter': user,
+            'project': self.project,
+            'alternative_email': cleaned_data.get('alternative_email'),
+            'offboarding_date': cleaned_data['offboarding_date'],
+            'allocations': allocations,
+            'members': members,
+        }
