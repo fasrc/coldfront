@@ -15,7 +15,7 @@
   <input class="btn btn-primary" type="submit" value="Continue" />
 </form>
 {% else %}
-<div class="alert alert-info">You are not the PI of any active projects.</div>
+<div class="alert alert-info">{% if request.user.is_superuser %}There are no active projects.{% else %}You are not the PI of any active projects.{% endif %}</div>
 <a class="btn btn-secondary" href="{% url 'home' %}" role="button">Go Back</a>
 {% endif %}
 {% endblock %}

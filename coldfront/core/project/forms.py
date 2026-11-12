@@ -233,11 +233,15 @@ class ProjectOffboardingSelectForm(forms.Form):
     project = forms.ModelChoiceField(queryset=Project.objects.none(), empty_label=None)
 
     def __init__(self, request_user, *args, **kwargs):
-        """Only offer New/Active projects the requesting user is PI of."""
+        """Offer New/Active projects: the requesting user's own, or every one for a superuser."""
         super().__init__(*args, **kwargs)
-        self.fields['project'].queryset = Project.objects.filter(
-            pi=request_user, status__name__in=['New', 'Active']
-        ).order_by('title')
+        projects = Project.objects.filter(status__name__in=['New', 'Active'])
+        if request_user.is_superuser:
+            projects = projects.select_related('pi')
+            self.fields['project'].label_from_instance = lambda p: f'{p.title} (PI: {p.pi.username})'
+        else:
+            projects = projects.filter(pi=request_user)
+        self.fields['project'].queryset = projects.order_by('title')
 
 
 RETENTION_UNITS = (('days', 'days'), ('weeks', 'weeks'), ('months', 'months'), ('years', 'years'))

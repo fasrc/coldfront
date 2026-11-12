@@ -67,6 +67,40 @@ class OffboardingTests(TestCase):
         resp = self.client.post(reverse('project-offboarding-select'), {'project': self.project.pk})
         self.assertRedirects(resp, self.form_url(), fetch_redirect_response=False)
 
+    def test_pi_select_lists_only_own_projects(self):
+        other_project = ProjectFactory(pi=self.other, title='other_lab')
+        self.client.force_login(self.pi)
+        projects = self.client.get(reverse('project-offboarding-select')).context['form'].fields['project'].queryset
+        self.assertIn(self.project, projects)
+        self.assertNotIn(other_project, projects)
+
+    def test_admin_select_lists_all_active_projects_and_can_continue(self):
+        other_project = ProjectFactory(pi=self.other, title='other_lab')
+        archived = ProjectFactory(pi=self.other, title='old_lab')
+        archived.status = ProjectStatusChoice.objects.get(name='Archived')
+        archived.save()
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse('project-offboarding-select'))
+        self.assertEqual(resp.status_code, 200)
+        projects = resp.context['form'].fields['project'].queryset
+        self.assertIn(self.project, projects)
+        self.assertIn(other_project, projects)
+        self.assertNotIn(archived, projects)
+        self.assertContains(resp, 'other_lab (PI: other_pi)')
+        resp = self.client.post(reverse('project-offboarding-select'), {'project': other_project.pk})
+        self.assertRedirects(
+            resp, reverse('project-offboarding', kwargs={'pk': other_project.pk}), fetch_redirect_response=False)
+
+    def test_admin_menu_has_decommission_link_pi_menu_not_duplicated(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get('/')
+        self.assertContains(resp, 'id="navbar-decommission-admin"')
+        self.assertNotContains(resp, 'id="navbar-management-menu"')
+        self.client.force_login(self.pi)
+        resp = self.client.get('/')
+        self.assertContains(resp, 'id="navbar-management-menu"')
+        self.assertNotContains(resp, 'id="navbar-decommission-admin"')
+
     def test_non_pi_denied(self):
         self.client.force_login(self.member)
         self.assertNotEqual(self.client.get(reverse('project-offboarding-select')).status_code, 200)

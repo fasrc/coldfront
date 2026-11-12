@@ -1813,14 +1813,14 @@ class ProjectReviewEmailView(LoginRequiredMixin, UserPassesTestMixin, FormView):
 
 
 class ProjectOffboardingSelectView(LoginRequiredMixin, UserPassesTestMixin, FormView):
-    """Lets a PI pick which of their projects to offboard."""
+    """Lets a PI pick which of their projects to offboard; admins can pick any active project."""
     form_class = ProjectOffboardingSelectForm
     template_name = 'project/offboarding_select.html'
     login_url = '/'
 
     def test_func(self):
         """UserPassesTestMixin Tests"""
-        if self.request.user.userprofile.is_pi:
+        if self.request.user.is_superuser or self.request.user.userprofile.is_pi:
             return True
 
         err = 'Only PIs can offboard a project.'
