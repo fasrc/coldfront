@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from coldfront.core.project.tests.test_views import ProjectViewTestBase
 from coldfront.core.test_helpers import utils
+from coldfront.core.utils.common import import_from_settings
 from coldfront.core.test_helpers.factories import (
     ProjectAttributeFactory,
     ProjectUserFactory,
@@ -18,6 +19,8 @@ from coldfront.core.test_helpers.fasrc_factories import (
     ProjectOrganizationFactory,
     UserAffiliationFactory,
 )
+
+EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
 
 
 class ProjectDetailViewTest(ProjectViewTestBase):
@@ -245,19 +248,20 @@ class ProjectDetailViewDeactivatedUsersTest(ProjectViewTestBase):
 
 
 class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
-    """Test that ProjectDetailView badges users in the external/vendor groups."""
+    """Test that ProjectDetailView badges users in any external group."""
 
     @classmethod
     def setUpTestData(cls):
         super(ProjectDetailViewExternalUsersTest, cls).setUpTestData()
         cls.url = f'/project/{cls.project.pk}/'
         active_status = ProjectUserStatusChoiceFactory(name='Active')
-        cls.external_user = UserFactory(username='external_user')
-        cls.vendor_user = UserFactory(username='vendor_user')
-        cls.external_user.groups.add(Group.objects.get_or_create(name='external')[0])
-        cls.vendor_user.groups.add(Group.objects.get_or_create(name='vendor')[0])
-        for user in (cls.external_user, cls.vendor_user):
+        # one user per external group
+        cls.external_users = []
+        for group_name in EXTERNAL_USER_GROUPS:
+            user = UserFactory(username=f'{group_name}_user')
+            user.groups.add(Group.objects.get_or_create(name=group_name)[0])
             ProjectUserFactory(user=user, project=cls.project, status=active_status)
+            cls.external_users.append(user)
 
     def _get_cells(self, soup, username):
         """Return the (username, name) cells of the user's projectuser_table row"""
@@ -266,9 +270,9 @@ class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
         cells = row.find_all('td')
         return cells[0], cells[1]
 
-    def test_external_and_vendor_users_have_badge_after_username(self):
+    def test_external_group_users_have_badge_after_username(self):
         soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
-        for user in (self.external_user, self.vendor_user):
+        for user in self.external_users:
             username_cell, name_cell = self._get_cells(soup, user.username)
             self.assertIn('External', username_cell.get_text())
             self.assertNotIn('External', name_cell.get_text())
@@ -289,7 +293,7 @@ class ProjectDetailViewExpirationBadgeTest(ProjectViewTestBase):
         cls.url = f'/project/{cls.project.pk}/'
         active_status = ProjectUserStatusChoiceFactory(name='Active')
         cls.expiring_user = UserFactory(username='expiring_user')
-        cls.expiring_user.groups.add(Group.objects.get_or_create(name='external')[0])
+        cls.expiring_user.groups.add(Group.objects.get_or_create(name=EXTERNAL_USER_GROUPS[0])[0])
         ProjectUserFactory(user=cls.expiring_user, project=cls.project, status=active_status)
 
     def _set_expiration_days_out(self, days):

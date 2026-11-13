@@ -24,6 +24,7 @@ EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings(
     'EMAIL_DIRECTOR_EMAIL_ADDRESS', '')
 PENDING_ACTIVE_ALLOCATION_STATUSES = import_from_settings(
     'PENDING_ACTIVE_ALLOCATION_STATUSES', ['Active', 'New', 'Renewal Requested', 'Payment Pending', 'Payment Requested', 'Paid'])
+EXTERNAL_EXPIRATION_MAX_DAYS = import_from_settings('EXTERNAL_EXPIRATION_MAX_DAYS', 90)
 
 class ProjectSearchForm(forms.Form):
     """ Search form for the Project list page.
@@ -50,6 +51,7 @@ class ProjectAddUserForm(forms.Form):
     last_name = forms.CharField(max_length=150, required=False, disabled=True)
     email = forms.EmailField(max_length=100, required=False, disabled=True)
     source = forms.CharField(max_length=16, disabled=True)
+    is_external = forms.BooleanField(required=False, disabled=True)
     role = forms.ModelChoiceField(
         queryset=ProjectUserRoleChoice.objects.all(), empty_label=None)
     selected = forms.BooleanField(initial=False, required=False)
@@ -102,11 +104,8 @@ class ProjectRemoveUserForm(forms.Form):
     email = forms.EmailField(max_length=100, required=False, disabled=True)
     role = forms.CharField(max_length=30, disabled=True)
     primary_group = forms.BooleanField(required=False, disabled=True)
+    is_external = forms.BooleanField(required=False, disabled=True)
     selected = forms.BooleanField(initial=False, required=False)
-
-
-EXTERNAL_USER_GROUP = 'external'
-EXTERNAL_EXPIRATION_MAX_DAYS = 90
 
 
 class ProjectUserUpdateForm(forms.Form):

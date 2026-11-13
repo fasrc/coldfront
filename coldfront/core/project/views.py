@@ -48,7 +48,6 @@ from coldfront.core.project.signals import (
 from coldfront.core.department.models import Department
 from coldfront.core.grant.models import Grant
 from coldfront.core.project.forms import (
-    EXTERNAL_USER_GROUP,
     ProjectReviewForm,
     ProjectSearchForm,
     ProjectAddUserForm,
@@ -101,6 +100,7 @@ ALLOCATION_DEFAULT_ALLOCATION_LENGTH = import_from_settings(
     'ALLOCATION_DEFAULT_ALLOCATION_LENGTH', 365)
 PENDING_ALLOCATION_STATUSES = import_from_settings(
     'PENDING_ALLOCATION_STATUSES', ['New', 'In Progress', 'On Hold', 'Pending Activation'])
+EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
 
 
 EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings('EMAIL_DIRECTOR_EMAIL_ADDRESS')
@@ -283,7 +283,7 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
                     status__name__in=['Active', 'Deactivated']
         ).annotate(
             is_external=Exists(Group.objects.filter(
-                user=OuterRef('user'), name__in=['external', 'vendor']
+                user=OuterRef('user'), name__in=EXTERNAL_USER_GROUPS
             ))
         ).select_related('user', 'role', 'status').order_by('user__username')
 
@@ -702,8 +702,16 @@ class ProjectAddUsersSearchResultsView(
         context = combined_user_search_obj.search()
 
         matches = context.get('matches')
+        # Only local accounts have groups; LDAP-only matches are never flagged external.
+        external_usernames = set(get_user_model().objects.filter(
+            username__in=[match['username'] for match in matches],
+            groups__name__in=EXTERNAL_USER_GROUPS,
+        ).values_list('username', flat=True))
         for match in matches:
-            match.update({'role': ProjectUserRoleChoice.objects.get(name='User')})
+            match.update({
+                'role': ProjectUserRoleChoice.objects.get(name='User'),
+                'is_external': match['username'] in external_usernames,
+            })
 
         if matches:
             formset = formset_factory(ProjectAddUserForm, max_num=len(matches))
@@ -1131,10 +1139,11 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 'last_name': u.user.last_name,
                 'email': u.user.email,
                 'role': u.role,
+                'is_external': u.is_external,
             }
-            for u in project_obj.projectuser_set.filter(status__name='Active').order_by(
-                'user__username'
-            )
+            for u in project_obj.projectuser_set.filter(status__name='Active').annotate(
+                is_external=Exists(Group.objects.filter(user=OuterRef('user'), name__in=EXTERNAL_USER_GROUPS))
+            ).select_related('user', 'role').order_by('user__username')
             if u.user not in (self.request.user, project_obj.pi)
         ]
         return users_to_remove
@@ -1441,7 +1450,7 @@ def _expiration_initial(project_user):
     user = project_user.user
     return {
         'expiration': timezone.localdate(user.expiration) if user.expiration else None,
-        'is_external': user.groups.filter(name=EXTERNAL_USER_GROUP).exists(),
+        'is_external': user.groups.filter(name__in=EXTERNAL_USER_GROUPS).exists(),
         'primary_group': project_user.primary_group,
     }
 

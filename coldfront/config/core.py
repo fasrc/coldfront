@@ -40,6 +40,15 @@ ACCESS_MANAGERS = ['PI', 'General Manager', 'Access Manager']
 DATA_MANAGERS = ['PI', 'General Manager', 'Storage Manager']
 
 #------------------------------------------------------------------------------
+# User account categories
+#------------------------------------------------------------------------------
+# Auth groups whose members are external accounts (e.g. their account expiration
+# is required and capped on the project user edit page)
+EXTERNAL_USER_GROUPS = ENV.list('EXTERNAL_USER_GROUPS', default=['external', 'vendor'])
+# Furthest out, in days from today, that an external account's expiration can be set
+EXTERNAL_EXPIRATION_MAX_DAYS = ENV.int('EXTERNAL_EXPIRATION_MAX_DAYS', default=90)
+
+#------------------------------------------------------------------------------
 # DjangoQ settings
 #------------------------------------------------------------------------------
 Q_CLUSTER = {

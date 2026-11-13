@@ -10,7 +10,10 @@ from coldfront.core.test_helpers.factories import (
 )
 
 from coldfront.core.test_helpers import utils
+from coldfront.core.utils.common import import_from_settings
 from coldfront.core.user.models import UserProfile
+
+EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
 
 class TestUserProfile(TestCase):
     class Data:
@@ -59,22 +62,28 @@ class TestUserProfile(TestCase):
         self.assertEqual(0, len(UserProfile.objects.all()))
 
 class TestUserProfileExternalStatus(TestCase):
-    """Test that the user profile page shows external/vendor status."""
+    """Test that the user profile page shows which external groups a user is in."""
 
     def _get_status_cell(self, user):
         soup = utils.login_and_get_soup(self.client, user, reverse('user-profile'))
         header = soup.find('th', string='External Status:')
         return header.find_next_sibling('td')
 
-    def test_external_user_shows_external(self):
-        user = UserFactory(username='external_user')
-        user.groups.add(Group.objects.get_or_create(name='external')[0])
-        self.assertEqual(self._get_status_cell(user).get_text(strip=True), 'External')
+    def test_each_external_group_shows_its_name(self):
+        for group_name in EXTERNAL_USER_GROUPS:
+            with self.subTest(group=group_name):
+                user = UserFactory(username=f'{group_name}_user')
+                user.groups.add(Group.objects.get_or_create(name=group_name)[0])
+                self.assertEqual(self._get_status_cell(user).get_text(strip=True), group_name.capitalize())
 
-    def test_vendor_user_shows_vendor(self):
-        user = UserFactory(username='vendor_user')
-        user.groups.add(Group.objects.get_or_create(name='vendor')[0])
-        self.assertEqual(self._get_status_cell(user).get_text(strip=True), 'Vendor')
+    def test_user_in_several_external_groups_shows_all(self):
+        user = UserFactory(username='multi_external_user')
+        for group_name in EXTERNAL_USER_GROUPS:
+            user.groups.add(Group.objects.get_or_create(name=group_name)[0])
+        self.assertEqual(
+            self._get_status_cell(user).get_text(strip=True),
+            ', '.join(group_name.capitalize() for group_name in EXTERNAL_USER_GROUPS),
+        )
 
     def test_internal_user_shows_no(self):
         user = UserFactory(username='internal_user')

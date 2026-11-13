@@ -23,7 +23,11 @@ Project User Detail
         <table class="table">
           <tr>
             <th scope="row">Username:</th>
-            <td>{{project_user_obj.user.username}}</td>
+            <td>{{project_user_obj.user.username}}
+              {% if project_user_update_form.is_external %}
+                <span class="badge badge-warning">External</span>
+              {% endif %}
+            </td>
           </tr>
           <tr>
             <th scope="row">First Name:</th>
