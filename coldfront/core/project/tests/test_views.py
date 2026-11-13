@@ -746,7 +746,7 @@ class ProjectAddUsersSearchViewTest(ProjectViewTestBase):
 
 @override_settings(ADDITIONAL_USER_SEARCH_CLASSES=[])  # search local users only, not LDAP
 class ProjectAddUsersSearchResultsExternalTest(ProjectViewTestBase):
-    """Tests for the External? column on the add-users search results"""
+    """Tests for the External column on the add-users search results"""
     def setUp(self):
         self.url = reverse('project-add-users-search-results', kwargs={'pk': self.project.pk})
         self.external_user = UserFactory(username='ext_candidate')
@@ -762,8 +762,8 @@ class ProjectAddUsersSearchResultsExternalTest(ProjectViewTestBase):
         self.assertEqual(response.status_code, 200)
         soup = BeautifulSoup(response.content, 'html.parser')
         headers = [th.get_text(strip=True) for th in soup.find('thead').find_all('th')]
-        self.assertEqual(headers.index('External?'), headers.index('Email') + 1)
-        external_col = headers.index('External?')
+        self.assertEqual(headers.index('External'), headers.index('Email') + 1)
+        external_col = headers.index('External')
         checked = {}
         for row in soup.find('tbody').find_all('tr'):
             cells = row.find_all('td')
