@@ -91,7 +91,7 @@ class Command(BaseCommand):
 
         for name, desc, is_public, rtype, parent_name, default_value, reqspayment, is_allocatable in (
 
-            ('Tier 0',        'Bulk - Lustre', True, storage_tier, None, 1, True, True),
+            ('Tier 0',        'Bulk - Lustre', True, storage_tier, None, 1, True, False),
             ('Tier 1',  'Enterprise - Isilon', False, storage_tier, None, 1, True, False),
             ('Tier 2',         'CEPH storage', False, storage_tier, None, 1, True, False),
             ('Compute Storage', 'Compute Storage', True, storage_tier, None, 1, True, True),

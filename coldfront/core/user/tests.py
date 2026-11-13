@@ -6,12 +6,15 @@ from django.urls import reverse
 from django.utils import timezone
 
 from coldfront.core.test_helpers.factories import (
+    ProjectFactory,
+    ProjectStatusChoiceFactory,
     UserFactory,
 )
 
 from coldfront.core.test_helpers import utils
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.user.models import UserProfile
+from coldfront.core.user.tasks import sync_userprofile_is_pi
 
 ACCOUNT_TYPE_GROUPS = import_from_settings('ACCOUNT_TYPE_GROUPS')
 
@@ -111,3 +114,49 @@ class TestUserProfileExpiration(TestCase):
         user.expiration = None
         user.save()
         self.assertIsNone(self._get_soup(user).find('th', string='Account Expiration:'))
+
+
+class TestSyncUserProfileIsPi(TestCase):
+    """Tests for the sync_userprofile_is_pi task."""
+
+    def make_user(self, username, is_pi):
+        user = UserFactory(username=username)
+        user.userprofile.is_pi = is_pi
+        user.userprofile.save()
+        return user
+
+    def assert_is_pi(self, user, expected):
+        user.userprofile.refresh_from_db()
+        self.assertEqual(user.userprofile.is_pi, expected)
+
+    def test_sync_userprofile_is_pi_sets_profiles_to_match_project_pis(self):
+        new_pi = self.make_user('new_pi', is_pi=False)
+        active_pi = self.make_user('active_pi', is_pi=False)
+        archived_pi = self.make_user('archived_pi', is_pi=True)
+        mixed_pi = self.make_user('mixed_pi', is_pi=True)
+        former_pi = self.make_user('former_pi', is_pi=True)
+        non_pi = self.make_user('non_pi', is_pi=False)
+
+        ProjectFactory(pi=new_pi, status=ProjectStatusChoiceFactory(name='New'))
+        ProjectFactory(pi=active_pi, status=ProjectStatusChoiceFactory(name='Active'))
+        ProjectFactory(pi=archived_pi, status=ProjectStatusChoiceFactory(name='Archived'))
+        ProjectFactory(pi=mixed_pi, status=ProjectStatusChoiceFactory(name='Archived'))
+        ProjectFactory(pi=mixed_pi, status=ProjectStatusChoiceFactory(name='Active'))
+
+        promoted, demoted = sync_userprofile_is_pi()
+
+        self.assertEqual((promoted, demoted), (2, 2))
+        self.assert_is_pi(new_pi, True)
+        self.assert_is_pi(active_pi, True)
+        self.assert_is_pi(archived_pi, False)
+        self.assert_is_pi(mixed_pi, True)
+        self.assert_is_pi(former_pi, False)
+        self.assert_is_pi(non_pi, False)
+
+    def test_sync_userprofile_is_pi_already_synced_is_noop(self):
+        pi = self.make_user('pi', is_pi=True)
+        self.make_user('non_pi', is_pi=False)
+        ProjectFactory(pi=pi, status=ProjectStatusChoiceFactory(name='Active'))
+
+        self.assertEqual(sync_userprofile_is_pi(), (0, 0))
+        self.assert_is_pi(pi, True)

@@ -3,6 +3,7 @@ import re
 
 from django import forms
 from django.conf import settings
+from django.db.models import Q
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
 from django.utils.safestring import mark_safe
@@ -185,6 +186,41 @@ ALLOCATION_AUTOCREATE_OPTIONS = [
     ('2', 'I would like to use the automated allocation creation process. If issues arise in the course of creation, I understand I may need to manually complete the allocation creation process.'),
 ]
 
+# Example path text shown in the approval form's path label, by storage type.
+APPROVAL_PATH_EXAMPLES = {
+    'powerscale': (
+        'Start it with <code>rc_labs/</code> or <code>rc_fasse_labs/</code> '
+        '(e.g., <code>rc_labs/example_lab</code>).'
+    ),
+    'tape': 'For example, <code>hugljharvard</code>.',
+}
+
+
+def get_storage_creation_type(resource):
+    """Classify a storage resource by its tier for allocation creation purposes.
+
+    The tier is the resource itself if it has no parent, otherwise its parent. A tier
+    is classified by the tier and all of its volumes together.
+
+    Returns:
+        str | None: 'powerscale', 'tape', or 'other' for storage resources;
+        None for non-storage resources (or no resource).
+    """
+    if resource is None or 'Storage' not in resource.resource_type.name:
+        return None
+    tier = resource.parent_resource or resource
+    family = Resource.objects.filter(Q(pk=tier.pk) | Q(parent_resource=tier))
+    # PowerScale is the only storage with an automated allocation creation integration.
+    if family.filter(
+        resourceattribute__resource_attribute_type__name='storage_type',
+        resourceattribute__value='powerscale',
+    ).exists():
+        return 'powerscale'
+    if any('tape' in name.lower() for name in family.values_list('name', flat=True)):
+        return 'tape'
+    return 'other'
+
+
 class AllocationApprovalForm(forms.Form):
 
     sheetcheck = forms.BooleanField(
@@ -200,13 +236,38 @@ class AllocationApprovalForm(forms.Form):
     path = forms.CharField(
         label=mark_safe(
             'If you have opted for manual allocation creation, please enter the path where the '
-            'allocation was created. Start it with <code>C/</code> or <code>F/</code> for lfs '
-            '(e.g., <code>C/LABS/example_lab</code>) and <code>rc_labs/</code> or '
-            '<code>c_fasse_labs/</code> for isilon (e.g., <code>rc_labs/example_lab</code>)',
+            f"allocation was created. {APPROVAL_PATH_EXAMPLES['powerscale']}"
         ),
         max_length=255,
         required=False,
     )
+
+    def __init__(self, *args, resource=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.storage_type = get_storage_creation_type(resource)
+        # Storage with no automated creation integration must be created by hand.
+        self.manual_only = self.storage_type not in (None, 'powerscale')
+        if self.manual_only:
+            example = APPROVAL_PATH_EXAMPLES.get(self.storage_type, '')
+            del self.fields['sheetcheck']
+            del self.fields['auto_create_opts']
+            path_field = self.fields['path']
+            path_field.required = True
+            path_field.error_messages['required'] = (
+                'You must provide the path where the allocation was created.'
+            )
+            path_field.label = mark_safe(
+                f'Please enter the path where the allocation was created. {example}'.strip()
+            )
+        if self.storage_type == 'tape':
+            self.fields['globus_uuid'] = forms.UUIDField(
+                label='Please enter the Globus UUID for this allocation.',
+                required=True,
+                error_messages={
+                    'required': 'You must provide the Globus UUID for this allocation.',
+                    'invalid': 'Enter a valid UUID (e.g., 123e4567-e89b-12d3-a456-426614174000).',
+                },
+            )
 
     # automation_specifications = forms.MultipleChoiceField(
     #     label='If you have opted for automatic allocation creation, please select from the following options:',
@@ -220,6 +281,10 @@ class AllocationApprovalForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
+        if self.manual_only:
+            # Only manual creation is possible; the required path field is validated above.
+            cleaned_data['auto_create_opts'] = '1'
+            return cleaned_data
         auto_create_opts = cleaned_data.get('auto_create_opts')
         # automation_specifications = cleaned_data.get('automation_specifications')
         # if the action is 'approve', make auto_create_opts and sheetcheck mandatory

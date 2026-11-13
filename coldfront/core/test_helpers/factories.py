@@ -427,6 +427,7 @@ def setup_models(test_case):
         ('EffectvUsage', 'Int', True, False),
         ('RequiresPayment', 'Yes/No', False, False),
         ('Subdirectory', 'Text', False, False),
+        ('Globus UUID', 'Text', False, True),
     ):
         AllocationAttributeTypeFactory(
             name=name,
