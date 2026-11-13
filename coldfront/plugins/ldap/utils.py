@@ -4,7 +4,7 @@ utility functions for LDAP interaction
 import logging
 import operator
 from functools import reduce
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 
 from django.db.models import Q
 from django.utils import timezone
@@ -43,6 +43,20 @@ username_ignore_list = import_from_settings('username_ignore_list', [])
 def now_filetime():
     FILETIME_EPOCH = datetime(1601, 1, 1)
     return int((datetime.utcnow() - FILETIME_EPOCH).total_seconds() * 10**7)
+
+# AD matching rule OID that follows group nesting in memberOf/member filters.
+LDAP_MATCHING_RULE_IN_CHAIN = '1.2.840.113556.1.4.1941'
+
+# accountExpires value meaning "never expires" (max int64).
+AD_ACCOUNT_NEVER_EXPIRES = '9223372036854775807'
+
+def datetime_to_filetime(dt):
+    """Convert a timezone-aware datetime to an AD FILETIME (100ns intervals since 1601-01-01 UTC)."""
+    if timezone.is_naive(dt):
+        raise ValueError('datetime_to_filetime requires a timezone-aware datetime')
+    FILETIME_EPOCH = datetime(1601, 1, 1, tzinfo=dt_timezone.utc)
+    delta = dt - FILETIME_EPOCH
+    return (delta.days * 86400 + delta.seconds) * 10**7 + delta.microseconds * 10
 
 class LDAPException(Exception):
     """The base exception class for all LDAPExceptions"""
@@ -183,6 +197,29 @@ class LDAPConn:
         if not user:
             raise ValueError(f"no users returned for username {username}")
         return user[0]
+
+    def search_nested_group_users(self, group_name, exclude_group_names=(), attributes=ALL_ATTRIBUTES):
+        """Return users in group_name or any group nested in it, as dicts.
+
+        Users in any of exclude_group_names, or any group nested in them, are left
+        out. Uses AD's LDAP_MATCHING_RULE_IN_CHAIN, so nesting is resolved by the
+        directory in a single search.
+        Raises ValueError if any of the groups can't be found.
+        """
+        def in_chain(name):
+            group_dn = self.return_group_by_name(name, attributes=['distinguishedName'])['distinguishedName'][0]
+            return f'(memberOf:{LDAP_MATCHING_RULE_IN_CHAIN}:={escape_filter_chars(group_dn)})'
+
+        search_filter = f'(&(objectCategory=person)(objectClass=user){in_chain(group_name)}'
+        for exclude_group_name in exclude_group_names:
+            search_filter += f'(!{in_chain(exclude_group_name)})'
+        search_filter += ')'
+        self.conn.search(
+            search_base=self.LDAP_USER_SEARCH_BASE,
+            search_filter=search_filter,
+            attributes=attributes,
+        )
+        return [entry.entry_attributes_as_dict for entry in self.conn.entries]
 
     def return_group_by_name(self, groupname, return_as='dict', attributes=ALL_ATTRIBUTES):
         group = self.search_groups(
@@ -389,7 +426,7 @@ class LDAPConn:
         result = self.conn.modify(
             user_dn,
             changes={
-                'accountExpires': [(MODIFY_REPLACE, ['9223372036854775807'])],
+                'accountExpires': [(MODIFY_REPLACE, [AD_ACCOUNT_NEVER_EXPIRES])],
                 'userAccountControl': [(MODIFY_REPLACE, ['512'])]
             }
         )
@@ -409,6 +446,55 @@ class LDAPConn:
         )
         if actor_username:
             self._append_info_note(user_dn, user.get('info'), actor_username, actor_role or 'CF', 'enabled')
+        return result
+
+    def set_user_expiration(self, username, expiration, actor_username=None, actor_role=None):
+        """Set the AD accountExpires attribute for a user.
+
+        expiration: timezone-aware datetime at which the account expires, or None to
+        clear the expiration (account never expires).
+        Raises ValueError (from return_user_by_name) if the user can't be found, and
+        LDAPException if the modify fails.
+        """
+        user = self.return_user_by_name(username)
+        user_dn = user['distinguishedName']
+        if expiration is None:
+            account_expires = AD_ACCOUNT_NEVER_EXPIRES
+        else:
+            account_expires = str(datetime_to_filetime(expiration))
+        result = self.conn.modify(
+            user_dn,
+            changes={'accountExpires': [(MODIFY_REPLACE, [account_expires])]}
+        )
+        if not result:
+            reason = self.conn.last_error
+            logger.error(
+                'Failed to set user expiration.',
+                extra={
+                    'category': 'integration:AD',
+                    'status': 'failure',
+                    'username': username,
+                    'error': reason,
+                }
+            )
+            raise LDAPException(f'Failed to set expiration for user {username}: {reason}')
+        logger.info(
+            'Set user expiration.',
+            extra={
+                'category': 'integration:AD',
+                'status': 'success',
+                'username': username,
+                'user_dn': user_dn,
+                'actor': actor_username,
+                'expiration': expiration.isoformat() if expiration else 'never',
+            }
+        )
+        if actor_username:
+            action = (
+                f'set expiration to {timezone.localdate(expiration):%Y-%m-%d}'
+                if expiration else 'cleared expiration'
+            )
+            self._append_info_note(user_dn, user.get('info'), actor_username, actor_role or 'CF', action)
         return result
 
     def users_in_primary_group(self, usernames, groupname):

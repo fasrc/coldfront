@@ -14,6 +14,7 @@ from django.forms import formset_factory
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
+from django.utils import timezone
 from django.views import View
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 from django.views.generic.base import TemplateView
@@ -41,7 +42,8 @@ from coldfront.core.project.signals import (
     project_reactivate_projectuser,
     project_make_projectuser,
     project_create,
-    project_post_create
+    project_post_create,
+    project_user_expiration_update,
 )
 from coldfront.core.department.models import Department
 from coldfront.core.grant.models import Grant
@@ -79,7 +81,7 @@ from coldfront.core.publication.models import Publication
 from coldfront.core.research_output.models import ResearchOutput
 from coldfront.core.resource.models import ResourceAttribute
 from coldfront.core.user.forms import UserSearchForm
-from coldfront.core.user.utils import CombinedUserSearch
+from coldfront.core.user.utils import CombinedUserSearch, account_type
 from coldfront.core.utils.views import ColdfrontListView, NoteCreateView, NoteUpdateView
 from coldfront.core.utils.common import get_domain_url, import_from_settings
 from coldfront.core.utils.mail import (
@@ -98,6 +100,8 @@ ALLOCATION_DEFAULT_ALLOCATION_LENGTH = import_from_settings(
     'ALLOCATION_DEFAULT_ALLOCATION_LENGTH', 365)
 PENDING_ALLOCATION_STATUSES = import_from_settings(
     'PENDING_ALLOCATION_STATUSES', ['New', 'In Progress', 'On Hold', 'Pending Activation'])
+# The check-mark columns on the add/remove users pages flag members of any account-type group.
+ACCOUNT_TYPE_GROUP_NAMES = list(import_from_settings('ACCOUNT_TYPE_GROUPS', {}))
 
 
 EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings('EMAIL_DIRECTOR_EMAIL_ADDRESS')
@@ -275,14 +279,12 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
         # Show Active users and Deactivated users (still an AD group member, but
         # their AD account is disabled) - Removed users are no longer group members.
-        # Flag users in the external/vendor auth groups so the template can badge them.
+        # Prefetch groups for the account-type badges.
         project_users = self.object.projectuser_set.filter(
                     status__name__in=['Active', 'Deactivated']
-        ).annotate(
-            is_external=Exists(Group.objects.filter(
-                user=OuterRef('user'), name__in=['external', 'vendor']
-            ))
-        ).select_related('user', 'role', 'status').order_by('user__username')
+        ).select_related('user', 'role', 'status').prefetch_related(
+            'user__groups'
+        ).order_by('user__username')
 
         # Don't email accounts that are disabled in AD, even though they're shown above.
         active_project_users = project_users.filter(status__name='Active')
@@ -699,8 +701,16 @@ class ProjectAddUsersSearchResultsView(
         context = combined_user_search_obj.search()
 
         matches = context.get('matches')
+        # Only local accounts have groups; LDAP-only matches are never flagged external.
+        external_usernames = set(get_user_model().objects.filter(
+            username__in=[match['username'] for match in matches],
+            groups__name__in=ACCOUNT_TYPE_GROUP_NAMES,
+        ).values_list('username', flat=True))
         for match in matches:
-            match.update({'role': ProjectUserRoleChoice.objects.get(name='User')})
+            match.update({
+                'role': ProjectUserRoleChoice.objects.get(name='User'),
+                'is_external': match['username'] in external_usernames,
+            })
 
         if matches:
             formset = formset_factory(ProjectAddUserForm, max_num=len(matches))
@@ -1128,10 +1138,11 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 'last_name': u.user.last_name,
                 'email': u.user.email,
                 'role': u.role,
+                'is_external': u.is_external,
             }
-            for u in project_obj.projectuser_set.filter(status__name='Active').order_by(
-                'user__username'
-            )
+            for u in project_obj.projectuser_set.filter(status__name='Active').annotate(
+                is_external=Exists(Group.objects.filter(user=OuterRef('user'), name__in=ACCOUNT_TYPE_GROUP_NAMES))
+            ).select_related('user', 'role').order_by('user__username')
             if u.user not in (self.request.user, project_obj.pi)
         ]
         return users_to_remove
@@ -1433,6 +1444,16 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
         return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 
 
+def _expiration_initial(project_user):
+    """Initial values ProjectUserUpdateForm uses to decide how the expiration can be edited."""
+    user = project_user.user
+    return {
+        'expiration': timezone.localdate(user.expiration) if user.expiration else None,
+        'account_type': account_type(set(user.groups.values_list('name', flat=True))),
+        'primary_group': project_user.primary_group,
+    }
+
+
 class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     template_name = 'project/project_user_detail.html'
 
@@ -1466,6 +1487,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                 initial={
                     'role': project_user_obj.role,
                     'enable_notifications': project_user_obj.enable_notifications,
+                    **_expiration_initial(project_user_obj),
                 }
             )
             context = {}
@@ -1509,12 +1531,14 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                 initial={
                     'role': project_user_obj.role.name,
                     'enable_notifications': project_user_obj.enable_notifications,
+                    **_expiration_initial(project_user_obj),
                 },
             )
 
             if not project_user_update_form.is_valid():
-                for error in project_user_update_form.errors:
-                    messages.error(request, error)
+                for field_errors in project_user_update_form.errors.values():
+                    for error in field_errors:
+                        messages.error(request, error)
                 return HttpResponseRedirect(
                     reverse(
                         'project-user-detail',
@@ -1522,6 +1546,52 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                     )
                 )
             form_data = project_user_update_form.cleaned_data
+
+            # Push an expiration change to AD (via the ldap plugin) before saving anything,
+            # so a rejected write leaves the user unchanged. If the form has no expiration
+            # field (non-external user outside their primary project), nothing changes.
+            old_expiration = project_user_update_form.initial['expiration']
+            new_expiration = form_data.get('expiration', old_expiration)
+            if new_expiration != old_expiration:
+                if new_expiration is None:
+                    expiration_dt = None  # cleared: the account never expires
+                else:
+                    # End of the chosen day in the server's local timezone.
+                    expiration_dt = timezone.make_aware(
+                        datetime.datetime.combine(new_expiration, datetime.time(23, 59, 59))
+                    )
+                try:
+                    project_user_expiration_update.send(
+                        sender=self.__class__,
+                        user=project_user_obj.user,
+                        expiration=expiration_dt,
+                        actor_username=request.user.username,
+                        actor_role=_actor_role_label(request.user, project_obj),
+                    )
+                except Exception:
+                    logger.exception(
+                        'Failed to push account expiration to AD.',
+                        extra={
+                            'category': 'integration:AD',
+                            'status': 'failure',
+                            'project': project_obj.title,
+                            'changed_user': project_user_obj.user.username,
+                            'requester': request.user.username,
+                        }
+                    )
+                    messages.error(
+                        request,
+                        'Could not update the account expiration in AD; no changes were saved.'
+                    )
+                    return HttpResponseRedirect(
+                        reverse(
+                            'project-user-detail',
+                            kwargs={'pk': pk, 'project_user_pk': project_user_obj.pk},
+                        )
+                    )
+                project_user_obj.user.expiration = expiration_dt
+                project_user_obj.user.save(update_fields=['expiration'])
+
             project_user_obj.enable_notifications = form_data.get(
                 'enable_notifications'
             )
@@ -1562,12 +1632,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                     }
                 )
             messages.success(request, 'User details updated.')
-            return HttpResponseRedirect(
-                reverse(
-                    'project-user-detail',
-                    kwargs={'pk': pk, 'project_user_pk': project_user_obj.pk},
-                )
-            )
+            return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 
 
 @login_required

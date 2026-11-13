@@ -1,8 +1,12 @@
+import datetime
+
 from django.contrib.auth.models import Group
 from django.urls import reverse
+from django.utils import timezone
 
 from coldfront.core.project.tests.test_views import ProjectViewTestBase
 from coldfront.core.test_helpers import utils
+from coldfront.core.utils.common import import_from_settings
 from coldfront.core.test_helpers.factories import (
     ProjectAttributeFactory,
     ProjectUserFactory,
@@ -15,6 +19,8 @@ from coldfront.core.test_helpers.fasrc_factories import (
     ProjectOrganizationFactory,
     UserAffiliationFactory,
 )
+
+ACCOUNT_TYPE_GROUPS = import_from_settings('ACCOUNT_TYPE_GROUPS')
 
 
 class ProjectDetailViewTest(ProjectViewTestBase):
@@ -241,20 +247,26 @@ class ProjectDetailViewDeactivatedUsersTest(ProjectViewTestBase):
         self.assertIn(self.pi_user.email, response.context['mailto'])
 
 
-class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
-    """Test that ProjectDetailView badges users in the external/vendor groups."""
+class ProjectDetailViewAccountTypeBadgesTest(ProjectViewTestBase):
+    """Test that ProjectDetailView badges users by their ACCOUNT_TYPE_GROUPS presets."""
 
     @classmethod
     def setUpTestData(cls):
-        super(ProjectDetailViewExternalUsersTest, cls).setUpTestData()
+        super(ProjectDetailViewAccountTypeBadgesTest, cls).setUpTestData()
         cls.url = f'/project/{cls.project.pk}/'
-        active_status = ProjectUserStatusChoiceFactory(name='Active')
-        cls.external_user = UserFactory(username='external_user')
-        cls.vendor_user = UserFactory(username='vendor_user')
-        cls.external_user.groups.add(Group.objects.get_or_create(name='external')[0])
-        cls.vendor_user.groups.add(Group.objects.get_or_create(name='vendor')[0])
-        for user in (cls.external_user, cls.vendor_user):
-            ProjectUserFactory(user=user, project=cls.project, status=active_status)
+        cls.active_status = ProjectUserStatusChoiceFactory(name='Active')
+        # one project user per account-type group
+        cls.group_users = {}
+        for group_name in ACCOUNT_TYPE_GROUPS:
+            cls.group_users[group_name] = cls._add_member(f'{group_name}_user', [group_name])
+
+    @classmethod
+    def _add_member(cls, username, group_names):
+        user = UserFactory(username=username)
+        for group_name in group_names:
+            user.groups.add(Group.objects.get_or_create(name=group_name)[0])
+        ProjectUserFactory(user=user, project=cls.project, status=cls.active_status)
+        return user
 
     def _get_cells(self, soup, username):
         """Return the (username, name) cells of the user's projectuser_table row"""
@@ -263,15 +275,85 @@ class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
         cells = row.find_all('td')
         return cells[0], cells[1]
 
-    def test_external_and_vendor_users_have_badge_after_username(self):
+    def _badges(self, cell):
+        return [(b.get_text(strip=True), b['class']) for b in cell.find_all('span', class_='badge')]
+
+    def test_each_group_gets_its_preset_badge_after_username(self):
         soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
-        for user in (self.external_user, self.vendor_user):
-            username_cell, name_cell = self._get_cells(soup, user.username)
-            self.assertIn('External', username_cell.get_text())
-            self.assertNotIn('External', name_cell.get_text())
+        for group_name, preset in ACCOUNT_TYPE_GROUPS.items():
+            with self.subTest(group=group_name):
+                username_cell, name_cell = self._get_cells(soup, self.group_users[group_name].username)
+                self.assertEqual(self._badges(username_cell), [(preset['label'], ['badge', preset['badge_class']])])
+                self.assertEqual(self._badges(name_cell), [])
+
+    def test_vendor_badge_supersedes_external(self):
+        user = self._add_member('multi_type_user', ['external', 'vendor'])
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        username_cell, _ = self._get_cells(soup, user.username)
+        vendor = ACCOUNT_TYPE_GROUPS['vendor']
+        self.assertEqual(self._badges(username_cell), [(vendor['label'], ['badge', vendor['badge_class']])])
+
+    def test_vendor_badge_is_orange(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        username_cell, _ = self._get_cells(soup, self.group_users['vendor'].username)
+        self.assertIsNotNone(username_cell.find('span', class_='badge-vendor'))
 
     def test_internal_user_has_no_badge(self):
         soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
         username_cell, name_cell = self._get_cells(soup, self.pi_user.username)
-        self.assertNotIn('External', username_cell.get_text())
-        self.assertNotIn('External', name_cell.get_text())
+        self.assertEqual(self._badges(username_cell), [])
+        self.assertEqual(self._badges(name_cell), [])
+
+
+class ProjectDetailViewExpirationBadgeTest(ProjectViewTestBase):
+    """Test that ProjectDetailView badges users whose accounts expire within 30 days."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super(ProjectDetailViewExpirationBadgeTest, cls).setUpTestData()
+        cls.url = f'/project/{cls.project.pk}/'
+        active_status = ProjectUserStatusChoiceFactory(name='Active')
+        cls.expiring_user = UserFactory(username='expiring_user')
+        cls.expiring_user.groups.add(Group.objects.get_or_create(name='external')[0])
+        ProjectUserFactory(user=cls.expiring_user, project=cls.project, status=active_status)
+
+    def _set_expiration_days_out(self, days):
+        self.expiring_user.expiration = timezone.now() + datetime.timedelta(days=days)
+        self.expiring_user.save()
+
+    def _badges(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        table = soup.find('table', {'id': 'projectuser_table'})
+        row = next(tr for tr in table.find_all('tr') if 'expiring_user' in tr.get_text())
+        return [badge.get_text(strip=True) for badge in row.find_all('td')[0].find_all('span', class_='badge')]
+
+    def test_badge_shown_after_external_badge_when_expiring_within_30_days(self):
+        self._set_expiration_days_out(12)
+        days_left = (timezone.localdate(self.expiring_user.expiration) - timezone.localdate()).days
+        self.assertEqual(self._badges(), ['External', f'exp. {days_left} days'])
+
+    def test_badge_is_red(self):
+        self._set_expiration_days_out(12)
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        self.assertIsNotNone(soup.find('span', class_='badge-danger', string=lambda s: s and s.startswith('exp.')))
+
+    def test_badge_uses_singular_day(self):
+        self.expiring_user.expiration = timezone.make_aware(
+            datetime.datetime.combine(timezone.localdate() + datetime.timedelta(days=1), datetime.time(12)))
+        self.expiring_user.save()
+        self.assertIn('exp. 1 day', self._badges())
+
+    def test_no_badge_at_30_days_or_more(self):
+        self.expiring_user.expiration = timezone.make_aware(
+            datetime.datetime.combine(timezone.localdate() + datetime.timedelta(days=30), datetime.time(12)))
+        self.expiring_user.save()
+        self.assertEqual(self._badges(), ['External'])
+
+    def test_no_badge_without_expiration(self):
+        self.expiring_user.expiration = None
+        self.expiring_user.save()
+        self.assertEqual(self._badges(), ['External'])
+
+    def test_no_badge_when_already_expired(self):
+        self._set_expiration_days_out(-3)
+        self.assertEqual(self._badges(), ['External'])

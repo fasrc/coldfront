@@ -12,6 +12,7 @@ from coldfront.core.project.signals import (
     project_reactivate_projectuser,
     project_user_manager_ldap_groups_grant,
     project_user_manager_ldap_groups_revoke,
+    project_user_expiration_update,
 )
 from coldfront.core.project.manager_role_notifications import MANAGER_ROLES
 from coldfront.core.project.models import (
@@ -50,6 +51,17 @@ def identify_ad_group(sender, **kwargs):
     except Exception as e:
         raise ValueError(f"issue retrieving pi's ifxuser entry: {e}") from e
     return ifx_pi
+
+@receiver(project_user_expiration_update)
+def set_user_expiration(sender, **kwargs):
+    """Push a user's account expiration to AD (accountExpires). Raises on failure."""
+    ldap_conn = LDAPConn()
+    ldap_conn.set_user_expiration(
+        kwargs['user'].username,
+        kwargs['expiration'],
+        actor_username=kwargs.get('actor_username'),
+        actor_role=kwargs.get('actor_role'),
+    )
 
 @receiver(project_reactivate_projectuser)
 def reactivate_user(sender, **kwargs):

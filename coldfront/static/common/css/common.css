@@ -244,3 +244,9 @@ tr td a {
 #edit_allocation_attributes_table tbody tr th{
     font-weight: 400 !important;
 }
+
+/* Vendor account badge (Bootstrap 4 has no orange badge variant) */
+.badge-vendor {
+    color: #212529;
+    background-color: #fd7e14;
+}

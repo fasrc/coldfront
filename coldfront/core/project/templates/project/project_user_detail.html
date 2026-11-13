@@ -1,6 +1,7 @@
 {% extends "common/base.html" %}
 {% load crispy_forms_tags %}
 {% load static %}
+{% load common_tags %}
 
 
 {% block title %}
@@ -23,7 +24,9 @@ Project User Detail
         <table class="table">
           <tr>
             <th scope="row">Username:</th>
-            <td>{{project_user_obj.user.username}}</td>
+            <td>{{project_user_obj.user.username}}
+              {% account_type_badge project_user_obj.user %}
+            </td>
           </tr>
           <tr>
             <th scope="row">First Name:</th>
@@ -64,11 +67,26 @@ Project User Detail
             <tr>
               <th scope="row">Notifications On:</th>
               <td>{{project_user_update_form.enable_notifications}}<br/><br/>
-                Disabling notifications will disable general allocation- and project-related announcements.
-                User-specific emails such as role change notifications will still be sent.
-                PIs cannot opt out of receiving emails.
+                Disabling notifications will turn off all allocation and project-related emails.
+                User-specific notifications such as role changes, will still be sent.
+                PIs are restricted from opting-out of emails.
               </td>
             </tr>
+            {% if project_user_update_form.expiration %}
+              <tr>
+                <th scope="row"><label for="{{ project_user_update_form.expiration.id_for_label }}">Account Expiration:</label></th>
+                <td>{{ project_user_update_form.expiration }}
+                  <small class="form-text text-muted">{{ project_user_update_form.expiration.help_text }}</small>
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <th scope="row">Account Expiration:</th>
+                <td>{{ project_user_obj.user.expiration|date:"Y-m-d"|default:"None" }}
+                  <small class="form-text text-muted">This account's expiration can only be changed from the user's primary project.</small>
+                </td>
+              </tr>
+            {% endif %}
           {% endif %}
         </table>
       </div>

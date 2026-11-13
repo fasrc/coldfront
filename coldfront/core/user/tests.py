@@ -1,13 +1,19 @@
+import datetime
+
 from django.contrib.auth.models import Group
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from coldfront.core.test_helpers.factories import (
     UserFactory,
 )
 
 from coldfront.core.test_helpers import utils
+from coldfront.core.utils.common import import_from_settings
 from coldfront.core.user.models import UserProfile
+
+ACCOUNT_TYPE_GROUPS = import_from_settings('ACCOUNT_TYPE_GROUPS')
 
 class TestUserProfile(TestCase):
     class Data:
@@ -56,23 +62,52 @@ class TestUserProfile(TestCase):
         self.assertEqual(0, len(UserProfile.objects.all()))
 
 class TestUserProfileExternalStatus(TestCase):
-    """Test that the user profile page shows external/vendor status."""
+    """Test that the user profile page shows which external groups a user is in."""
 
     def _get_status_cell(self, user):
         soup = utils.login_and_get_soup(self.client, user, reverse('user-profile'))
         header = soup.find('th', string='External Status:')
         return header.find_next_sibling('td')
 
-    def test_external_user_shows_external(self):
-        user = UserFactory(username='external_user')
-        user.groups.add(Group.objects.get_or_create(name='external')[0])
-        self.assertEqual(self._get_status_cell(user).get_text(strip=True), 'External')
+    def test_each_account_type_group_shows_its_label(self):
+        for group_name, preset in ACCOUNT_TYPE_GROUPS.items():
+            with self.subTest(group=group_name):
+                user = UserFactory(username=f'{group_name}_user')
+                user.groups.add(Group.objects.get_or_create(name=group_name)[0])
+                self.assertEqual(self._get_status_cell(user).get_text(strip=True), preset['label'])
 
-    def test_vendor_user_shows_vendor(self):
-        user = UserFactory(username='vendor_user')
-        user.groups.add(Group.objects.get_or_create(name='vendor')[0])
-        self.assertEqual(self._get_status_cell(user).get_text(strip=True), 'Vendor')
+    def test_vendor_supersedes_external(self):
+        user = UserFactory(username='multi_external_user')
+        for group_name in ('external', 'vendor'):
+            user.groups.add(Group.objects.get_or_create(name=group_name)[0])
+        self.assertEqual(
+            self._get_status_cell(user).get_text(strip=True), ACCOUNT_TYPE_GROUPS['vendor']['label']
+        )
 
     def test_internal_user_shows_no(self):
         user = UserFactory(username='internal_user')
         self.assertEqual(self._get_status_cell(user).get_text(strip=True), 'No')
+
+
+class TestUserProfileExpiration(TestCase):
+    """Test that the user profile page shows the account expiration when set."""
+
+    def _get_soup(self, user):
+        return utils.login_and_get_soup(self.client, user, reverse('user-profile'))
+
+    def test_expiration_shown_when_set(self):
+        user = UserFactory(username='expiring_user')
+        user.expiration = timezone.now() + datetime.timedelta(days=30)
+        user.save()
+        header = self._get_soup(user).find('th', string='Account Expiration:')
+        self.assertIsNotNone(header)
+        self.assertEqual(
+            header.find_next_sibling('td').get_text(strip=True),
+            timezone.localdate(user.expiration).isoformat(),
+        )
+
+    def test_expiration_hidden_when_unset(self):
+        user = UserFactory(username='nonexpiring_user')
+        user.expiration = None
+        user.save()
+        self.assertIsNone(self._get_soup(user).find('th', string='Account Expiration:'))

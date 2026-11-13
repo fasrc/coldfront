@@ -44,6 +44,7 @@
                 </th>
                 <th scope="col">#</th>
                 <th scope="col">Is Primary</th>
+                <th scope="col">Is External</th>
                 <th scope="col">Username</th>
                 <th scope="col">First Name</th>
                 <th scope="col">Last Name</th>
@@ -59,6 +60,7 @@
                       <td>{{ form.selected }}</td>
                       <td>{{ forloop.counter }}</td>
                       <td><i class="fas fa-check" aria-hidden="true"></i></td>
+                      <td>{% if form.is_external.value %}<i class="fas fa-check" aria-hidden="true"></i><span class="sr-only">Yes</span>{% endif %}</td>
                       <td>{{ form.username.value }}</td>
                       <td>{{ form.first_name.value }}</td>
                       <td>{{ form.last_name.value }}</td>
@@ -70,6 +72,7 @@
                       <td></td>
                       <td>{{ forloop.counter }}</td>
                       <td><i class="fas fa-check" aria-hidden="true"></i></td>
+                      <td>{% if form.is_external.value %}<i class="fas fa-check" aria-hidden="true"></i><span class="sr-only">Yes</span>{% endif %}</td>
                       <td style="color: gray;">{{ form.username }}</td>
                       <td style="color: gray;">{{ form.first_name }}</td>
                       <td style="color: gray;">{{ form.last_name }}</td>
@@ -82,6 +85,7 @@
                     <td>{{ form.selected }}</td>
                     <td>{{ forloop.counter }}</td>
                     <td></td>
+                    <td>{% if form.is_external.value %}<i class="fas fa-check" aria-hidden="true"></i><span class="sr-only">Yes</span>{% endif %}</td>
                     <td>{{ form.username.value }}</td>
                     <td>{{ form.first_name.value }}</td>
                     <td>{{ form.last_name.value }}</td>

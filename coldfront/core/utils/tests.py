@@ -1,14 +1,17 @@
+import datetime
 from io import StringIO
 from types import SimpleNamespace
 
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 from smtplib import SMTPException
 from unittest import mock, skip
 from unittest.mock import patch, MagicMock
 
 from django_q.models import Schedule
 
+from coldfront.core.utils.templatetags.common_tags import days_until
 from coldfront.core.utils.mail import (
     send_email,
     send_email_template,
@@ -235,3 +238,21 @@ class AddScheduledTasksTests(TestCase):
         self.run_command()
 
         mock_import_module.assert_not_called()
+
+
+class DaysUntilFilterTest(SimpleTestCase):
+    """Tests for the days_until template filter"""
+
+    def test_empty_value_returns_none(self):
+        self.assertIsNone(days_until(None))
+
+    def test_date_in_future(self):
+        self.assertEqual(days_until(timezone.localdate() + datetime.timedelta(days=5)), 5)
+
+    def test_date_in_past_is_negative(self):
+        self.assertEqual(days_until(timezone.localdate() - datetime.timedelta(days=2)), -2)
+
+    def test_datetime_uses_local_date(self):
+        local_noon = timezone.make_aware(
+            datetime.datetime.combine(timezone.localdate() + datetime.timedelta(days=3), datetime.time(12)))
+        self.assertEqual(days_until(local_noon), 3)

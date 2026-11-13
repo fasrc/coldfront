@@ -22,6 +22,11 @@ AUTH_LDAP_USER_SEARCH_BASE = ENV.str('AUTH_LDAP_USER_SEARCH_BASE')
 AUTH_LDAP_GROUP_SEARCH_BASE = ENV.str('AUTH_LDAP_GROUP_SEARCH_BASE')
 CF_LDAP_PROJECT_GROUP_SAM = ENV.str('CF_LDAP_PROJECT_GROUP_SAM', default=None)
 CF_LDAP_FASSE_GROUP = ENV.str('CF_LDAP_FASSE_GROUP', default=None)
+# AD groups that define ColdFront's 'vendor' group (see identify_external_users):
+# members of LDAP_VENDOR_GROUP or any group nested in it, except members of any
+# LDAP_CENTER_STAFF_GROUPS group or any group nested in them.
+LDAP_VENDOR_GROUP = ENV.str('LDAP_VENDOR_GROUP', default='vendor_accounts')
+LDAP_CENTER_STAFF_GROUPS = ENV.list('LDAP_CENTER_STAFF_GROUPS', default=['rc_accounts'])
 
 
 LOGGING['handlers']['ldap_fasrc'] = {

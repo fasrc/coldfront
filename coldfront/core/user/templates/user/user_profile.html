@@ -56,6 +56,12 @@ User Profile{% if not user == viewed_user %}: {{ viewed_user.username }}{% endif
             <th scope="row">External Status:</th>
             <td>{{ external_status|default:"No" }}</td>
           </tr>
+          {% if viewed_user.expiration %}
+            <tr>
+              <th scope="row">Account Expiration:</th>
+              <td>{{ viewed_user.expiration|date:"Y-m-d" }}</td>
+            </tr>
+          {% endif %}
           <tr>
             <th scope="row">Last Login:</th>
             <td>{{viewed_user.last_login}}</td>

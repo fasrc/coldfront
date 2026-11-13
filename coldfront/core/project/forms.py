@@ -4,6 +4,7 @@ import re
 from django import forms
 from django.db.models.functions import Lower
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.utils.safestring import mark_safe
 
 from coldfront.core.project.models import (
@@ -49,6 +50,7 @@ class ProjectAddUserForm(forms.Form):
     last_name = forms.CharField(max_length=150, required=False, disabled=True)
     email = forms.EmailField(max_length=100, required=False, disabled=True)
     source = forms.CharField(max_length=16, disabled=True)
+    is_external = forms.BooleanField(required=False, disabled=True)
     role = forms.ModelChoiceField(
         queryset=ProjectUserRoleChoice.objects.all(), empty_label=None)
     selected = forms.BooleanField(initial=False, required=False)
@@ -101,6 +103,7 @@ class ProjectRemoveUserForm(forms.Form):
     email = forms.EmailField(max_length=100, required=False, disabled=True)
     role = forms.CharField(max_length=30, disabled=True)
     primary_group = forms.BooleanField(required=False, disabled=True)
+    is_external = forms.BooleanField(required=False, disabled=True)
     selected = forms.BooleanField(initial=False, required=False)
 
 
@@ -108,14 +111,79 @@ class ProjectUserUpdateForm(forms.Form):
     role = forms.ModelChoiceField(
         queryset=ProjectUserRoleChoice.objects.exclude(name='PI'), empty_label=None)
     enable_notifications = forms.BooleanField(initial=False, required=False)
+    expiration = forms.DateField(
+        label='Account Expiration',
+        required=False,
+        # type="date" inputs only accept ISO dates; pinning the format keeps the current
+        # value visible in any locale (a blank field would clear the expiration on save).
+        widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'class': 'form-control'}),
+    )
 
     def __init__(self, request_user, project_pk, *args, **kwargs):
-        """If user is not PI or Admin, only show Access Manager, Storage Manager, and User roles"""
+        """If user is not PI or Admin, only show Access Manager, Storage Manager, and User roles.
+
+        How the expiration can be edited depends on values the view passes in `initial`:
+        - primary_group: the date is only editable from the user's primary project;
+          elsewhere the field is removed.
+        - account_type: the user's ACCOUNT_TYPE_GROUPS preset, or None. Its
+          expiration_max_days limits the date and expiration_required makes it required.
+          With no limit, the date is optional and uncapped.
+        """
         super().__init__(*args, **kwargs)
         project_obj = get_object_or_404(Project, pk=project_pk)
         roles = ProjectUserRoleChoice.objects.exclude(name='PI')
         if not project_obj.pi == request_user and not request_user.is_superuser:
             self.fields['role'].queryset = roles.exclude(name='General Manager')
+
+        preset = self.initial.get('account_type') or {}
+        # How far out the expiration can be set; None means no limit.
+        self.max_days = preset.get('expiration_max_days')
+
+        if not self.initial.get('primary_group'):
+            del self.fields['expiration']
+        elif self.max_days is not None:
+            self.fields['expiration'].required = preset.get('expiration_required', False)
+            # Limit the browser's date picker to the dates clean_expiration accepts.
+            today = timezone.localdate()
+            self.fields['expiration'].widget.attrs.update({
+                'min': (today + datetime.timedelta(days=1)).isoformat(),
+                'max': (today + datetime.timedelta(days=self.max_days)).isoformat(),
+            })
+            self.fields['expiration'].help_text = (
+                    # f'Required for external accounts. '
+                f'Must be no more than {self.max_days} days from today.'
+            )
+        else:
+            self.fields['expiration'].help_text = 'Optional. Leave blank for an account that never expires.'
+
+    def clean_expiration(self):
+        """Validate the expiration date.
+
+        Users with a limit (self.max_days, from their account-type presets): the date must
+        be in the future and no more than self.max_days from today on every save, even if
+        unchanged.
+        Others: blank clears the expiration, an unchanged date is accepted as is,
+        and a new date only has to be in the future.
+        """
+        new_date = self.cleaned_data.get('expiration')
+        if new_date is None:
+            # Blank: required=True already rejects this for external users.
+            return None
+        if self.max_days is None and new_date == self.initial.get('expiration'):
+            return new_date
+
+        today = timezone.localdate()
+        if new_date <= today:
+            raise forms.ValidationError('Expiration date must be in the future.')
+        if self.max_days is None:
+            return new_date
+        max_date = today + datetime.timedelta(days=self.max_days)
+        if new_date > max_date:
+            raise forms.ValidationError(
+                f'Expiration date cannot be more than {self.max_days} days '
+                f'from today ({max_date:%Y-%m-%d}).'
+            )
+        return new_date
 
 
 class ProjectReviewForm(forms.Form):

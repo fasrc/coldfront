@@ -40,6 +40,7 @@
             <th scope="col">First Name</th>
             <th scope="col">Last Name</th>
             <th scope="col">Email</th>
+            <th scope="col">External</th>
             <th scope="col">Role</th>
           </tr>
         </thead>
@@ -52,6 +53,7 @@
               <td>{{ form.first_name.value }}</td>
               <td>{{ form.last_name.value }}</td>
               <td>{{ form.email.value }}</td>
+              <td>{% if form.is_external.value %}<i class="fas fa-check" aria-hidden="true"></i><span class="sr-only">Yes</span>{% endif %}</td>
               <td>{{ form.role }}</td>
             </tr>
           {% endfor %}

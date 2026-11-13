@@ -1,6 +1,12 @@
+import datetime
+
 from django import template
 from django.conf import settings
+from django.utils import timezone
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
+
+from coldfront.core.user.utils import account_type
 
 register = template.Library()
 
@@ -54,6 +60,33 @@ def convert_status_to_icon(project):
         return mark_safe('<h4><span class="badge badge-success"><i class="fas fa-check-circle"></i></span></h4>')
 
 
+
+
+@register.filter
+def days_until(value):
+    """Whole days from today until a date or datetime, in the server's local timezone.
+
+    Negative if the value is in the past; None if the value is empty.
+    usage example {{ user.expiration|days_until }}
+    """
+    if not value:
+        return None
+    if isinstance(value, datetime.datetime):
+        value = timezone.localdate(value)
+    return (value - timezone.localdate()).days
+
+
+@register.simple_tag
+def account_type_badge(user):
+    """Render the badge for the user's ACCOUNT_TYPE_GROUPS preset, or nothing if they have none.
+
+    Reads user.groups.all(), so prefetch 'groups' when rendering many users.
+    usage example {% account_type_badge project_user.user %}
+    """
+    preset = account_type({group.name for group in user.groups.all()})
+    if not preset:
+        return ''
+    return format_html('<span class="badge {}">{}</span>', preset['badge_class'], preset['label'])
 
 
 @register.filter('get_value_from_dict')

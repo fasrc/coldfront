@@ -9,6 +9,21 @@ from coldfront.core.utils.common import import_from_settings
 
 logger = logging.getLogger(__name__)
 
+ACCOUNT_TYPE_GROUPS = import_from_settings('ACCOUNT_TYPE_GROUPS', {})
+
+
+def account_type(group_names):
+    """Return the ACCOUNT_TYPE_GROUPS preset for a user with these auth group names, or None.
+
+    Groups are checked in setting order, so the first match wins. The preset is a dict
+    with the group's 'name' added, e.g. {'name': 'vendor', 'label': 'Vendor', ...}.
+    """
+    for name, preset in ACCOUNT_TYPE_GROUPS.items():
+        if name in group_names:
+            return {'name': name, **preset}
+    return None
+
+
 class UserSearch(abc.ABC):
 
     def __init__(self, user_search_string, search_by):

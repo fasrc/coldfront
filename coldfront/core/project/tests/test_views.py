@@ -1,11 +1,17 @@
+import datetime
 import logging
 
+from bs4 import BeautifulSoup
+
+from django.contrib.auth.models import Group
 from django.core import mail
+from django.utils import timezone
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import call, patch
 
 from coldfront.core.test_helpers import utils
+from coldfront.core.utils.common import import_from_settings
 from coldfront.core.test_helpers.factories import (
     setup_models,
     ProjectFactory,
@@ -15,6 +21,7 @@ from coldfront.core.test_helpers.factories import (
     ProjectStatusChoiceFactory,
     ProjectAttributeTypeFactory,
     ResourceAttributeFactory,
+    UserFactory,
 )
 from coldfront.core.allocation.models import AllocationUserStatusChoice
 from coldfront.core.project.views import ProjectAddUsersView, ProjectRemoveUsersView
@@ -26,6 +33,12 @@ from coldfront.core.project.models import (
 )
 
 logging.disable(logging.CRITICAL)
+
+ACCOUNT_TYPE_GROUPS = import_from_settings('ACCOUNT_TYPE_GROUPS')
+EXTERNAL_GROUP = 'external'
+VENDOR_GROUP = 'vendor'
+EXTERNAL_EXPIRATION_MAX_DAYS = ACCOUNT_TYPE_GROUPS[EXTERNAL_GROUP]['expiration_max_days']
+VENDOR_EXPIRATION_MAX_DAYS = ACCOUNT_TYPE_GROUPS[VENDOR_GROUP]['expiration_max_days']
 
 UTIL_FIXTURES = [
         "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
@@ -360,6 +373,32 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
 
         users_to_remove = context['formset'].initial
         self.assertNotIn(self.pi_user.username, [u['username'] for u in users_to_remove])
+
+    @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
+    def test_is_external_column_flags_external_users(self, mock_filter_users_to_remove):
+        """The Is External column follows Is Primary and is checked only for external users"""
+        mock_filter_users_to_remove.side_effect = lambda sender, users_to_remove, project: [
+            (None, users_to_remove)
+        ]
+        self.project_user.groups.add(Group.objects.get_or_create(name=EXTERNAL_GROUP)[0])
+        self.proj_datamanager.groups.add(Group.objects.get_or_create(name=VENDOR_GROUP)[0])
+        self.client.force_login(self.pi_user)
+        response = self.client.get(self.url)
+
+        users = {u['username']: u for u in response.context['formset'].initial}
+        self.assertTrue(users[self.project_user.username]['is_external'])
+        self.assertTrue(users[self.proj_datamanager.username]['is_external'])  # vendors are checked too
+        self.assertTrue(any(not u['is_external'] for u in users.values()))
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+        headers = [th.get_text(strip=True) for th in soup.find('thead').find_all('th')]
+        self.assertEqual(headers.index('Is External'), headers.index('Is Primary') + 1)
+        external_col = headers.index('Is External')
+        for row in soup.find('tbody').find_all('tr'):
+            cells = row.find_all('td')
+            username = cells[headers.index('Username')].get_text(strip=True)
+            has_check = cells[external_col].find('i', class_='fa-check') is not None
+            self.assertEqual(has_check, users[username]['is_external'], username)
 
     @patch('coldfront.core.project.views.project_filter_users_to_remove.send')
     def test_primary_group_checkbox_visible_to_pi_and_general_manager(
@@ -709,6 +748,40 @@ class ProjectAddUsersSearchViewTest(ProjectViewTestBase):
         utils.test_user_can_access(self, self.proj_accessmanager, self.url)# access manager can access
         utils.test_user_cannot_access(self, self.proj_datamanager, self.url)# data manager cannot access
         utils.test_user_cannot_access(self, self.proj_allocationuser, self.url)# user cannot access
+
+@override_settings(ADDITIONAL_USER_SEARCH_CLASSES=[])  # search local users only, not LDAP
+class ProjectAddUsersSearchResultsExternalTest(ProjectViewTestBase):
+    """Tests for the External column on the add-users search results"""
+    def setUp(self):
+        self.url = reverse('project-add-users-search-results', kwargs={'pk': self.project.pk})
+        self.external_user = UserFactory(username='ext_candidate')
+        self.external_user.groups.add(Group.objects.get_or_create(name=EXTERNAL_GROUP)[0])
+        self.vendor_user = UserFactory(username='vend_candidate')
+        self.vendor_user.groups.add(Group.objects.get_or_create(name=VENDOR_GROUP)[0])
+        self.internal_user = UserFactory(username='int_candidate')
+        self.client.force_login(self.pi_user)
+
+    def test_external_column_checks_external_and_vendor_users(self):
+        response = self.client.post(self.url, data={
+            'q': f'{self.external_user.username} {self.vendor_user.username} {self.internal_user.username}',
+            'search_by': 'username_only',
+        })
+        self.assertEqual(response.status_code, 200)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        headers = [th.get_text(strip=True) for th in soup.find('thead').find_all('th')]
+        self.assertEqual(headers.index('External'), headers.index('Email') + 1)
+        external_col = headers.index('External')
+        checked = {}
+        for row in soup.find('tbody').find_all('tr'):
+            cells = row.find_all('td')
+            username = cells[headers.index('Username')].get_text(strip=True)
+            checked[username] = cells[external_col].find('i', class_='fa-check') is not None
+        self.assertEqual(checked, {
+            self.external_user.username: True,
+            self.vendor_user.username: True,
+            self.internal_user.username: False,
+        })
+
 
 @override_settings(ADDITIONAL_USER_SEARCH_CLASSES=[])  # search local users only, not LDAP
 class ProjectAddUsersViewTest(ProjectViewTestBase):
@@ -1087,6 +1160,420 @@ class ProjectUserDetailViewTest(ProjectViewTestBase):
         self.assertNotIn('General Manager', role_names)
         self.assertIn('Access Manager', role_names)
         self.assertIn('Storage Manager', role_names)
+
+
+class ProjectUserDetailExpirationTest(ProjectViewTestBase):
+    """Tests for editing an external user's expiration on ProjectUserDetail"""
+    def setUp(self):
+        self.url = reverse(
+            'project-user-detail',
+            kwargs={'pk': self.project.pk, 'project_user_pk': self.npu.pk},
+        )
+        self.target = self.npu.user
+        self.target.expiration = None
+        self.target.save()
+        # Non-external users can only have expiration set from their primary project.
+        self.npu.primary_group = True
+        self.npu.save()
+        self.client.force_login(self.proj_generalmanager)
+        # The ldap plugin's receiver pushes expiration to AD; mock the connection.
+        patcher = patch('coldfront.plugins.ldap.signals.LDAPConn')
+        self.mock_ldapconn = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.mock_set_expiration = self.mock_ldapconn.return_value.set_user_expiration
+
+    def make_external(self, group_name=EXTERNAL_GROUP):
+        self.target.groups.add(Group.objects.get_or_create(name=group_name)[0])
+
+    def post_data(self, expiration):
+        return {
+            'role': self.npu.role.pk,
+            'enable_notifications': 'on',
+            'expiration': expiration.isoformat() if expiration else '',
+        }
+
+    def test_expiration_field_optional_when_user_not_external(self):
+        response = self.client.get(self.url)
+        fields = response.context['project_user_update_form'].fields
+        self.assertIn('expiration', fields)
+        self.assertFalse(fields['expiration'].required)
+        self.assertNotIn('max', fields['expiration'].widget.attrs)
+        self.assertNotIn('min', fields['expiration'].widget.attrs)
+
+    def test_expiration_picker_limited_to_allowed_range_for_external_user(self):
+        self.make_external()
+        soup = BeautifulSoup(self.client.get(self.url).content, 'html.parser')
+        date_input = soup.find('input', {'name': 'expiration'})
+        today = timezone.localdate()
+        self.assertEqual(date_input['min'], (today + datetime.timedelta(days=1)).isoformat())
+        self.assertEqual(
+            date_input['max'], (today + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)).isoformat()
+        )
+
+    def test_expiration_field_shown_when_user_external(self):
+        self.make_external()
+        response = self.client.get(self.url)
+        self.assertIn('expiration', response.context['project_user_update_form'].fields)
+
+    def test_successful_update_redirects_to_project_detail(self):
+        response = self.client.post(self.url, data=self.post_data(None))
+        self.assertRedirects(
+            response, reverse('project-detail', kwargs={'pk': self.project.pk}), fetch_redirect_response=False
+        )
+        response = self.client.get(response.url)
+        self.assertContains(response, 'User details updated.')
+
+    def test_rejected_update_stays_on_edit_page(self):
+        self.make_external()
+        new_date = timezone.localdate() - datetime.timedelta(days=1)
+        response = self.client.post(self.url, data=self.post_data(new_date))
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+
+    def test_expiration_post_at_max_days_saves(self):
+        self.make_external()
+        new_date = timezone.localdate() + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertEqual(timezone.localdate(self.target.expiration), new_date)
+
+    def test_expiration_post_pushes_to_ad(self):
+        self.make_external()
+        new_date = timezone.localdate() + datetime.timedelta(days=30)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.mock_set_expiration.assert_called_once()
+        args, kwargs = self.mock_set_expiration.call_args
+        self.assertEqual(args[0], self.target.username)
+        self.assertEqual(timezone.localdate(args[1]), new_date)
+        self.assertEqual(kwargs['actor_username'], self.proj_generalmanager.username)
+
+    def test_expiration_ad_failure_saves_nothing(self):
+        """If AD rejects the write, neither the expiration nor other fields are saved."""
+        self.make_external()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        self.mock_set_expiration.side_effect = Exception('insufficientAccessRights')
+        new_date = timezone.localdate() + datetime.timedelta(days=30)
+        data = self.post_data(new_date)
+        del data['enable_notifications']
+        response = self.client.post(self.url, data=data, follow=True)
+        self.target.refresh_from_db()
+        self.npu.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.assertTrue(self.npu.enable_notifications)
+        self.assertContains(response, 'Could not update the account expiration in AD')
+
+    def test_expiration_unchanged_within_cap_saves_other_fields_without_ad_push(self):
+        self.make_external()
+        existing = timezone.now() + datetime.timedelta(days=30)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(timezone.localdate(existing))
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertFalse(self.npu.enable_notifications)
+        self.assertEqual(self.target.expiration, existing)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_expiration_post_over_max_days_rejected(self):
+        self.make_external()
+        new_date = timezone.localdate() + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS + 1)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_expiration_post_past_date_rejected(self):
+        self.make_external()
+        new_date = timezone.localdate() - datetime.timedelta(days=1)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+
+    def make_non_primary(self):
+        self.npu.primary_group = False
+        self.npu.save()
+
+    def test_non_external_expiration_field_hidden_outside_primary_project(self):
+        self.make_non_primary()
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        response = self.client.get(self.url)
+        self.assertNotIn('expiration', response.context['project_user_update_form'].fields)
+        self.assertContains(response, timezone.localdate(existing).isoformat())
+        self.assertContains(response, "can only be changed from the user's primary project")
+
+    def test_non_external_expiration_post_ignored_outside_primary_project(self):
+        self.make_non_primary()
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        new_date = timezone.localdate() + datetime.timedelta(days=30)
+        data = self.post_data(new_date)
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.target.refresh_from_db()
+        self.npu.refresh_from_db()
+        self.assertEqual(self.target.expiration, existing)
+        self.assertFalse(self.npu.enable_notifications)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_non_external_blank_post_outside_primary_project_does_not_clear(self):
+        self.make_non_primary()
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        self.client.post(self.url, data=self.post_data(None))
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.expiration, existing)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_external_expiration_not_settable_outside_primary_project(self):
+        self.make_non_primary()
+        self.make_external()
+        response = self.client.get(self.url)
+        self.assertNotIn('expiration', response.context['project_user_update_form'].fields)
+        self.assertContains(response, "can only be changed from the user's primary project")
+        new_date = timezone.localdate() + datetime.timedelta(days=30)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_non_external_expiration_over_max_days_saves_and_pushes_to_ad(self):
+        new_date = timezone.localdate() + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS + 100)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertEqual(timezone.localdate(self.target.expiration), new_date)
+        self.mock_set_expiration.assert_called_once()
+        self.assertEqual(self.mock_set_expiration.call_args.args[0], self.target.username)
+
+    def test_non_external_blank_expiration_saves_other_fields(self):
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(None)
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertFalse(self.npu.enable_notifications)
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_non_external_blank_expiration_clears_existing_and_pushes_to_ad(self):
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        self.client.post(self.url, data=self.post_data(None))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_called_once()
+        self.assertEqual(self.mock_set_expiration.call_args.args, (self.target.username, None))
+
+    def test_non_external_clear_ad_failure_keeps_existing(self):
+        existing = timezone.now() + datetime.timedelta(days=200)
+        self.target.expiration = existing
+        self.target.save()
+        self.mock_set_expiration.side_effect = Exception('insufficientAccessRights')
+        self.client.post(self.url, data=self.post_data(None))
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.expiration, existing)
+
+    def test_non_external_unchanged_past_expiration_accepted(self):
+        """An already-expired date left as is doesn't block other updates."""
+        existing = timezone.now() - datetime.timedelta(days=5)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(timezone.localdate(existing))
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.npu.refresh_from_db()
+        self.assertFalse(self.npu.enable_notifications)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_non_external_past_expiration_rejected(self):
+        new_date = timezone.localdate() - datetime.timedelta(days=1)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_not_called()
+
+    @override_settings(LANGUAGE_CODE='en-gb')
+    def test_existing_expiration_renders_as_iso_date_in_any_locale(self):
+        existing = timezone.now() + datetime.timedelta(days=45)
+        self.target.expiration = existing
+        self.target.save()
+        response = self.client.get(self.url)
+        self.assertContains(response, f'value="{timezone.localdate(existing).isoformat()}"')
+
+    def test_external_badge_shown_next_to_username(self):
+        self.make_external()
+        soup = BeautifulSoup(self.client.get(self.url).content, 'html.parser')
+        username_cell = soup.find('th', string='Username:').find_next_sibling('td')
+        self.assertEqual(username_cell.find('span', class_='badge').get_text(strip=True), 'External')
+
+    def test_vendor_badge_shown_next_to_username(self):
+        self.make_vendor()
+        soup = BeautifulSoup(self.client.get(self.url).content, 'html.parser')
+        username_cell = soup.find('th', string='Username:').find_next_sibling('td')
+        badges = [b.get_text(strip=True) for b in username_cell.find_all('span', class_='badge')]
+        self.assertEqual(badges, ['Vendor'])
+        self.assertIsNotNone(username_cell.find('span', class_='badge-vendor'))
+
+    def test_no_external_badge_for_non_external_user(self):
+        soup = BeautifulSoup(self.client.get(self.url).content, 'html.parser')
+        username_cell = soup.find('th', string='Username:').find_next_sibling('td')
+        self.assertIsNone(username_cell.find('span', class_='badge'))
+
+    def test_expiration_optional_for_external_user(self):
+        self.make_external()
+        response = self.client.get(self.url)
+        self.assertFalse(response.context['project_user_update_form'].fields['expiration'].required)
+
+    def test_each_account_type_group_gets_its_preset_rules(self):
+        for group_name, preset in ACCOUNT_TYPE_GROUPS.items():
+            with self.subTest(group=group_name):
+                max_date = timezone.localdate() + datetime.timedelta(days=preset['expiration_max_days'])
+                self.target.groups.clear()
+                self.make_external(group_name)
+                form = self.client.get(self.url).context['project_user_update_form']
+                self.assertEqual(form.max_days, preset['expiration_max_days'])
+                self.assertEqual(form.fields['expiration'].required, preset['expiration_required'])
+                self.assertEqual(form.fields['expiration'].widget.attrs['max'], max_date.isoformat())
+
+    def test_new_preset_group_needs_no_code_changes(self):
+        """Adding a group to ACCOUNT_TYPE_GROUPS is enough for its badge and expiration rules."""
+        guest_preset = {
+            'label': 'Guest', 'badge_class': 'badge-info',
+            'expiration_max_days': 7, 'expiration_required': True,
+        }
+        with patch.dict('coldfront.core.user.utils.ACCOUNT_TYPE_GROUPS', {'guest': guest_preset}):
+            self.make_external('guest')
+            response = self.client.get(self.url)
+        form = response.context['project_user_update_form']
+        self.assertEqual(form.max_days, 7)
+        self.assertTrue(form.fields['expiration'].required)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        username_cell = soup.find('th', string='Username:').find_next_sibling('td')
+        self.assertIsNotNone(username_cell.find('span', class_='badge-info', string='Guest'))
+
+    def make_vendor(self):
+        self.target.groups.add(Group.objects.get_or_create(name=VENDOR_GROUP)[0])
+
+    def test_vendor_picker_limited_to_vendor_max_days(self):
+        self.make_vendor()
+        soup = BeautifulSoup(self.client.get(self.url).content, 'html.parser')
+        date_input = soup.find('input', {'name': 'expiration'})
+        today = timezone.localdate()
+        self.assertEqual(date_input['min'], (today + datetime.timedelta(days=1)).isoformat())
+        self.assertEqual(
+            date_input['max'], (today + datetime.timedelta(days=VENDOR_EXPIRATION_MAX_DAYS)).isoformat()
+        )
+
+    def test_vendor_expiration_at_vendor_max_days_saves(self):
+        self.make_vendor()
+        new_date = timezone.localdate() + datetime.timedelta(days=VENDOR_EXPIRATION_MAX_DAYS)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertEqual(timezone.localdate(self.target.expiration), new_date)
+
+    def test_vendor_expiration_over_vendor_max_days_rejected(self):
+        self.make_vendor()
+        new_date = timezone.localdate() + datetime.timedelta(days=VENDOR_EXPIRATION_MAX_DAYS + 1)
+        response = self.client.post(self.url, data=self.post_data(new_date), follow=True)
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.assertContains(response, f'cannot be more than {VENDOR_EXPIRATION_MAX_DAYS} days')
+        self.mock_set_expiration.assert_not_called()
+
+    def test_vendor_past_expiration_rejected(self):
+        self.make_vendor()
+        new_date = timezone.localdate() - datetime.timedelta(days=1)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+
+    def test_vendor_unchanged_over_vendor_max_days_rejected_and_saves_nothing(self):
+        """An existing vendor expiration beyond the vendor limit must be brought within
+        it before any other update is saved."""
+        self.make_vendor()
+        existing = timezone.now() + datetime.timedelta(days=VENDOR_EXPIRATION_MAX_DAYS + 10)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(timezone.localdate(existing))
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertTrue(self.npu.enable_notifications)
+        self.assertEqual(self.target.expiration, existing)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_vendor_not_settable_outside_primary_project(self):
+        self.make_non_primary()
+        self.make_vendor()
+        response = self.client.get(self.url)
+        self.assertNotIn('expiration', response.context['project_user_update_form'].fields)
+
+    def test_vendor_rules_supersede_external(self):
+        self.make_external()
+        self.make_vendor()
+        form = self.client.get(self.url).context['project_user_update_form']
+        self.assertEqual(form.max_days, VENDOR_EXPIRATION_MAX_DAYS)
+        self.assertTrue(form.fields['expiration'].required)
+
+    def test_external_blank_expiration_saves_other_fields(self):
+        """A blank expiration for an external user with none set is accepted, and other changes save."""
+        self.make_external()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(None)
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertFalse(self.npu.enable_notifications)
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_external_blank_expiration_clears_existing_and_pushes_to_ad(self):
+        self.make_external()
+        self.target.expiration = timezone.now() + datetime.timedelta(days=30)
+        self.target.save()
+        self.client.post(self.url, data=self.post_data(None))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_called_once()
+        self.assertEqual(self.mock_set_expiration.call_args.args, (self.target.username, None))
+
+    def test_expiration_unchanged_over_cap_rejected_and_saves_nothing(self):
+        """An existing expiration beyond the cap (e.g. synced from AD) must be
+        brought within EXTERNAL_EXPIRATION_MAX_DAYS before any other update is saved."""
+        self.make_external()
+        existing = timezone.now() + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS + 100)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(timezone.localdate(existing))
+        del data['enable_notifications']
+        response = self.client.post(self.url, data=data, follow=True)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertTrue(self.npu.enable_notifications)
+        self.assertEqual(self.target.expiration, existing)
+        self.assertContains(response, f'cannot be more than {EXTERNAL_EXPIRATION_MAX_DAYS} days')
+        self.mock_set_expiration.assert_not_called()
 
 
 class ProjectUpdateEmailNotificationTest(ProjectViewTestBase):
