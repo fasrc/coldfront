@@ -1187,6 +1187,17 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         self.assertIn('expiration', fields)
         self.assertFalse(fields['expiration'].required)
         self.assertNotIn('max', fields['expiration'].widget.attrs)
+        self.assertNotIn('min', fields['expiration'].widget.attrs)
+
+    def test_expiration_picker_limited_to_allowed_range_for_external_user(self):
+        self.make_external()
+        soup = BeautifulSoup(self.client.get(self.url).content, 'html.parser')
+        date_input = soup.find('input', {'name': 'expiration'})
+        today = timezone.localdate()
+        self.assertEqual(date_input['min'], (today + datetime.timedelta(days=1)).isoformat())
+        self.assertEqual(
+            date_input['max'], (today + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)).isoformat()
+        )
 
     def test_expiration_field_shown_when_user_external(self):
         self.make_external()
