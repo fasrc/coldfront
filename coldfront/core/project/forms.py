@@ -137,7 +137,7 @@ class ProjectUserUpdateForm(forms.Form):
 
         self.is_external = self.initial.get('is_external', False)
         if self.is_external:
-            self.fields['expiration'].required = True
+            # self.fields['expiration'].required = True
             # Limit the browser's date picker to the dates clean_expiration accepts.
             today = timezone.localdate()
             self.fields['expiration'].widget.attrs.update({
@@ -145,8 +145,8 @@ class ProjectUserUpdateForm(forms.Form):
                 'max': (today + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)).isoformat(),
             })
             self.fields['expiration'].help_text = (
-                f'Required for external accounts. Must be no more than '
-                f'{EXTERNAL_EXPIRATION_MAX_DAYS} days from today.'
+                    # f'Required for external accounts. '
+                f'Must be no more than {EXTERNAL_EXPIRATION_MAX_DAYS} days from today.'
             )
         elif self.initial.get('primary_group'):
             self.fields['expiration'].help_text = 'Optional. Leave blank for an account that never expires.'
