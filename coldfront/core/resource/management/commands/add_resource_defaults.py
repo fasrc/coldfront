@@ -94,6 +94,7 @@ class Command(BaseCommand):
             ('Tier 0',        'Bulk - Lustre', True, storage_tier, None, 1, True, True),
             ('Tier 1',  'Enterprise - Isilon', False, storage_tier, None, 1, True, False),
             ('Tier 2',         'CEPH storage', False, storage_tier, None, 1, True, False),
+            ('Compute Storage', 'Compute Storage', True, storage_tier, None, 1, True, True),
             ('Lab Storage',     'Lab Storage', True, storage_tier, None, 1, True, True),
             ('FASSE Storage', 'FASSE Storage', True, storage_tier, None, 1, False, True),
             ('Tape',  'Attic Storage - Tape', True, storage_tier, None, 20, True, True),
@@ -101,6 +102,7 @@ class Command(BaseCommand):
             ('holylfs05/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('holylfs06/tier0', 'Holyoke data center lustre storage', True, storage, 'Tier 0', 1, True, True),
             ('nesetape/tier3', 'Cold storage for past projects', True, storage, 'Tape', 20, True, True),
+            ('compute_storage', 'NFS Compute Storage', True, storage, 'Compute Storage', 1, True, True),
             ('lab_storage', 'NFS Lab Storage', True, storage, 'Lab Storage', 1, True, True),
             ('fasse_storage', 'NFS FASSE Storage', True, storage, 'FASSE Storage', 1, False, True),
             ('holystore01/tier0', 'Luster storage under Tier0', True, storage, 'Tier 0', 1, True, True),
@@ -123,7 +125,6 @@ class Command(BaseCommand):
             ('h-nfs18-p/tier2', 'Tier2 CEPH storage', True, storage, 'Tier 2', 1, True, True),
             ('h-nfs19-p/tier2', 'Tier2 CEPH storage', True, storage, 'Tier 2', 1, True, True),
             ('h-nfs20-p/tier2', 'Tier2 CEPH storage', True, storage, 'Tier 2', 1, True, True),
-            ('boslfs02', 'complimentary lab storage', True, storage, 'Tier 0', 1, False, False),
             ('holylabs', 'complimentary lab storage', True, storage, 'Tier 0', 1, False, False),
             ('vast-holylabs', 'complimentary lab storage', True, storage, 'Tier 0', 1, False, False),
         ):
