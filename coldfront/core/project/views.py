@@ -101,6 +101,7 @@ ALLOCATION_DEFAULT_ALLOCATION_LENGTH = import_from_settings(
 PENDING_ALLOCATION_STATUSES = import_from_settings(
     'PENDING_ALLOCATION_STATUSES', ['New', 'In Progress', 'On Hold', 'Pending Activation'])
 EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
+VENDOR_USER_GROUP = import_from_settings('VENDOR_USER_GROUP', 'vendor')
 
 
 EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings('EMAIL_DIRECTOR_EMAIL_ADDRESS')
@@ -1448,9 +1449,13 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 def _expiration_initial(project_user):
     """Initial values ProjectUserUpdateForm uses to decide how the expiration can be edited."""
     user = project_user.user
+    group_names = set(user.groups.values_list('name', flat=True))
+    is_vendor = VENDOR_USER_GROUP in group_names
     return {
         'expiration': timezone.localdate(user.expiration) if user.expiration else None,
-        'is_external': user.groups.filter(name__in=EXTERNAL_USER_GROUPS).exists(),
+        # Vendors always follow the external rules, with their own (shorter) limit.
+        'is_external': is_vendor or bool(group_names & set(EXTERNAL_USER_GROUPS)),
+        'is_vendor': is_vendor,
         'primary_group': project_user.primary_group,
     }
 

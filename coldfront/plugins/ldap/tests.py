@@ -509,4 +509,4 @@ class IdentifyExternalUsersCommandTest(TestCase):
         ad_conn = self._run(mock_ldapconn, [], external_usernames=['titled_external'])
         self.assertTrue(self.external_user.groups.filter(name='external').exists())
         search_dict = ad_conn.search_users.call_args.args[0]
-        self.assertEqual(search_dict['title'], 'EXTERNAL')
+        self.assertIn('(title=EXTERNAL)', format_template_assertions({'title': search_dict['title']}))

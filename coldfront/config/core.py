@@ -47,6 +47,11 @@ DATA_MANAGERS = ['PI', 'General Manager', 'Storage Manager']
 EXTERNAL_USER_GROUPS = ENV.list('EXTERNAL_USER_GROUPS', default=['external', 'vendor'])
 # Furthest out, in days from today, that an external account's expiration can be set
 EXTERNAL_EXPIRATION_MAX_DAYS = ENV.int('EXTERNAL_EXPIRATION_MAX_DAYS', default=90)
+# Auth group for vendor accounts. Vendors follow the external account rules, but with
+# VENDOR_EXPIRATION_MAX_DAYS as their limit (it applies even if they're also in another
+# external group).
+VENDOR_USER_GROUP = ENV.str('VENDOR_USER_GROUP', default='vendor')
+VENDOR_EXPIRATION_MAX_DAYS = ENV.int('VENDOR_EXPIRATION_MAX_DAYS', default=30)
 
 #------------------------------------------------------------------------------
 # DjangoQ settings

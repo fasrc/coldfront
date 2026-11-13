@@ -25,6 +25,7 @@ EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings(
 PENDING_ACTIVE_ALLOCATION_STATUSES = import_from_settings(
     'PENDING_ACTIVE_ALLOCATION_STATUSES', ['Active', 'New', 'Renewal Requested', 'Payment Pending', 'Payment Requested', 'Paid'])
 EXTERNAL_EXPIRATION_MAX_DAYS = import_from_settings('EXTERNAL_EXPIRATION_MAX_DAYS', 90)
+VENDOR_EXPIRATION_MAX_DAYS = import_from_settings('VENDOR_EXPIRATION_MAX_DAYS', 30)
 
 class ProjectSearchForm(forms.Form):
     """ Search form for the Project list page.
@@ -123,11 +124,13 @@ class ProjectUserUpdateForm(forms.Form):
     def __init__(self, request_user, project_pk, *args, **kwargs):
         """If user is not PI or Admin, only show Access Manager, Storage Manager, and User roles.
 
-        How the expiration can be edited depends on two values the view passes in `initial`:
+        How the expiration can be edited depends on values the view passes in `initial`:
         - primary_group: the date is only editable from the user's primary project;
           elsewhere the field is removed.
         - is_external: the date is capped at EXTERNAL_EXPIRATION_MAX_DAYS; for
           non-external users it is uncapped.
+        - is_vendor: vendors follow the external rules, but are capped at
+          VENDOR_EXPIRATION_MAX_DAYS instead.
         """
         super().__init__(*args, **kwargs)
         project_obj = get_object_or_404(Project, pk=project_pk)
@@ -136,6 +139,14 @@ class ProjectUserUpdateForm(forms.Form):
             self.fields['role'].queryset = roles.exclude(name='General Manager')
 
         self.is_external = self.initial.get('is_external', False)
+        # How far out an external account's expiration can be set; None means no limit.
+        if self.initial.get('is_vendor'):
+            self.max_days = VENDOR_EXPIRATION_MAX_DAYS
+        elif self.is_external:
+            self.max_days = EXTERNAL_EXPIRATION_MAX_DAYS
+        else:
+            self.max_days = None
+
         if not self.initial.get('primary_group'):
             del self.fields['expiration']
         elif self.is_external:
@@ -144,11 +155,11 @@ class ProjectUserUpdateForm(forms.Form):
             today = timezone.localdate()
             self.fields['expiration'].widget.attrs.update({
                 'min': (today + datetime.timedelta(days=1)).isoformat(),
-                'max': (today + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)).isoformat(),
+                'max': (today + datetime.timedelta(days=self.max_days)).isoformat(),
             })
             self.fields['expiration'].help_text = (
                     # f'Required for external accounts. '
-                f'Must be no more than {EXTERNAL_EXPIRATION_MAX_DAYS} days from today.'
+                f'Must be no more than {self.max_days} days from today.'
             )
         else:
             self.fields['expiration'].help_text = 'Optional. Leave blank for an account that never expires.'
@@ -156,8 +167,9 @@ class ProjectUserUpdateForm(forms.Form):
     def clean_expiration(self):
         """Validate the expiration date.
 
-        External users: the date must be in the future and no more than
-        EXTERNAL_EXPIRATION_MAX_DAYS from today on every save, even if unchanged.
+        External users: the date must be in the future and no more than self.max_days
+        (EXTERNAL_EXPIRATION_MAX_DAYS, or VENDOR_EXPIRATION_MAX_DAYS for vendors) from
+        today on every save, even if unchanged.
         Others: blank clears the expiration, an unchanged date is accepted as is,
         and a new date only has to be in the future.
         """
@@ -171,10 +183,12 @@ class ProjectUserUpdateForm(forms.Form):
         today = timezone.localdate()
         if new_date <= today:
             raise forms.ValidationError('Expiration date must be in the future.')
-        max_date = today + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)
-        if self.is_external and new_date > max_date:
+        if not self.is_external:
+            return new_date
+        max_date = today + datetime.timedelta(days=self.max_days)
+        if new_date > max_date:
             raise forms.ValidationError(
-                f'Expiration date cannot be more than {EXTERNAL_EXPIRATION_MAX_DAYS} days '
+                f'Expiration date cannot be more than {self.max_days} days '
                 f'from today ({max_date:%Y-%m-%d}).'
             )
         return new_date

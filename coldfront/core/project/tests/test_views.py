@@ -36,6 +36,8 @@ logging.disable(logging.CRITICAL)
 
 EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
 EXTERNAL_EXPIRATION_MAX_DAYS = import_from_settings('EXTERNAL_EXPIRATION_MAX_DAYS', 90)
+VENDOR_USER_GROUP = import_from_settings('VENDOR_USER_GROUP', 'vendor')
+VENDOR_EXPIRATION_MAX_DAYS = import_from_settings('VENDOR_EXPIRATION_MAX_DAYS', 30)
 
 UTIL_FIXTURES = [
         "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
@@ -1406,15 +1408,85 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         self.assertFalse(response.context['project_user_update_form'].fields['expiration'].required)
 
     def test_every_external_group_gets_external_rules(self):
-        max_date = timezone.localdate() + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)
         for group_name in EXTERNAL_USER_GROUPS:
             with self.subTest(group=group_name):
+                max_days = (
+                    VENDOR_EXPIRATION_MAX_DAYS if group_name == VENDOR_USER_GROUP
+                    else EXTERNAL_EXPIRATION_MAX_DAYS
+                )
+                max_date = timezone.localdate() + datetime.timedelta(days=max_days)
                 self.target.groups.clear()
                 self.make_external(group_name)
                 response = self.client.get(self.url)
                 form = response.context['project_user_update_form']
                 self.assertTrue(form.is_external)
                 self.assertEqual(form.fields['expiration'].widget.attrs['max'], max_date.isoformat())
+
+    def make_vendor(self):
+        self.target.groups.add(Group.objects.get_or_create(name=VENDOR_USER_GROUP)[0])
+
+    def test_vendor_picker_limited_to_vendor_max_days(self):
+        self.make_vendor()
+        soup = BeautifulSoup(self.client.get(self.url).content, 'html.parser')
+        date_input = soup.find('input', {'name': 'expiration'})
+        today = timezone.localdate()
+        self.assertEqual(date_input['min'], (today + datetime.timedelta(days=1)).isoformat())
+        self.assertEqual(
+            date_input['max'], (today + datetime.timedelta(days=VENDOR_EXPIRATION_MAX_DAYS)).isoformat()
+        )
+
+    def test_vendor_expiration_at_vendor_max_days_saves(self):
+        self.make_vendor()
+        new_date = timezone.localdate() + datetime.timedelta(days=VENDOR_EXPIRATION_MAX_DAYS)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertEqual(timezone.localdate(self.target.expiration), new_date)
+
+    def test_vendor_expiration_over_vendor_max_days_rejected(self):
+        self.make_vendor()
+        new_date = timezone.localdate() + datetime.timedelta(days=VENDOR_EXPIRATION_MAX_DAYS + 1)
+        response = self.client.post(self.url, data=self.post_data(new_date), follow=True)
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.assertContains(response, f'cannot be more than {VENDOR_EXPIRATION_MAX_DAYS} days')
+        self.mock_set_expiration.assert_not_called()
+
+    def test_vendor_past_expiration_rejected(self):
+        self.make_vendor()
+        new_date = timezone.localdate() - datetime.timedelta(days=1)
+        self.client.post(self.url, data=self.post_data(new_date))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+
+    def test_vendor_unchanged_over_vendor_max_days_rejected_and_saves_nothing(self):
+        """An existing vendor expiration beyond the vendor limit must be brought within
+        it before any other update is saved."""
+        self.make_vendor()
+        existing = timezone.now() + datetime.timedelta(days=VENDOR_EXPIRATION_MAX_DAYS + 10)
+        self.target.expiration = existing
+        self.target.save()
+        self.npu.enable_notifications = True
+        self.npu.save()
+        data = self.post_data(timezone.localdate(existing))
+        del data['enable_notifications']
+        self.client.post(self.url, data=data)
+        self.npu.refresh_from_db()
+        self.target.refresh_from_db()
+        self.assertTrue(self.npu.enable_notifications)
+        self.assertEqual(self.target.expiration, existing)
+        self.mock_set_expiration.assert_not_called()
+
+    def test_vendor_not_settable_outside_primary_project(self):
+        self.make_non_primary()
+        self.make_vendor()
+        response = self.client.get(self.url)
+        self.assertNotIn('expiration', response.context['project_user_update_form'].fields)
+
+    def test_user_in_external_and_vendor_groups_gets_vendor_limit(self):
+        self.make_external()
+        self.make_vendor()
+        form = self.client.get(self.url).context['project_user_update_form']
+        self.assertEqual(form.max_days, VENDOR_EXPIRATION_MAX_DAYS)
 
     def test_external_blank_expiration_saves_other_fields(self):
         """A blank expiration for an external user with none set is accepted, and other changes save."""
