@@ -416,6 +416,50 @@ class AllocationDetailViewPostTest(AllocationViewBaseTest):
         self.new_allocation.refresh_from_db()
         self.assertEqual(self.new_allocation.status.name, 'Active')
 
+    def test_allocationdetail_tape_approval_saves_path_and_globus_uuid(self):
+        """approving a tape allocation stores the entered path and Globus UUID"""
+        tape_resource = ResourceFactory(
+            name='nesetape/tier3', resource_type=ResourceTypeFactory(name='Storage')
+        )
+        self.new_allocation.resources.set([tape_resource])
+        globus_uuid = '123e4567-e89b-12d3-a456-426614174000'
+        self.client.force_login(self.admin_user)
+        form_data = {
+            'status': AllocationStatusChoice.objects.get(name='Active').pk,
+            'description': 'description test',
+            'is_locked': False,
+            'is_changeable': True,
+            'resource': tape_resource.pk,
+            'action': 'approve',
+            'path': 'hugljharvard',
+            'globus_uuid': globus_uuid,
+        }
+        response = self.client.post(self.url, data=form_data, follow=True)
+        self.assertContains(response, 'Allocation Activated')
+        self.assertEqual(self.new_allocation.get_attribute('Subdirectory'), 'hugljharvard')
+        self.assertEqual(self.new_allocation.get_attribute('Globus UUID'), globus_uuid)
+
+    def test_allocationdetail_tape_approval_without_globus_uuid_not_activated(self):
+        """a tape allocation can't be approved without a Globus UUID"""
+        tape_resource = ResourceFactory(
+            name='nesetape/tier3', resource_type=ResourceTypeFactory(name='Storage')
+        )
+        self.new_allocation.resources.set([tape_resource])
+        self.client.force_login(self.admin_user)
+        form_data = {
+            'status': AllocationStatusChoice.objects.get(name='Active').pk,
+            'description': 'description test',
+            'is_locked': False,
+            'is_changeable': True,
+            'resource': tape_resource.pk,
+            'action': 'approve',
+            'path': 'hugljharvard',
+        }
+        response = self.client.post(self.url, data=form_data, follow=True)
+        self.assertContains(response, 'You must provide the Globus UUID for this allocation.')
+        self.new_allocation.refresh_from_db()
+        self.assertEqual(self.new_allocation.status.name, 'New')
+
 
 class AllocationCreateViewTest(AllocationViewBaseTest):
     """Tests for the AllocationCreateView"""

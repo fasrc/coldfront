@@ -310,6 +310,14 @@ Allocation Detail
           </i></p>
           <div id=resource_summary_table></div>
           {% csrf_token %}
+          {% if approval_form.manual_only %}
+            <div class="alert alert-info" role="alert">
+              <i class="fas fa-info-circle" aria-hidden="true"></i>
+              This allocation must be created manually: an integration for automated allocation
+              creation does not yet exist for this resource. Create the allocation before approving
+              this request.
+            </div>
+          {% endif %}
           {{ approval_form |crispy }}
         </div>
       {% endif %}

@@ -322,7 +322,7 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
             form.fields['is_locked'].disabled = True
             form.fields['is_changeable'].disabled = True
         elif allocation_obj.status.name in PENDING_ALLOCATION_STATUSES:
-            approval_form = AllocationApprovalForm()
+            approval_form = AllocationApprovalForm(resource=allocation_obj.get_parent_resource)
             context['approval_form'] = approval_form
 
         context['form'] = form
@@ -381,7 +381,9 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
 
         if 'approve' in action:
 
-            approval_form = AllocationApprovalForm(request.POST)
+            approval_form = AllocationApprovalForm(
+                request.POST, resource=allocation_obj.get_parent_resource
+            )
             if not approval_form.is_valid():
                 context = self.get_context_data()
                 context['form'] = form
@@ -404,13 +406,21 @@ class AllocationDetailView(LoginRequiredMixin, UserPassesTestMixin, TemplateView
                 return HttpResponseRedirect(reverse('allocation-detail', kwargs={'pk': pk}))
             if action == 'approve':
                 # ensure that sheetcheck and auto_create_opts are selected
-                autoapproval_choice = approval_form.data.get('auto_create_opts')
+                autoapproval_choice = approval_form.cleaned_data.get('auto_create_opts')
                 if autoapproval_choice == '1':
                     path_attrtype = AllocationAttributeType.objects.get(name='Subdirectory')
                     allocation_obj.allocationattribute_set.get_or_create(
                         allocation_attribute_type=path_attrtype,
-                        defaults={'value': approval_form.data.get('path')}
+                        defaults={'value': approval_form.cleaned_data.get('path')}
                     )
+                    globus_uuid = approval_form.cleaned_data.get('globus_uuid')
+                    if globus_uuid:
+                        allocation_obj.allocationattribute_set.get_or_create(
+                            allocation_attribute_type=AllocationAttributeType.objects.get(
+                                name='Globus UUID'
+                            ),
+                            defaults={'value': str(globus_uuid)}
+                        )
                 elif autoapproval_choice == '2':
                     error = None
                     try:
