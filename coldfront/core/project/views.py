@@ -1632,12 +1632,7 @@ class ProjectUserDetail(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
                     }
                 )
             messages.success(request, 'User details updated.')
-            return HttpResponseRedirect(
-                reverse(
-                    'project-user-detail',
-                    kwargs={'pk': pk, 'project_user_pk': project_user_obj.pk},
-                )
-            )
+            return HttpResponseRedirect(reverse('project-detail', kwargs={'pk': pk}))
 
 
 @login_required

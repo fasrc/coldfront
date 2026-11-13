@@ -55,11 +55,11 @@ class Command(BaseCommand):
         )
         vendor_usernames = {entry['sAMAccountName'][0] for entry in vendor_entries}
 
-        group = Group.objects.get(name=VENDOR_GROUP_NAME)
+        vendor_group = Group.objects.get(name=VENDOR_GROUP_NAME)
         users = get_user_model().objects
-        for cf_user in users.filter(username__in=vendor_usernames).exclude(groups=group):
-            cf_user.groups.add(group)
+        for cf_user in users.filter(username__in=vendor_usernames).exclude(groups=vendor_group):
+            cf_user.groups.add(vendor_group)
             logger.info("Added user %s to group %s", cf_user.username, VENDOR_GROUP_NAME)
-        for cf_user in users.filter(groups=group).exclude(username__in=vendor_usernames):
-            cf_user.groups.remove(group)
+        for cf_user in users.filter(groups=vendor_group).exclude(username__in=vendor_usernames):
+            cf_user.groups.remove(vendor_group)
             logger.info("Removed user %s from group %s", cf_user.username, VENDOR_GROUP_NAME)

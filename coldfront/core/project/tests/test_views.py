@@ -1215,6 +1215,20 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         response = self.client.get(self.url)
         self.assertIn('expiration', response.context['project_user_update_form'].fields)
 
+    def test_successful_update_redirects_to_project_detail(self):
+        response = self.client.post(self.url, data=self.post_data(None))
+        self.assertRedirects(
+            response, reverse('project-detail', kwargs={'pk': self.project.pk}), fetch_redirect_response=False
+        )
+        response = self.client.get(response.url)
+        self.assertContains(response, 'User details updated.')
+
+    def test_rejected_update_stays_on_edit_page(self):
+        self.make_external()
+        new_date = timezone.localdate() - datetime.timedelta(days=1)
+        response = self.client.post(self.url, data=self.post_data(new_date))
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+
     def test_expiration_post_at_max_days_saves(self):
         self.make_external()
         new_date = timezone.localdate() + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)
