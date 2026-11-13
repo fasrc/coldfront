@@ -17,13 +17,12 @@ from django.views.generic import ListView, TemplateView
 
 from coldfront.core.project.models import Project, ProjectUser
 from coldfront.core.user.forms import UserSearchForm
-from coldfront.core.user.utils import CombinedUserSearch
+from coldfront.core.user.utils import CombinedUserSearch, account_type
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.utils.mail import send_email_template
 
 logger = logging.getLogger(__name__)
 EMAIL_ENABLED = import_from_settings('EMAIL_ENABLED', False)
-EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
 if EMAIL_ENABLED:
     EMAIL_TICKET_SYSTEM_ADDRESS = import_from_settings(
         'EMAIL_TICKET_SYSTEM_ADDRESS')
@@ -62,12 +61,8 @@ class UserProfile(TemplateView):
         group_names = [group.name for group in viewed_user.groups.all()]
         group_list = ', '.join(group_names)
         context['group_list'] = group_list
-        # Name every external group the user belongs to, e.g. "External" or "External, Vendor".
-        external_groups = [group for group in EXTERNAL_USER_GROUPS if group in group_names]
-        if external_groups:
-            context['external_status'] = ', '.join(group.capitalize() for group in external_groups)
-        else:
-            context['external_status'] = None
+        preset = account_type(group_names)
+        context['external_status'] = preset['label'] if preset else None
         context['viewed_user'] = viewed_user
         return context
 

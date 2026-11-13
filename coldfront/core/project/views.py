@@ -81,7 +81,7 @@ from coldfront.core.publication.models import Publication
 from coldfront.core.research_output.models import ResearchOutput
 from coldfront.core.resource.models import ResourceAttribute
 from coldfront.core.user.forms import UserSearchForm
-from coldfront.core.user.utils import CombinedUserSearch
+from coldfront.core.user.utils import CombinedUserSearch, account_type
 from coldfront.core.utils.views import ColdfrontListView, NoteCreateView, NoteUpdateView
 from coldfront.core.utils.common import get_domain_url, import_from_settings
 from coldfront.core.utils.mail import (
@@ -100,8 +100,8 @@ ALLOCATION_DEFAULT_ALLOCATION_LENGTH = import_from_settings(
     'ALLOCATION_DEFAULT_ALLOCATION_LENGTH', 365)
 PENDING_ALLOCATION_STATUSES = import_from_settings(
     'PENDING_ALLOCATION_STATUSES', ['New', 'In Progress', 'On Hold', 'Pending Activation'])
-EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
-VENDOR_USER_GROUP = import_from_settings('VENDOR_USER_GROUP', 'vendor')
+# The check-mark columns on the add/remove users pages flag members of any account-type group.
+ACCOUNT_TYPE_GROUP_NAMES = list(import_from_settings('ACCOUNT_TYPE_GROUPS', {}))
 
 
 EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings('EMAIL_DIRECTOR_EMAIL_ADDRESS')
@@ -279,14 +279,12 @@ class ProjectDetailView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
 
         # Show Active users and Deactivated users (still an AD group member, but
         # their AD account is disabled) - Removed users are no longer group members.
-        # Flag users in the external/vendor auth groups so the template can badge them.
+        # Prefetch groups for the account-type badges.
         project_users = self.object.projectuser_set.filter(
                     status__name__in=['Active', 'Deactivated']
-        ).annotate(
-            is_external=Exists(Group.objects.filter(
-                user=OuterRef('user'), name__in=EXTERNAL_USER_GROUPS
-            ))
-        ).select_related('user', 'role', 'status').order_by('user__username')
+        ).select_related('user', 'role', 'status').prefetch_related(
+            'user__groups'
+        ).order_by('user__username')
 
         # Don't email accounts that are disabled in AD, even though they're shown above.
         active_project_users = project_users.filter(status__name='Active')
@@ -706,7 +704,7 @@ class ProjectAddUsersSearchResultsView(
         # Only local accounts have groups; LDAP-only matches are never flagged external.
         external_usernames = set(get_user_model().objects.filter(
             username__in=[match['username'] for match in matches],
-            groups__name__in=EXTERNAL_USER_GROUPS,
+            groups__name__in=ACCOUNT_TYPE_GROUP_NAMES,
         ).values_list('username', flat=True))
         for match in matches:
             match.update({
@@ -1143,7 +1141,7 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
                 'is_external': u.is_external,
             }
             for u in project_obj.projectuser_set.filter(status__name='Active').annotate(
-                is_external=Exists(Group.objects.filter(user=OuterRef('user'), name__in=EXTERNAL_USER_GROUPS))
+                is_external=Exists(Group.objects.filter(user=OuterRef('user'), name__in=ACCOUNT_TYPE_GROUP_NAMES))
             ).select_related('user', 'role').order_by('user__username')
             if u.user not in (self.request.user, project_obj.pi)
         ]
@@ -1449,13 +1447,9 @@ class ProjectRemoveUsersView(LoginRequiredMixin, UserPassesTestMixin, TemplateVi
 def _expiration_initial(project_user):
     """Initial values ProjectUserUpdateForm uses to decide how the expiration can be edited."""
     user = project_user.user
-    group_names = set(user.groups.values_list('name', flat=True))
-    is_vendor = VENDOR_USER_GROUP in group_names
     return {
         'expiration': timezone.localdate(user.expiration) if user.expiration else None,
-        # Vendors always follow the external rules, with their own (shorter) limit.
-        'is_external': is_vendor or bool(group_names & set(EXTERNAL_USER_GROUPS)),
-        'is_vendor': is_vendor,
+        'account_type': account_type(set(user.groups.values_list('name', flat=True))),
         'primary_group': project_user.primary_group,
     }
 

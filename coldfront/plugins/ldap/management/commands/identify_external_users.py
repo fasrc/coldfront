@@ -13,7 +13,7 @@ LDAP_VENDOR_GROUP = import_from_settings('LDAP_VENDOR_GROUP', 'vendor_accounts')
 LDAP_CENTER_STAFF_GROUPS = import_from_settings('LDAP_CENTER_STAFF_GROUPS', ['rc_accounts'])
 
 EXTERNAL_GROUP_NAME = 'external'
-VENDOR_GROUP_NAME = import_from_settings('VENDOR_USER_GROUP', 'vendor')
+VENDOR_GROUP_NAME = 'vendor'
 
 
 class Command(BaseCommand):

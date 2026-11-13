@@ -13,7 +13,7 @@ from coldfront.core.test_helpers import utils
 from coldfront.core.utils.common import import_from_settings
 from coldfront.core.user.models import UserProfile
 
-EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
+ACCOUNT_TYPE_GROUPS = import_from_settings('ACCOUNT_TYPE_GROUPS')
 
 class TestUserProfile(TestCase):
     class Data:
@@ -69,20 +69,19 @@ class TestUserProfileExternalStatus(TestCase):
         header = soup.find('th', string='External Status:')
         return header.find_next_sibling('td')
 
-    def test_each_external_group_shows_its_name(self):
-        for group_name in EXTERNAL_USER_GROUPS:
+    def test_each_account_type_group_shows_its_label(self):
+        for group_name, preset in ACCOUNT_TYPE_GROUPS.items():
             with self.subTest(group=group_name):
                 user = UserFactory(username=f'{group_name}_user')
                 user.groups.add(Group.objects.get_or_create(name=group_name)[0])
-                self.assertEqual(self._get_status_cell(user).get_text(strip=True), group_name.capitalize())
+                self.assertEqual(self._get_status_cell(user).get_text(strip=True), preset['label'])
 
-    def test_user_in_several_external_groups_shows_all(self):
+    def test_vendor_supersedes_external(self):
         user = UserFactory(username='multi_external_user')
-        for group_name in EXTERNAL_USER_GROUPS:
+        for group_name in ('external', 'vendor'):
             user.groups.add(Group.objects.get_or_create(name=group_name)[0])
         self.assertEqual(
-            self._get_status_cell(user).get_text(strip=True),
-            ', '.join(group_name.capitalize() for group_name in EXTERNAL_USER_GROUPS),
+            self._get_status_cell(user).get_text(strip=True), ACCOUNT_TYPE_GROUPS['vendor']['label']
         )
 
     def test_internal_user_shows_no(self):

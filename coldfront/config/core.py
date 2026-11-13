@@ -42,16 +42,25 @@ DATA_MANAGERS = ['PI', 'General Manager', 'Storage Manager']
 #------------------------------------------------------------------------------
 # User account categories
 #------------------------------------------------------------------------------
-# Auth groups whose members are external accounts (e.g. their account expiration
-# is required and capped on the project user edit page)
-EXTERNAL_USER_GROUPS = ENV.list('EXTERNAL_USER_GROUPS', default=['external', 'vendor'])
-# Furthest out, in days from today, that an external account's expiration can be set
-EXTERNAL_EXPIRATION_MAX_DAYS = ENV.int('EXTERNAL_EXPIRATION_MAX_DAYS', default=90)
-# Auth group for vendor accounts. Vendors follow the external account rules, but with
-# VENDOR_EXPIRATION_MAX_DAYS as their limit (it applies even if they're also in another
-# external group).
-VENDOR_USER_GROUP = ENV.str('VENDOR_USER_GROUP', default='vendor')
-VENDOR_EXPIRATION_MAX_DAYS = ENV.int('VENDOR_EXPIRATION_MAX_DAYS', default=30)
+# Account-type auth groups, in precedence order: a user gets the preset of the first group
+# here they belong to (so vendor status supersedes external). Each preset sets how the user
+# is labeled, and how their account expiration can be set on the project user edit page
+# (expiration_max_days: furthest out, in days from today, or None for no limit).
+# Override the whole dict in local_settings.py to add or change groups.
+ACCOUNT_TYPE_GROUPS = {
+    'vendor': {
+        'label': 'Vendor',
+        'badge_class': 'badge-vendor',
+        'expiration_max_days': ENV.int('VENDOR_EXPIRATION_MAX_DAYS', default=30),
+        'expiration_required': True,
+    },
+    'external': {
+        'label': 'External',
+        'badge_class': 'badge-warning',
+        'expiration_max_days': ENV.int('EXTERNAL_EXPIRATION_MAX_DAYS', default=90),
+        'expiration_required': False,
+    },
+}
 
 #------------------------------------------------------------------------------
 # DjangoQ settings

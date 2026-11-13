@@ -1,6 +1,7 @@
 {% extends "common/base.html" %}
 {% load crispy_forms_tags %}
 {% load static %}
+{% load common_tags %}
 
 
 {% block title %}
@@ -24,9 +25,7 @@ Project User Detail
           <tr>
             <th scope="row">Username:</th>
             <td>{{project_user_obj.user.username}}
-              {% if project_user_update_form.is_external %}
-                <span class="badge badge-warning">External</span>
-              {% endif %}
+              {% account_type_badge project_user_obj.user %}
             </td>
           </tr>
           <tr>

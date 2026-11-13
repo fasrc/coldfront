@@ -471,8 +471,8 @@ class IdentifyExternalUsersCommandTest(TestCase):
     """Tests for the identify_external_users management command with AD mocked"""
 
     def setUp(self):
-        self.external_group = Group.objects.get_or_create(name='external')[0]
-        self.vendor_group = Group.objects.get_or_create(name='vendor')[0]
+        self.external_group = Group.objects.get_or_create(name=identify_external_users.EXTERNAL_GROUP_NAME)[0]
+        self.vendor_group = Group.objects.get_or_create(name=identify_external_users.VENDOR_GROUP_NAME)[0]
         self.new_vendor = UserFactory(username='new_vendor')
         self.kept_vendor = UserFactory(username='kept_vendor')
         self.former_vendor = UserFactory(username='former_vendor')
@@ -507,6 +507,6 @@ class IdentifyExternalUsersCommandTest(TestCase):
 
     def test_external_users_added_by_title(self, mock_ldapconn):
         ad_conn = self._run(mock_ldapconn, [], external_usernames=['titled_external'])
-        self.assertTrue(self.external_user.groups.filter(name='external').exists())
+        self.assertTrue(self.external_user.groups.filter(pk=self.external_group.pk).exists())
         search_dict = ad_conn.search_users.call_args.args[0]
         self.assertIn('(title=EXTERNAL)', format_template_assertions({'title': search_dict['title']}))

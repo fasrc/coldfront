@@ -34,10 +34,11 @@ from coldfront.core.project.models import (
 
 logging.disable(logging.CRITICAL)
 
-EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
-EXTERNAL_EXPIRATION_MAX_DAYS = import_from_settings('EXTERNAL_EXPIRATION_MAX_DAYS', 90)
-VENDOR_USER_GROUP = import_from_settings('VENDOR_USER_GROUP', 'vendor')
-VENDOR_EXPIRATION_MAX_DAYS = import_from_settings('VENDOR_EXPIRATION_MAX_DAYS', 30)
+ACCOUNT_TYPE_GROUPS = import_from_settings('ACCOUNT_TYPE_GROUPS')
+EXTERNAL_GROUP = 'external'
+VENDOR_GROUP = 'vendor'
+EXTERNAL_EXPIRATION_MAX_DAYS = ACCOUNT_TYPE_GROUPS[EXTERNAL_GROUP]['expiration_max_days']
+VENDOR_EXPIRATION_MAX_DAYS = ACCOUNT_TYPE_GROUPS[VENDOR_GROUP]['expiration_max_days']
 
 UTIL_FIXTURES = [
         "coldfront/core/test_helpers/test_data/test_fixtures/ifx.json",
@@ -379,12 +380,14 @@ class ProjectRemoveUsersViewTest(ProjectViewTestBase):
         mock_filter_users_to_remove.side_effect = lambda sender, users_to_remove, project: [
             (None, users_to_remove)
         ]
-        self.project_user.groups.add(Group.objects.get_or_create(name=EXTERNAL_USER_GROUPS[0])[0])
+        self.project_user.groups.add(Group.objects.get_or_create(name=EXTERNAL_GROUP)[0])
+        self.proj_datamanager.groups.add(Group.objects.get_or_create(name=VENDOR_GROUP)[0])
         self.client.force_login(self.pi_user)
         response = self.client.get(self.url)
 
         users = {u['username']: u for u in response.context['formset'].initial}
         self.assertTrue(users[self.project_user.username]['is_external'])
+        self.assertTrue(users[self.proj_datamanager.username]['is_external'])  # vendors are checked too
         self.assertTrue(any(not u['is_external'] for u in users.values()))
 
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -752,13 +755,15 @@ class ProjectAddUsersSearchResultsExternalTest(ProjectViewTestBase):
     def setUp(self):
         self.url = reverse('project-add-users-search-results', kwargs={'pk': self.project.pk})
         self.external_user = UserFactory(username='ext_candidate')
-        self.external_user.groups.add(Group.objects.get_or_create(name=EXTERNAL_USER_GROUPS[0])[0])
+        self.external_user.groups.add(Group.objects.get_or_create(name=EXTERNAL_GROUP)[0])
+        self.vendor_user = UserFactory(username='vend_candidate')
+        self.vendor_user.groups.add(Group.objects.get_or_create(name=VENDOR_GROUP)[0])
         self.internal_user = UserFactory(username='int_candidate')
         self.client.force_login(self.pi_user)
 
-    def test_external_column_checks_only_external_users(self):
+    def test_external_column_checks_external_and_vendor_users(self):
         response = self.client.post(self.url, data={
-            'q': f'{self.external_user.username} {self.internal_user.username}',
+            'q': f'{self.external_user.username} {self.vendor_user.username} {self.internal_user.username}',
             'search_by': 'username_only',
         })
         self.assertEqual(response.status_code, 200)
@@ -771,7 +776,11 @@ class ProjectAddUsersSearchResultsExternalTest(ProjectViewTestBase):
             cells = row.find_all('td')
             username = cells[headers.index('Username')].get_text(strip=True)
             checked[username] = cells[external_col].find('i', class_='fa-check') is not None
-        self.assertEqual(checked, {self.external_user.username: True, self.internal_user.username: False})
+        self.assertEqual(checked, {
+            self.external_user.username: True,
+            self.vendor_user.username: True,
+            self.internal_user.username: False,
+        })
 
 
 @override_settings(ADDITIONAL_USER_SEARCH_CLASSES=[])  # search local users only, not LDAP
@@ -1173,7 +1182,7 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         self.addCleanup(patcher.stop)
         self.mock_set_expiration = self.mock_ldapconn.return_value.set_user_expiration
 
-    def make_external(self, group_name=EXTERNAL_USER_GROUPS[0]):
+    def make_external(self, group_name=EXTERNAL_GROUP):
         self.target.groups.add(Group.objects.get_or_create(name=group_name)[0])
 
     def post_data(self, expiration):
@@ -1397,6 +1406,14 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         username_cell = soup.find('th', string='Username:').find_next_sibling('td')
         self.assertEqual(username_cell.find('span', class_='badge').get_text(strip=True), 'External')
 
+    def test_vendor_badge_shown_next_to_username(self):
+        self.make_vendor()
+        soup = BeautifulSoup(self.client.get(self.url).content, 'html.parser')
+        username_cell = soup.find('th', string='Username:').find_next_sibling('td')
+        badges = [b.get_text(strip=True) for b in username_cell.find_all('span', class_='badge')]
+        self.assertEqual(badges, ['Vendor'])
+        self.assertIsNotNone(username_cell.find('span', class_='badge-vendor'))
+
     def test_no_external_badge_for_non_external_user(self):
         soup = BeautifulSoup(self.client.get(self.url).content, 'html.parser')
         username_cell = soup.find('th', string='Username:').find_next_sibling('td')
@@ -1407,23 +1424,35 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         response = self.client.get(self.url)
         self.assertFalse(response.context['project_user_update_form'].fields['expiration'].required)
 
-    def test_every_external_group_gets_external_rules(self):
-        for group_name in EXTERNAL_USER_GROUPS:
+    def test_each_account_type_group_gets_its_preset_rules(self):
+        for group_name, preset in ACCOUNT_TYPE_GROUPS.items():
             with self.subTest(group=group_name):
-                max_days = (
-                    VENDOR_EXPIRATION_MAX_DAYS if group_name == VENDOR_USER_GROUP
-                    else EXTERNAL_EXPIRATION_MAX_DAYS
-                )
-                max_date = timezone.localdate() + datetime.timedelta(days=max_days)
+                max_date = timezone.localdate() + datetime.timedelta(days=preset['expiration_max_days'])
                 self.target.groups.clear()
                 self.make_external(group_name)
-                response = self.client.get(self.url)
-                form = response.context['project_user_update_form']
-                self.assertTrue(form.is_external)
+                form = self.client.get(self.url).context['project_user_update_form']
+                self.assertEqual(form.max_days, preset['expiration_max_days'])
+                self.assertEqual(form.fields['expiration'].required, preset['expiration_required'])
                 self.assertEqual(form.fields['expiration'].widget.attrs['max'], max_date.isoformat())
 
+    def test_new_preset_group_needs_no_code_changes(self):
+        """Adding a group to ACCOUNT_TYPE_GROUPS is enough for its badge and expiration rules."""
+        guest_preset = {
+            'label': 'Guest', 'badge_class': 'badge-info',
+            'expiration_max_days': 7, 'expiration_required': True,
+        }
+        with patch.dict('coldfront.core.user.utils.ACCOUNT_TYPE_GROUPS', {'guest': guest_preset}):
+            self.make_external('guest')
+            response = self.client.get(self.url)
+        form = response.context['project_user_update_form']
+        self.assertEqual(form.max_days, 7)
+        self.assertTrue(form.fields['expiration'].required)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        username_cell = soup.find('th', string='Username:').find_next_sibling('td')
+        self.assertIsNotNone(username_cell.find('span', class_='badge-info', string='Guest'))
+
     def make_vendor(self):
-        self.target.groups.add(Group.objects.get_or_create(name=VENDOR_USER_GROUP)[0])
+        self.target.groups.add(Group.objects.get_or_create(name=VENDOR_GROUP)[0])
 
     def test_vendor_picker_limited_to_vendor_max_days(self):
         self.make_vendor()
@@ -1482,11 +1511,12 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         response = self.client.get(self.url)
         self.assertNotIn('expiration', response.context['project_user_update_form'].fields)
 
-    def test_user_in_external_and_vendor_groups_gets_vendor_limit(self):
+    def test_vendor_rules_supersede_external(self):
         self.make_external()
         self.make_vendor()
         form = self.client.get(self.url).context['project_user_update_form']
         self.assertEqual(form.max_days, VENDOR_EXPIRATION_MAX_DAYS)
+        self.assertTrue(form.fields['expiration'].required)
 
     def test_external_blank_expiration_saves_other_fields(self):
         """A blank expiration for an external user with none set is accepted, and other changes save."""

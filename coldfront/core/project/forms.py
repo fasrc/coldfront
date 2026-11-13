@@ -24,8 +24,6 @@ EMAIL_DIRECTOR_EMAIL_ADDRESS = import_from_settings(
     'EMAIL_DIRECTOR_EMAIL_ADDRESS', '')
 PENDING_ACTIVE_ALLOCATION_STATUSES = import_from_settings(
     'PENDING_ACTIVE_ALLOCATION_STATUSES', ['Active', 'New', 'Renewal Requested', 'Payment Pending', 'Payment Requested', 'Paid'])
-EXTERNAL_EXPIRATION_MAX_DAYS = import_from_settings('EXTERNAL_EXPIRATION_MAX_DAYS', 90)
-VENDOR_EXPIRATION_MAX_DAYS = import_from_settings('VENDOR_EXPIRATION_MAX_DAYS', 30)
 
 class ProjectSearchForm(forms.Form):
     """ Search form for the Project list page.
@@ -127,10 +125,9 @@ class ProjectUserUpdateForm(forms.Form):
         How the expiration can be edited depends on values the view passes in `initial`:
         - primary_group: the date is only editable from the user's primary project;
           elsewhere the field is removed.
-        - is_external: the date is capped at EXTERNAL_EXPIRATION_MAX_DAYS; for
-          non-external users it is uncapped.
-        - is_vendor: vendors follow the external rules, but are capped at
-          VENDOR_EXPIRATION_MAX_DAYS instead.
+        - account_type: the user's ACCOUNT_TYPE_GROUPS preset, or None. Its
+          expiration_max_days limits the date and expiration_required makes it required.
+          With no limit, the date is optional and uncapped.
         """
         super().__init__(*args, **kwargs)
         project_obj = get_object_or_404(Project, pk=project_pk)
@@ -138,19 +135,14 @@ class ProjectUserUpdateForm(forms.Form):
         if not project_obj.pi == request_user and not request_user.is_superuser:
             self.fields['role'].queryset = roles.exclude(name='General Manager')
 
-        self.is_external = self.initial.get('is_external', False)
-        # How far out an external account's expiration can be set; None means no limit.
-        if self.initial.get('is_vendor'):
-            self.max_days = VENDOR_EXPIRATION_MAX_DAYS
-        elif self.is_external:
-            self.max_days = EXTERNAL_EXPIRATION_MAX_DAYS
-        else:
-            self.max_days = None
+        preset = self.initial.get('account_type') or {}
+        # How far out the expiration can be set; None means no limit.
+        self.max_days = preset.get('expiration_max_days')
 
         if not self.initial.get('primary_group'):
             del self.fields['expiration']
-        elif self.is_external:
-            # self.fields['expiration'].required = True
+        elif self.max_days is not None:
+            self.fields['expiration'].required = preset.get('expiration_required', False)
             # Limit the browser's date picker to the dates clean_expiration accepts.
             today = timezone.localdate()
             self.fields['expiration'].widget.attrs.update({
@@ -167,9 +159,9 @@ class ProjectUserUpdateForm(forms.Form):
     def clean_expiration(self):
         """Validate the expiration date.
 
-        External users: the date must be in the future and no more than self.max_days
-        (EXTERNAL_EXPIRATION_MAX_DAYS, or VENDOR_EXPIRATION_MAX_DAYS for vendors) from
-        today on every save, even if unchanged.
+        Users with a limit (self.max_days, from their account-type presets): the date must
+        be in the future and no more than self.max_days from today on every save, even if
+        unchanged.
         Others: blank clears the expiration, an unchanged date is accepted as is,
         and a new date only has to be in the future.
         """
@@ -177,13 +169,13 @@ class ProjectUserUpdateForm(forms.Form):
         if new_date is None:
             # Blank: required=True already rejects this for external users.
             return None
-        if not self.is_external and new_date == self.initial.get('expiration'):
+        if self.max_days is None and new_date == self.initial.get('expiration'):
             return new_date
 
         today = timezone.localdate()
         if new_date <= today:
             raise forms.ValidationError('Expiration date must be in the future.')
-        if not self.is_external:
+        if self.max_days is None:
             return new_date
         max_date = today + datetime.timedelta(days=self.max_days)
         if new_date > max_date:

@@ -20,7 +20,7 @@ from coldfront.core.test_helpers.fasrc_factories import (
     UserAffiliationFactory,
 )
 
-EXTERNAL_USER_GROUPS = import_from_settings('EXTERNAL_USER_GROUPS', ['external', 'vendor'])
+ACCOUNT_TYPE_GROUPS = import_from_settings('ACCOUNT_TYPE_GROUPS')
 
 
 class ProjectDetailViewTest(ProjectViewTestBase):
@@ -247,21 +247,26 @@ class ProjectDetailViewDeactivatedUsersTest(ProjectViewTestBase):
         self.assertIn(self.pi_user.email, response.context['mailto'])
 
 
-class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
-    """Test that ProjectDetailView badges users in any external group."""
+class ProjectDetailViewAccountTypeBadgesTest(ProjectViewTestBase):
+    """Test that ProjectDetailView badges users by their ACCOUNT_TYPE_GROUPS presets."""
 
     @classmethod
     def setUpTestData(cls):
-        super(ProjectDetailViewExternalUsersTest, cls).setUpTestData()
+        super(ProjectDetailViewAccountTypeBadgesTest, cls).setUpTestData()
         cls.url = f'/project/{cls.project.pk}/'
-        active_status = ProjectUserStatusChoiceFactory(name='Active')
-        # one user per external group
-        cls.external_users = []
-        for group_name in EXTERNAL_USER_GROUPS:
-            user = UserFactory(username=f'{group_name}_user')
+        cls.active_status = ProjectUserStatusChoiceFactory(name='Active')
+        # one project user per account-type group
+        cls.group_users = {}
+        for group_name in ACCOUNT_TYPE_GROUPS:
+            cls.group_users[group_name] = cls._add_member(f'{group_name}_user', [group_name])
+
+    @classmethod
+    def _add_member(cls, username, group_names):
+        user = UserFactory(username=username)
+        for group_name in group_names:
             user.groups.add(Group.objects.get_or_create(name=group_name)[0])
-            ProjectUserFactory(user=user, project=cls.project, status=active_status)
-            cls.external_users.append(user)
+        ProjectUserFactory(user=user, project=cls.project, status=cls.active_status)
+        return user
 
     def _get_cells(self, soup, username):
         """Return the (username, name) cells of the user's projectuser_table row"""
@@ -270,18 +275,34 @@ class ProjectDetailViewExternalUsersTest(ProjectViewTestBase):
         cells = row.find_all('td')
         return cells[0], cells[1]
 
-    def test_external_group_users_have_badge_after_username(self):
+    def _badges(self, cell):
+        return [(b.get_text(strip=True), b['class']) for b in cell.find_all('span', class_='badge')]
+
+    def test_each_group_gets_its_preset_badge_after_username(self):
         soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
-        for user in self.external_users:
-            username_cell, name_cell = self._get_cells(soup, user.username)
-            self.assertIn('External', username_cell.get_text())
-            self.assertNotIn('External', name_cell.get_text())
+        for group_name, preset in ACCOUNT_TYPE_GROUPS.items():
+            with self.subTest(group=group_name):
+                username_cell, name_cell = self._get_cells(soup, self.group_users[group_name].username)
+                self.assertEqual(self._badges(username_cell), [(preset['label'], ['badge', preset['badge_class']])])
+                self.assertEqual(self._badges(name_cell), [])
+
+    def test_vendor_badge_supersedes_external(self):
+        user = self._add_member('multi_type_user', ['external', 'vendor'])
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        username_cell, _ = self._get_cells(soup, user.username)
+        vendor = ACCOUNT_TYPE_GROUPS['vendor']
+        self.assertEqual(self._badges(username_cell), [(vendor['label'], ['badge', vendor['badge_class']])])
+
+    def test_vendor_badge_is_orange(self):
+        soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
+        username_cell, _ = self._get_cells(soup, self.group_users['vendor'].username)
+        self.assertIsNotNone(username_cell.find('span', class_='badge-vendor'))
 
     def test_internal_user_has_no_badge(self):
         soup = utils.login_and_get_soup(self.client, self.pi_user, self.url)
         username_cell, name_cell = self._get_cells(soup, self.pi_user.username)
-        self.assertNotIn('External', username_cell.get_text())
-        self.assertNotIn('External', name_cell.get_text())
+        self.assertEqual(self._badges(username_cell), [])
+        self.assertEqual(self._badges(name_cell), [])
 
 
 class ProjectDetailViewExpirationBadgeTest(ProjectViewTestBase):
@@ -293,7 +314,7 @@ class ProjectDetailViewExpirationBadgeTest(ProjectViewTestBase):
         cls.url = f'/project/{cls.project.pk}/'
         active_status = ProjectUserStatusChoiceFactory(name='Active')
         cls.expiring_user = UserFactory(username='expiring_user')
-        cls.expiring_user.groups.add(Group.objects.get_or_create(name=EXTERNAL_USER_GROUPS[0])[0])
+        cls.expiring_user.groups.add(Group.objects.get_or_create(name='external')[0])
         ProjectUserFactory(user=cls.expiring_user, project=cls.project, status=active_status)
 
     def _set_expiration_days_out(self, days):

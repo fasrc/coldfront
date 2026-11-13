@@ -486,9 +486,7 @@ Project Detail
                 {% if user.status.name == 'Deactivated' %}
                   <span class="badge badge-secondary">Disabled</span>
                 {% endif %}
-                {% if user.is_external %}
-                  <span class="badge badge-warning">External</span>
-                {% endif %}
+                {% account_type_badge user.user %}
                 {# Flag accounts expiring within the next 30 days. #}
                 {% with days_left=user.user.expiration|days_until %}
                   {% if days_left is not None and days_left >= 0 and days_left < 30 %}
