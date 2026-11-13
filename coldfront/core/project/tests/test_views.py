@@ -1398,12 +1398,13 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         username_cell = soup.find('th', string='Username:').find_next_sibling('td')
         self.assertIsNone(username_cell.find('span', class_='badge'))
 
-    def test_expiration_required_for_external_user(self):
+    def test_expiration_optional_for_external_user(self):
         self.make_external()
         response = self.client.get(self.url)
-        self.assertTrue(response.context['project_user_update_form'].fields['expiration'].required)
+        self.assertFalse(response.context['project_user_update_form'].fields['expiration'].required)
 
     def test_every_external_group_gets_external_rules(self):
+        max_date = timezone.localdate() + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS)
         for group_name in EXTERNAL_USER_GROUPS:
             with self.subTest(group=group_name):
                 self.target.groups.clear()
@@ -1411,22 +1412,31 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
                 response = self.client.get(self.url)
                 form = response.context['project_user_update_form']
                 self.assertTrue(form.is_external)
-                self.assertTrue(form.fields['expiration'].required)
+                self.assertEqual(form.fields['expiration'].widget.attrs['max'], max_date.isoformat())
 
-    def test_expiration_blank_post_rejected_and_saves_nothing(self):
-        """A blank expiration for an external user blocks the whole update."""
+    def test_external_blank_expiration_saves_other_fields(self):
+        """A blank expiration for an external user with none set is accepted, and other changes save."""
         self.make_external()
         self.npu.enable_notifications = True
         self.npu.save()
         data = self.post_data(None)
         del data['enable_notifications']
-        response = self.client.post(self.url, data=data, follow=True)
+        self.client.post(self.url, data=data)
         self.npu.refresh_from_db()
         self.target.refresh_from_db()
-        self.assertTrue(self.npu.enable_notifications)
+        self.assertFalse(self.npu.enable_notifications)
         self.assertIsNone(self.target.expiration)
-        self.assertContains(response, 'This field is required.')
         self.mock_set_expiration.assert_not_called()
+
+    def test_external_blank_expiration_clears_existing_and_pushes_to_ad(self):
+        self.make_external()
+        self.target.expiration = timezone.now() + datetime.timedelta(days=30)
+        self.target.save()
+        self.client.post(self.url, data=self.post_data(None))
+        self.target.refresh_from_db()
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_called_once()
+        self.assertEqual(self.mock_set_expiration.call_args.args, (self.target.username, None))
 
     def test_expiration_unchanged_over_cap_rejected_and_saves_nothing(self):
         """An existing expiration beyond the cap (e.g. synced from AD) must be
