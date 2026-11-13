@@ -44,6 +44,9 @@ def now_filetime():
     FILETIME_EPOCH = datetime(1601, 1, 1)
     return int((datetime.utcnow() - FILETIME_EPOCH).total_seconds() * 10**7)
 
+# AD matching rule OID that follows group nesting in memberOf/member filters.
+LDAP_MATCHING_RULE_IN_CHAIN = '1.2.840.113556.1.4.1941'
+
 # accountExpires value meaning "never expires" (max int64).
 AD_ACCOUNT_NEVER_EXPIRES = '9223372036854775807'
 
@@ -194,6 +197,29 @@ class LDAPConn:
         if not user:
             raise ValueError(f"no users returned for username {username}")
         return user[0]
+
+    def search_nested_group_users(self, group_name, exclude_group_names=(), attributes=ALL_ATTRIBUTES):
+        """Return users in group_name or any group nested in it, as dicts.
+
+        Users in any of exclude_group_names, or any group nested in them, are left
+        out. Uses AD's LDAP_MATCHING_RULE_IN_CHAIN, so nesting is resolved by the
+        directory in a single search.
+        Raises ValueError if any of the groups can't be found.
+        """
+        def in_chain(name):
+            group_dn = self.return_group_by_name(name, attributes=['distinguishedName'])['distinguishedName'][0]
+            return f'(memberOf:{LDAP_MATCHING_RULE_IN_CHAIN}:={escape_filter_chars(group_dn)})'
+
+        search_filter = f'(&(objectCategory=person)(objectClass=user){in_chain(group_name)}'
+        for exclude_group_name in exclude_group_names:
+            search_filter += f'(!{in_chain(exclude_group_name)})'
+        search_filter += ')'
+        self.conn.search(
+            search_base=self.LDAP_USER_SEARCH_BASE,
+            search_filter=search_filter,
+            attributes=attributes,
+        )
+        return [entry.entry_attributes_as_dict for entry in self.conn.entries]
 
     def return_group_by_name(self, groupname, return_as='dict', attributes=ALL_ATTRIBUTES):
         group = self.search_groups(

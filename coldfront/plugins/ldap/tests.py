@@ -6,8 +6,10 @@ from ldap3 import MODIFY_REPLACE
 from ldap3.core.timezone import OffsetTzInfo
 from django.test import SimpleTestCase, TestCase, tag
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 
 from coldfront.core.project.models import ProjectUser
+from coldfront.plugins.ldap.management.commands import identify_external_users
 from coldfront.plugins.ldap.utils import (
     LDAPConn,
     LDAPException,
@@ -414,3 +416,97 @@ class SetUserExpirationTest(SimpleTestCase):
         self.ldap_conn.conn.last_error = 'insufficientAccessRights'
         with self.assertRaises(LDAPException):
             self.ldap_conn.set_user_expiration('jdoe', self.expiration)
+
+
+class SearchNestedGroupUsersTest(SimpleTestCase):
+    """Unit tests for LDAPConn.search_nested_group_users with a mocked connection"""
+
+    def setUp(self):
+        self.ldap_conn = LDAPConn.__new__(LDAPConn)  # skip __init__ (no AD bind)
+        self.ldap_conn.conn = MagicMock()
+        self.ldap_conn.conn.entries = []
+        self.ldap_conn.LDAP_USER_SEARCH_BASE = 'OU=Users,DC=example'
+        group_dns = {
+            'vendor_accounts': 'CN=vendor_accounts,OU=Groups,DC=example',
+            'rc_accounts': 'CN=rc_accounts,OU=Groups,DC=example',
+            'staff_accounts': 'CN=staff_accounts,OU=Groups,DC=example',
+        }
+        self.ldap_conn.return_group_by_name = MagicMock(
+            side_effect=lambda name, **kwargs: {'distinguishedName': [group_dns[name]]}
+        )
+
+    def _search_filter(self):
+        return self.ldap_conn.conn.search.call_args.kwargs['search_filter']
+
+    def test_filter_follows_group_nesting(self):
+        self.ldap_conn.search_nested_group_users('vendor_accounts')
+        self.assertEqual(
+            self._search_filter(),
+            '(&(objectCategory=person)(objectClass=user)'
+            '(memberOf:1.2.840.113556.1.4.1941:=CN=vendor_accounts,OU=Groups,DC=example))',
+        )
+
+    def test_filter_excludes_nested_members_of_each_exclude_group(self):
+        self.ldap_conn.search_nested_group_users(
+            'vendor_accounts', exclude_group_names=['rc_accounts', 'staff_accounts']
+        )
+        self.assertEqual(
+            self._search_filter(),
+            '(&(objectCategory=person)(objectClass=user)'
+            '(memberOf:1.2.840.113556.1.4.1941:=CN=vendor_accounts,OU=Groups,DC=example)'
+            '(!(memberOf:1.2.840.113556.1.4.1941:=CN=rc_accounts,OU=Groups,DC=example))'
+            '(!(memberOf:1.2.840.113556.1.4.1941:=CN=staff_accounts,OU=Groups,DC=example)))',
+        )
+
+    def test_searches_user_base_and_returns_dicts(self):
+        entry = MagicMock(entry_attributes_as_dict={'sAMAccountName': ['vend1']})
+        self.ldap_conn.conn.entries = [entry]
+        result = self.ldap_conn.search_nested_group_users('vendor_accounts')
+        self.assertEqual(result, [{'sAMAccountName': ['vend1']}])
+        self.assertEqual(self.ldap_conn.conn.search.call_args.kwargs['search_base'], 'OU=Users,DC=example')
+
+
+@patch('coldfront.plugins.ldap.management.commands.identify_external_users.LDAPConn')
+class IdentifyExternalUsersCommandTest(TestCase):
+    """Tests for the identify_external_users management command with AD mocked"""
+
+    def setUp(self):
+        self.external_group = Group.objects.get_or_create(name='external')[0]
+        self.vendor_group = Group.objects.get_or_create(name='vendor')[0]
+        self.new_vendor = UserFactory(username='new_vendor')
+        self.kept_vendor = UserFactory(username='kept_vendor')
+        self.former_vendor = UserFactory(username='former_vendor')
+        self.external_user = UserFactory(username='titled_external')
+        for user in (self.kept_vendor, self.former_vendor):
+            user.groups.add(self.vendor_group)
+
+    def _run(self, mock_ldapconn, vendor_usernames, external_usernames=()):
+        ad_conn = mock_ldapconn.return_value
+        ad_conn.search_nested_group_users.return_value = [
+            {'sAMAccountName': [name]} for name in vendor_usernames
+        ]
+        ad_conn.search_users.return_value = [
+            {'sAMAccountName': [name]} for name in external_usernames
+        ]
+        # The ldap plugin isn't in INSTALLED_APPS in tests, so call the command directly.
+        identify_external_users.Command().handle()
+        return ad_conn
+
+    def test_vendor_group_synced_with_ad(self, mock_ldapconn):
+        self._run(mock_ldapconn, ['new_vendor', 'kept_vendor', 'not_in_coldfront'])
+        vendor_usernames = set(
+            get_user_model().objects.filter(groups=self.vendor_group).values_list('username', flat=True)
+        )
+        self.assertEqual(vendor_usernames, {'new_vendor', 'kept_vendor'})
+
+    def test_vendor_search_uses_configured_groups(self, mock_ldapconn):
+        ad_conn = self._run(mock_ldapconn, [])
+        ad_conn.search_nested_group_users.assert_called_once_with(
+            'vendor_accounts', exclude_group_names=['rc_accounts'], attributes=['sAMAccountName']
+        )
+
+    def test_external_users_added_by_title(self, mock_ldapconn):
+        ad_conn = self._run(mock_ldapconn, [], external_usernames=['titled_external'])
+        self.assertTrue(self.external_user.groups.filter(name='external').exists())
+        search_dict = ad_conn.search_users.call_args.args[0]
+        self.assertEqual(search_dict['title'], 'EXTERNAL')
