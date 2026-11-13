@@ -68,9 +68,9 @@ Project User Detail
             <tr>
               <th scope="row">Notifications On:</th>
               <td>{{project_user_update_form.enable_notifications}}<br/><br/>
-                Disabling notifications will disable general allocation- and project-related announcements.
-                User-specific emails such as role change notifications will still be sent.
-                PIs cannot opt out of receiving emails.
+                Disabling notifications will turn off all allocation and project-related emails.
+                User-specific notifications such as role changes, will still be sent.
+                PIs are restricted from opting-out of emails.
               </td>
             </tr>
             {% if project_user_update_form.expiration %}

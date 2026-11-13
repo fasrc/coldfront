@@ -124,10 +124,10 @@ class ProjectUserUpdateForm(forms.Form):
         """If user is not PI or Admin, only show Access Manager, Storage Manager, and User roles.
 
         How the expiration can be edited depends on two values the view passes in `initial`:
-        - is_external: the date is required and capped at EXTERNAL_EXPIRATION_MAX_DAYS,
-          and can be set from any of the user's projects.
-        - primary_group: for non-external users the date is optional and uncapped, but only
-          editable from their primary project; elsewhere the field is removed.
+        - primary_group: the date is only editable from the user's primary project;
+          elsewhere the field is removed.
+        - is_external: the date is capped at EXTERNAL_EXPIRATION_MAX_DAYS; for
+          non-external users it is uncapped.
         """
         super().__init__(*args, **kwargs)
         project_obj = get_object_or_404(Project, pk=project_pk)
@@ -136,7 +136,9 @@ class ProjectUserUpdateForm(forms.Form):
             self.fields['role'].queryset = roles.exclude(name='General Manager')
 
         self.is_external = self.initial.get('is_external', False)
-        if self.is_external:
+        if not self.initial.get('primary_group'):
+            del self.fields['expiration']
+        elif self.is_external:
             # self.fields['expiration'].required = True
             # Limit the browser's date picker to the dates clean_expiration accepts.
             today = timezone.localdate()
@@ -148,10 +150,8 @@ class ProjectUserUpdateForm(forms.Form):
                     # f'Required for external accounts. '
                 f'Must be no more than {EXTERNAL_EXPIRATION_MAX_DAYS} days from today.'
             )
-        elif self.initial.get('primary_group'):
-            self.fields['expiration'].help_text = 'Optional. Leave blank for an account that never expires.'
         else:
-            del self.fields['expiration']
+            self.fields['expiration'].help_text = 'Optional. Leave blank for an account that never expires.'
 
     def clean_expiration(self):
         """Validate the expiration date.

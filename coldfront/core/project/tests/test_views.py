@@ -1309,15 +1309,17 @@ class ProjectUserDetailExpirationTest(ProjectViewTestBase):
         self.assertEqual(self.target.expiration, existing)
         self.mock_set_expiration.assert_not_called()
 
-    def test_external_expiration_settable_outside_primary_project(self):
+    def test_external_expiration_not_settable_outside_primary_project(self):
         self.make_non_primary()
         self.make_external()
         response = self.client.get(self.url)
-        self.assertIn('expiration', response.context['project_user_update_form'].fields)
+        self.assertNotIn('expiration', response.context['project_user_update_form'].fields)
+        self.assertContains(response, "can only be changed from the user's primary project")
         new_date = timezone.localdate() + datetime.timedelta(days=30)
         self.client.post(self.url, data=self.post_data(new_date))
         self.target.refresh_from_db()
-        self.assertEqual(timezone.localdate(self.target.expiration), new_date)
+        self.assertIsNone(self.target.expiration)
+        self.mock_set_expiration.assert_not_called()
 
     def test_non_external_expiration_over_max_days_saves_and_pushes_to_ad(self):
         new_date = timezone.localdate() + datetime.timedelta(days=EXTERNAL_EXPIRATION_MAX_DAYS + 100)
