@@ -10,6 +10,8 @@ class IfxConfig(AppConfig):
     name = 'coldfront.plugins.ifx'
 
     def ready(self):
+        import coldfront.plugins.ifx.affiliations  # noqa: F401  registers ProjectUser affiliation receivers
+
         if 'django_su.backends.SuBackend' not in settings.AUTHENTICATION_BACKENDS:
             return
         try:

@@ -362,11 +362,18 @@ def send_project_organization_result(project, project_organization, message):
     else:
         subject = f'Project {title} not linked to an organization'
     body = f'Project: {title}\nPI: {project.pi}\n\n{message}\n'
+    email_ifx_managers(subject, body, f'organization result for project {title}')
 
+
+def email_ifx_managers(subject, body, description):
+    '''
+    Email the IFX_MANAGER addresses. description names the email in log messages.
+    Errors are logged, not raised.
+    '''
     tostr = ','.join(import_from_settings('IFX_MANAGER', []))
     fromaddr = import_from_settings('EMAIL_SENDER')
     if not tostr:
-        logger.error(f'IFX_MANAGER setting not defined; not emailing organization result for project {title}')
+        logger.error(f'IFX_MANAGER setting not defined; not emailing {description}')
         return
     try:
         send(
@@ -376,7 +383,7 @@ def send_project_organization_result(project, project_organization, message):
             subject=subject
         )
     except Exception as e:
-        logger.exception(f'Error emailing organization result for project {title}: {e}')
+        logger.exception(f'Error emailing {description}: {e}')
 
 
 @receiver(post_save, sender=Project)
