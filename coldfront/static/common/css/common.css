@@ -209,7 +209,8 @@ h2 a {
   color: #A51C30 !important;
 }
 
-tr td a {
+/* exclude .btn-primary links, which would otherwise get crimson text on their crimson background */
+tr td a:not(.btn-primary) {
   color: #A51C30 !important;
 }
 

@@ -37,6 +37,8 @@ class Command(BaseCommand):
             ('storage_type', 'Text'),
             ('url', 'Text'),
             ('storage_mount', 'Text'),
+            ('smb_share', 'Yes/No'),
+            ('nfs_share', 'Yes/No'),
             # UBCCR
             ('Core Count', 'Int'),
             # ('expiry_time', 'Int'),

@@ -16,6 +16,17 @@ from coldfront.plugins.isilon.utils import (
 
 logger = logging.getLogger(__name__)
 
+
+def resource_flag_enabled(resource, attribute_name):
+    """Return True if a Yes/No resource attribute is set to an affirmative value.
+
+    Yes/No attributes may hold 'Yes'/'No' or 'True'/'False' depending on how they were
+    written, so accept either form case-insensitively. A missing attribute is False.
+    """
+    value = resource.get_attribute(attribute_name, expand=False, typed=False)
+    return str(value).strip().lower() in ('yes', 'true') if value is not None else False
+
+
 @receiver(update_volume_information)
 def update_isilon_volume_information(sender, **kwargs):
 
@@ -52,9 +63,11 @@ def activate_allocation(sender, **kwargs):
     # automation_kwargs = {k:True for k in automation_specifications}
 
     if resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
+        cifs_share = resource_flag_enabled(resource, 'smb_share')
+        nfs_share = resource_flag_enabled(resource, 'nfs_share')
         try:
             option_exceptions = create_isilon_allocation_quota(
-                allocation_obj, resource # , **automation_kwargs
+                allocation_obj, resource, nfs_share=nfs_share, cifs_share=cifs_share
             )
             if option_exceptions:
                 err = f'some options failed to be created for new allocation {allocation_obj} ({allocation_obj.pk}): {option_exceptions}'
