@@ -275,7 +275,7 @@ Project Detail
               <td>{{ allocation.status }}</td>
               <td>{{ allocation.created|date:"M. d, Y" }}</td>
               <td>
-                <button href="{% url 'allocation-detail' allocation.pk %}" class="btn btn-sm btn-primary">Details</button>
+                <a href="{% url 'allocation-detail' allocation.pk %}" class="btn btn-sm btn-primary">Details</a>
               </td>
             </tr>
           {% endfor %}
@@ -330,7 +330,7 @@ Project Detail
               <td>{{ change_request.created|date:"M. d, Y" }}</td>
               {% if request.user.is_superuser or is_allowed_to_update_project %}
                 <td>
-                  <button href="{% url 'allocation-change-detail' change_request.pk %}" class="btn btn-sm btn-primary">Details</button>
+                  <a href="{% url 'allocation-change-detail' change_request.pk %}" class="btn btn-sm btn-primary">Details</a>
                 </td>
               {% endif %}
             </tr>
