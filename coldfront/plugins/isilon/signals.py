@@ -52,9 +52,11 @@ def activate_allocation(sender, **kwargs):
     # automation_kwargs = {k:True for k in automation_specifications}
 
     if resource in Resource.objects.filter(resourceattribute__value__in=('isilon', 'powerscale')):
+        cifs_share = resource.resourceattribute_set.filter(resource_attribute_type__name='smb_share').first()
+        nfs_share = resource.resourceattribute_set.filter(resource_attribute_type__name='nfs_share').first()
         try:
             option_exceptions = create_isilon_allocation_quota(
-                allocation_obj, resource # , **automation_kwargs
+                allocation_obj, resource, nfs_share=nfs_share, cifs_share=cifs_share
             )
             if option_exceptions:
                 err = f'some options failed to be created for new allocation {allocation_obj} ({allocation_obj.pk}): {option_exceptions}'

@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from coldfront.core.allocation.models import Allocation, AllocationStatusChoice
 from coldfront.core.project.models import Project
@@ -19,6 +19,7 @@ from coldfront.core.test_helpers.factories import (
     ResourceAttributeTypeFactory,
     ResourceFactory,
 )
+from coldfront.plugins.isilon.signals import activate_allocation
 from coldfront.plugins.isilon.utils import (
     IsilonConnection,
     IsilonDirectoryQuota,
@@ -48,8 +49,9 @@ def test_create_isilon_allocation_quota():
     ):
         # create isilon IsilonConnection
         isilon_connection = IsilonConnection(get_isilon_url(resource))
-        # run create_isilon_allocation_quota on the allocation with the isilon cluster
-        create_isilon_allocation_quota(allocation, resource)
+        # run create_isilon_allocation_quota on the allocation with the isilon cluster;
+        # shares default to off, so request them explicitly to exercise the share checks below
+        create_isilon_allocation_quota(allocation, resource, nfs_share=True, cifs_share=True)
 
         # check that the directory acl is properly created
         acl = isilon_connection.namespace_client.get_acl(
@@ -460,4 +462,107 @@ class SyncIsilonAllocationsTests(TestCase):
         self.assertEqual(report['deactivated'], [])
         allocation.refresh_from_db()
         self.assertEqual(allocation.status.name, 'Active')
+
+
+@patch('coldfront.plugins.isilon.utils.create_isilon_subdirectory_structure', return_value='subdirs created')
+@patch('coldfront.plugins.isilon.utils.AllocationAttribute')
+@patch('coldfront.plugins.isilon.utils.AllocationAttributeType')
+@patch('coldfront.plugins.isilon.utils.IsilonGroup')
+@patch('coldfront.plugins.isilon.utils.IsilonUser')
+@patch('coldfront.plugins.isilon.utils.IsilonConnection')
+class CreateIsilonAllocationQuotaShareTests(SimpleTestCase):
+    """Tests for the share options of create_isilon_allocation_quota in isilon/utils.py"""
+
+    def setUp(self):
+        self.allocation = MagicMock(pk=1, size=1)
+        self.allocation.project.title = 'poisson_lab'
+        self.resource = MagicMock()
+        # storage_mount attribute
+        self.resource.get_attribute.return_value = '/ifs/rc_labs'
+
+    def run_create(self, mock_conn_cls, mock_group_cls, **kwargs):
+        mock_group_cls.return_value.gid = 1234
+        mock_group_cls.return_value.name = 'poisson_lab'
+        with patch('coldfront.plugins.isilon.utils.get_isilon_url', return_value='https://isilon01.example.edu:8080'):
+            option_exceptions = create_isilon_allocation_quota(self.allocation, self.resource, **kwargs)
+        return mock_conn_cls.return_value, option_exceptions
+
+    def test_create_quota_no_share_kwargs_skips_smb_share(self, mock_conn_cls, _user, mock_group_cls, *_):
+        conn, option_exceptions = self.run_create(mock_conn_cls, mock_group_cls)
+        conn.protocols_client.create_smb_share.assert_not_called()
+        self.assertEqual(option_exceptions, {})
+
+    def test_create_quota_cifs_share_false_skips_smb_share(self, mock_conn_cls, _user, mock_group_cls, *_):
+        conn, _ = self.run_create(mock_conn_cls, mock_group_cls, cifs_share=False)
+        conn.protocols_client.create_smb_share.assert_not_called()
+
+    def test_create_quota_cifs_share_true_creates_smb_share(self, mock_conn_cls, _user, mock_group_cls, *_):
+        conn, option_exceptions = self.run_create(mock_conn_cls, mock_group_cls, cifs_share=True)
+        conn.protocols_client.create_smb_share.assert_called_once()
+        smb_share = conn.protocols_client.create_smb_share.call_args.args[0]
+        self.assertEqual(smb_share.name, 'poisson_lab')
+        self.assertEqual(smb_share.path, '/ifs/rc_labs/poisson_lab')
+        self.assertEqual(option_exceptions, {})
+
+    def test_create_quota_smb_share_failure_is_reported(self, mock_conn_cls, _user, mock_group_cls, *_):
+        mock_conn_cls.return_value.protocols_client.create_smb_share.side_effect = Exception('smb down')
+        _, option_exceptions = self.run_create(mock_conn_cls, mock_group_cls, cifs_share=True)
+        self.assertIn('cifs_share', option_exceptions)
+
+
+class ActivateAllocationShareOptionsTests(TestCase):
+    """Tests that the activate_allocation signal passes resource share settings to create_isilon_allocation_quota"""
+
+    def setUp(self):
+        self.resource = ResourceFactory(name='isilon01', resource_type__name='Storage')
+        ResourceAttributeFactory(
+            resource=self.resource,
+            resource_attribute_type=ResourceAttributeTypeFactory(
+                name='storage_protocol', attribute_type=RAttributeTypeFactory(name='Text'),
+            ),
+            value='isilon',
+        )
+        self.allocation = MagicMock(pk=1)
+
+    def add_share_attribute(self, name, value='Yes'):
+        return ResourceAttributeFactory(
+            resource=self.resource,
+            resource_attribute_type=ResourceAttributeTypeFactory(
+                name=name, attribute_type=RAttributeTypeFactory(name='Yes/No'),
+            ),
+            value=value,
+        )
+
+    def activate(self):
+        with patch(
+            'coldfront.plugins.isilon.signals.create_isilon_allocation_quota', return_value={}
+        ) as mock_create:
+            result = activate_allocation(sender=None, allocation_obj=self.allocation, resource=self.resource)
+        return mock_create, result
+
+    def test_activate_no_share_attributes_disables_shares(self):
+        mock_create, result = self.activate()
+        self.assertEqual(result, 'isilon')
+        mock_create.assert_called_once()
+        self.assertFalse(mock_create.call_args.kwargs['nfs_share'])
+        self.assertFalse(mock_create.call_args.kwargs['cifs_share'])
+
+    def test_activate_smb_share_attribute_enables_cifs_share_only(self):
+        self.add_share_attribute('smb_share')
+        mock_create, _ = self.activate()
+        self.assertTrue(mock_create.call_args.kwargs['cifs_share'])
+        self.assertFalse(mock_create.call_args.kwargs['nfs_share'])
+
+    def test_activate_nfs_share_attribute_enables_nfs_share_only(self):
+        self.add_share_attribute('nfs_share')
+        mock_create, _ = self.activate()
+        self.assertTrue(mock_create.call_args.kwargs['nfs_share'])
+        self.assertFalse(mock_create.call_args.kwargs['cifs_share'])
+
+    def test_activate_non_isilon_resource_skips_quota_creation(self):
+        other_resource = ResourceFactory(name='vast01', resource_type__name='Storage')
+        with patch('coldfront.plugins.isilon.signals.create_isilon_allocation_quota') as mock_create:
+            result = activate_allocation(sender=None, allocation_obj=self.allocation, resource=other_resource)
+        mock_create.assert_not_called()
+        self.assertIsNone(result)
 

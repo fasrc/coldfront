@@ -283,7 +283,7 @@ def create_isilon_subdirectory_structure(labroot_path, isilon_pi, isilon_group, 
 
 
 def create_isilon_allocation_quota(
-        allocation, resource, nfs_share=True, cifs_share=True
+        allocation, resource, nfs_share=False, cifs_share=False
     ):
     """Create a new isilon allocation quota
     """
