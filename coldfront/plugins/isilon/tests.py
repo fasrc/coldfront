@@ -544,20 +544,62 @@ class ActivateAllocationShareOptionsTests(TestCase):
         mock_create, result = self.activate()
         self.assertEqual(result, 'isilon')
         mock_create.assert_called_once()
-        self.assertFalse(mock_create.call_args.kwargs['nfs_share'])
-        self.assertFalse(mock_create.call_args.kwargs['cifs_share'])
+        self.assertIs(mock_create.call_args.kwargs['nfs_share'], False)
+        self.assertIs(mock_create.call_args.kwargs['cifs_share'], False)
 
-    def test_activate_smb_share_attribute_enables_cifs_share_only(self):
-        self.add_share_attribute('smb_share')
+    def test_activate_smb_share_yes_enables_cifs_share_only(self):
+        self.add_share_attribute('smb_share', 'Yes')
         mock_create, _ = self.activate()
-        self.assertTrue(mock_create.call_args.kwargs['cifs_share'])
-        self.assertFalse(mock_create.call_args.kwargs['nfs_share'])
+        self.assertIs(mock_create.call_args.kwargs['cifs_share'], True)
+        self.assertIs(mock_create.call_args.kwargs['nfs_share'], False)
 
-    def test_activate_nfs_share_attribute_enables_nfs_share_only(self):
-        self.add_share_attribute('nfs_share')
+    def test_activate_nfs_share_yes_enables_nfs_share_only(self):
+        self.add_share_attribute('nfs_share', 'Yes')
         mock_create, _ = self.activate()
-        self.assertTrue(mock_create.call_args.kwargs['nfs_share'])
-        self.assertFalse(mock_create.call_args.kwargs['cifs_share'])
+        self.assertIs(mock_create.call_args.kwargs['nfs_share'], True)
+        self.assertIs(mock_create.call_args.kwargs['cifs_share'], False)
+
+    def test_activate_smb_share_no_disables_cifs_share(self):
+        self.add_share_attribute('smb_share', 'No')
+        mock_create, _ = self.activate()
+        self.assertIs(mock_create.call_args.kwargs['cifs_share'], False)
+
+    def test_activate_nfs_share_no_disables_nfs_share(self):
+        self.add_share_attribute('nfs_share', 'No')
+        mock_create, _ = self.activate()
+        self.assertIs(mock_create.call_args.kwargs['nfs_share'], False)
+
+    def test_activate_smb_share_true_enables_cifs_share(self):
+        self.add_share_attribute('smb_share', 'True')
+        mock_create, _ = self.activate()
+        self.assertIs(mock_create.call_args.kwargs['cifs_share'], True)
+
+    def test_activate_smb_share_false_disables_cifs_share(self):
+        self.add_share_attribute('smb_share', 'False')
+        mock_create, _ = self.activate()
+        self.assertIs(mock_create.call_args.kwargs['cifs_share'], False)
+
+    def test_activate_nfs_share_true_enables_nfs_share(self):
+        self.add_share_attribute('nfs_share', 'True')
+        mock_create, _ = self.activate()
+        self.assertIs(mock_create.call_args.kwargs['nfs_share'], True)
+
+    def test_activate_nfs_share_false_disables_nfs_share(self):
+        self.add_share_attribute('nfs_share', 'False')
+        mock_create, _ = self.activate()
+        self.assertIs(mock_create.call_args.kwargs['nfs_share'], False)
+
+    def test_activate_share_value_case_and_whitespace_insensitive(self):
+        self.add_share_attribute('smb_share', ' yes ')
+        self.add_share_attribute('nfs_share', 'TRUE')
+        mock_create, _ = self.activate()
+        self.assertIs(mock_create.call_args.kwargs['cifs_share'], True)
+        self.assertIs(mock_create.call_args.kwargs['nfs_share'], True)
+
+    def test_activate_unrecognized_share_value_disables_share(self):
+        self.add_share_attribute('smb_share', 'maybe')
+        mock_create, _ = self.activate()
+        self.assertIs(mock_create.call_args.kwargs['cifs_share'], False)
 
     def test_activate_non_isilon_resource_skips_quota_creation(self):
         other_resource = ResourceFactory(name='vast01', resource_type__name='Storage')
