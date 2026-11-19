@@ -84,7 +84,7 @@ class AllocationUserRawShareField(forms.CharField):
 
 ALLOCATION_SPECIFICATIONS = [
     ('Heavy IO', 'My lab will perform heavy I/O from the cluster against this space (more than 100 cores)'),
-    ('Mounted', 'My lab intends to mount the storage to our local machine as an additional drive'),
+    # ('Mounted', 'My lab intends to mount the storage to our local machine as an additional drive'),
     ('External Sharing', 'My lab intends to share some of this data with collaborators outside of Harvard'),
     ('High Security', 'This allocation will store secure information (security level three or greater)'),
     ('DUA', "Some or all of my lab’s data is governed by DUAs"),
