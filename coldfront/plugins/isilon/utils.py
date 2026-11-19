@@ -627,10 +627,12 @@ def delete_isilon_allocation(resource_url, path, force=False):
         (everyone_path, 'dir_everyone', f'Directory  {everyone_path}'),
         (root_path,     'dir_root',     f'Directory  {root_path}'),
     ]:
+        # Namespace API paths are relative to / (see get_directory_group)
+        namespace_path = dir_path.lstrip('/')
         try:
-            isilon_conn.namespace_client.get_directory_metadata(dir_path)
+            isilon_conn.namespace_client.get_directory_metadata(namespace_path, metadata=True)
             to_delete[key] = label
-            deletion_plan[key] = (isilon_conn.namespace_client.delete_directory, dir_path)
+            deletion_plan[key] = (isilon_conn.namespace_client.delete_directory, namespace_path)
         except ApiException as e:
             if e.status == 404:
                 pass  # directory does not exist; skip silently
