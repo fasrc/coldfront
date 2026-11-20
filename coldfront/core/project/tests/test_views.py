@@ -798,7 +798,8 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
             'userform-MAX_NUM_FORMS': '1',
             'userform-0-selected': 'on',
             'userform-0-role': ProjectUserRoleChoice.objects.get(name='User').pk,
-            'allocationform-allocation': [self.storage_allocation.pk]
+            # the add-users allocation form only offers Cluster allocations
+            'allocationform-allocation': [self.cluster_allocation.pk]
         }
 
     @override_settings(PLUGIN_LDAP=True)

@@ -76,6 +76,7 @@ class ProjectAddUsersToAllocationForm(forms.Form):
 
         allocation_query_set = project_obj.allocation_set.filter(
             resources__is_allocatable=True, is_locked=False,
+            resources__resource_type__name='Cluster',
             status__name__in=PENDING_ACTIVE_ALLOCATION_STATUSES
         ).distinct()
         allocation_choices = [(
@@ -86,11 +87,14 @@ class ProjectAddUsersToAllocationForm(forms.Form):
             )
         ) for allocation in allocation_query_set]
 
-        allocation_choices_sorted = []
-        allocation_choices_sorted = sorted(allocation_choices, key=lambda x: x[1][0].lower())
-        allocation_choices.insert(0, ('__select_all__', 'Select All'))
+        # The template's JS treats the first checkbox (allocation_0) as "Select All",
+        # so it must be inserted after sorting. With a single allocation, the JS
+        # handler on allocation_0 only toggles that one box, so omitting it is safe.
+        allocation_choices.sort(key=lambda x: x[1].lower())
+        if len(allocation_choices) > 1:
+            allocation_choices.insert(0, ('__select_all__', 'Select All'))
         if allocation_query_set:
-            self.fields['allocation'].choices = allocation_choices_sorted
+            self.fields['allocation'].choices = allocation_choices
             self.fields['allocation'].help_text = '<br/>Select allocations to add selected users to.'
         else:
             self.fields['allocation'].widget = forms.HiddenInput()

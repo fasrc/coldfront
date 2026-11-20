@@ -14,15 +14,18 @@ def check_l3_tag(allocation, resource):
     Criteria for l3 tagging:
         Any allocation for a project named .*_l3
         Any allocation on a lustre resource, with path matching ^F/|/F/ (I think?)
-        Any allocation on an isilon resource, with path matching rc_fasse_labs
+        Any allocation on an isilon resource, with path or the resource's storage_mount
+            matching rc_fasse_labs (auto-created allocations store the path without the mount)
         Any allocation on h-nfse-01p
     """
     if allocation.project.title.endswith('_l3'):
         return True
     if 'lfs' in resource.name.lower() and 'F/' in allocation.path:
         return True
-    if 'isilon' in resource.name.lower() and 'rc_fasse_labs' in allocation.path:
-        return True
+    if 'isilon' in resource.name.lower():
+        mount = resource.get_attribute('storage_mount', expand=False, typed=False) or ''
+        if 'rc_fasse_labs' in allocation.path or 'rc_fasse_labs' in mount:
+            return True
     if 'h-nfse-01p' in resource.name.lower():
         return True
     return False
