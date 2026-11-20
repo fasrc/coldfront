@@ -521,13 +521,14 @@ class AllocationCreateViewTest(AllocationViewBaseTest):
 
     def test_allocationcreateview_post_bools(self):
         """ensure booleans are properly saved"""
-        aa_names = ['Heavy IO', 'Mounted', 'High Security', 'DUA', 'External Sharing']
+        # 'Mounted' is no longer an offered specification (see ALLOCATION_SPECIFICATIONS)
+        aa_names = ['Heavy IO', 'High Security', 'DUA', 'External Sharing']
         self.post_data['additional_specifications'] = aa_names
         response = self.client.post(self.url, data=self.post_data, follow=True)
         aa_objs = AllocationAttribute.objects.filter(
             allocation_attribute_type__name__in=aa_names
         )
-        self.assertEqual(len(aa_objs), 5)
+        self.assertEqual(len(aa_objs), 4)
 
     def test_allocationcreateview_post_offerlettercode_multiplefield_invalid(self):
         """Ensure that form won't pass if multiple expense codes are given"""
