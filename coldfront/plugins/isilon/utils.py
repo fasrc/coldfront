@@ -351,11 +351,13 @@ def create_isilon_allocation_quota(
         raise
     actions_performed.append('quota set')
 
+    # Auto-created allocations store Subdirectory without the storage_mount prefix
+    # (path is '{storage_mount}/{lab_name}', so only lab_name remains)
     subdir_type = AllocationAttributeType.objects.get(name='Subdirectory')
     AllocationAttribute.objects.create(
         allocation=allocation,
         allocation_attribute_type_id=subdir_type.pk,
-        value=f'{subdir}/{lab_name}'
+        value=lab_name,
     )
 
     option_exceptions = {}

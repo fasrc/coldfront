@@ -487,6 +487,14 @@ class CreateIsilonAllocationQuotaShareTests(SimpleTestCase):
             option_exceptions = create_isilon_allocation_quota(self.allocation, self.resource, **kwargs)
         return mock_conn_cls.return_value, option_exceptions
 
+    def test_create_quota_subdirectory_excludes_storage_mount(
+        self, mock_conn_cls, _user, mock_group_cls, _attr_type, mock_attr, *_
+    ):
+        conn, _ = self.run_create(mock_conn_cls, mock_group_cls)
+        conn.create_directory.assert_any_call('ifs/rc_labs/poisson_lab')
+        mock_attr.objects.create.assert_called_once()
+        self.assertEqual(mock_attr.objects.create.call_args.kwargs['value'], 'poisson_lab')
+
     def test_create_quota_no_share_kwargs_skips_smb_share(self, mock_conn_cls, _user, mock_group_cls, *_):
         conn, option_exceptions = self.run_create(mock_conn_cls, mock_group_cls)
         conn.protocols_client.create_smb_share.assert_not_called()
