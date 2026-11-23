@@ -21,7 +21,8 @@ from coldfront.core.allocation.models import (
 from coldfront.core.allocation.utils import check_l3_tag
 from coldfront.core.utils.fasrc import update_csv, select_one_project_allocation, save_json
 from coldfront.core.resource.models import Resource
-from sftocf.utils import StarFishRedash, RedashDataPipeline
+from sftocf.client import StarFishRedash
+from sftocf.pipelines import RedashDataPipeline
 from coldfront.plugins.fasrc.utils import (
     AllTheThingsConn,
     match_entries_with_projects,

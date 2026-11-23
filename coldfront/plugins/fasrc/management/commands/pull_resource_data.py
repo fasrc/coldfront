@@ -3,7 +3,7 @@ from django.core.management.base import BaseCommand
 
 from coldfront.core.resource.models import Resource, ResourceAttributeType
 from coldfront.core.resource.signals import update_volume_information
-from sftocf.utils import StarFishServer, StarFishRedash
+from sftocf.client import StarfishClient, StarFishRedash
 
 
 logger = logging.getLogger(__name__)
