@@ -20,6 +20,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         isilon_resources = Resource.objects.filter(
+            resource_type__name='Storage',
             resourceattribute__value__in=('isilon', 'powerscale'),
             is_available=True,
         )

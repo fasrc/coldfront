@@ -1,24 +1,20 @@
 import logging
 from django.core.management.base import BaseCommand
 
-from coldfront.core.resource.models import Resource, ResourceAttributeType
+from coldfront.core.resource.models import Resource
 from coldfront.core.resource.signals import update_volume_information
-from sftocf.client import StarfishClient, StarFishRedash
 
 
 logger = logging.getLogger(__name__)
 
-def update_resource_attr_types_from_dict(resource, res_attr_type_dict):
-    for attr_name, attr_val in res_attr_type_dict.items():
-        if attr_val:
-            attr_type_obj = ResourceAttributeType.objects.get(name=attr_name)
-            resource.resourceattribute_set.update_or_create(
-                resource_attribute_type=attr_type_obj,
-                defaults={'value': attr_val}
-            )
-
 class Command(BaseCommand):
-    """Pull data from starfish and save to ResourceAttribute objects
+    """Pull storage capacity/usage data and save it to ResourceAttribute objects.
+
+    Dispatches update_volume_information for every Storage resource; each
+    storage-backend plugin owns a receiver that updates the resources it
+    recognizes and ignores the rest (see coldfront.plugins.isilon.signals and
+    sftocf.receivers), so this command never needs to import a backend plugin
+    directly.
     """
 
     def add_arguments(self, parser):
@@ -30,51 +26,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        source = options['source']
-        if source == 'rest_api':
-            sf = StarFishServer()
-            volumes = sf.get_volume_attributes()
-            for vol in volumes:
-                vol['capacity_TB'] = vol['total_capacity']/(1024**4)
-                vol['free_TB'] = vol['free_space']/(1024**4)
-                vol['used_physical_TB'] = (vol['total_capacity'] - vol['free_space'])/(1024**4)
-        elif source == 'redash':
-            sf = StarFishRedash()
-            volumes = sf.get_vol_stats()
-        else:
-            raise ValueError('source must be "rest_api" or "redash"')
-
-        volumes = [
-            {
-                'name': vol['vol'],
-                'attrs': {
-                    'capacity_tb': vol['capacity_TB'],
-                    'free_tb': vol['free_TB'],
-                    'used_tb': vol['used_physical_TB'],
-                    'file_count': vol['number_of_files'],
-                }
-            }
-            for vol in volumes
-        ]
-
-        # collect user and lab counts, allocation sizes for each volume
         resources = Resource.objects.filter(resource_type__name='Storage', is_available=True)
-        # update all tier 0 resources
-        for resource in resources.filter(
-                resourceattribute__value__in=('isilon', 'powerscale')
-            ):
-            update_volume_information.send(sender=self.__class__, resource=resource)
-        for resource in resources.exclude(
-                resourceattribute__value__in=('isilon', 'powerscale')):
-            resource_name = resource.name.split('/')[0]
-            try:
-                volume = [v for v in volumes if v['name'] == resource_name][0]
-            except IndexError:
-                logger.warning('no data found for resource %s from source %s', resource.name, source)
-                continue
-            except Exception as e:
-                logger.warning('problem updating resource %s with data from source %s: %s',
-                    resource.name, source, e
-               )
-                continue
-            update_resource_attr_types_from_dict(resource, volume['attrs'])
+        for resource in resources:
+            update_volume_information.send(
+                sender=self.__class__, resource=resource, source=options['source']
+            )
