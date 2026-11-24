@@ -642,7 +642,7 @@ class ProjectAddUsersSearchView(LoginRequiredMixin, UserPassesTestMixin, Templat
         context['user_search_form'] = UserSearchForm()
         project = Project.objects.get(pk=self.kwargs.get('pk'))
         context['project'] = project
-        deactivated_users = project.projectuser_set.filter(status__name='Deactivated')
+        deactivated_users = project.projectuser_set.filter(status__name='Deactivated', primary_group=True)
         if deactivated_users.exists():
             formset = formset_factory(
                 ProjectReactivateUserForm, max_num=len(deactivated_users)
@@ -888,7 +888,7 @@ class ProjectAddUsersView(LoginRequiredMixin, UserPassesTestMixin, View):
     def post(self, request, *args, **kwargs):
         pk = self.kwargs.get('pk')
         project_obj = get_object_or_404(Project, pk=pk)
-        deactivated_users = project_obj.projectuser_set.filter(status__name='Deactivated')
+        deactivated_users = project_obj.projectuser_set.filter(status__name='Deactivated', primary_group=True)
         projuserstatus_active = ProjectUserStatusChoice.objects.get(name='Active')
         if deactivated_users.exists():
             deactivated_formset = formset_factory(
