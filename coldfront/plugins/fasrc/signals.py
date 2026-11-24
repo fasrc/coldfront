@@ -51,11 +51,20 @@ def push_globus_uuid_to_new_zone(sender, **kwargs):
     push_globus_uuid_on_approval above pushes it immediately when a project
     already has a Starfish zone; when it doesn't yet, this catches up for any
     of the project's active allocations that have a Globus UUID, once
-    update_zones creates the zone.
+    update_zones creates the zone. Uses the zone_id the signal already
+    provides rather than re-deriving project.sf_zone, since that attribute's
+    save is only guaranteed to precede this signal, not any particular
+    read-after-write visibility.
     """
     project = kwargs['project']
+    zone_id = kwargs['zone_id']
     for allocation in project.allocation_set.filter(status__name='Active'):
         globus_uuid = allocation.get_attribute('Globus UUID')
         if not globus_uuid:
             continue
-        _push_archive_globus_collection(allocation, globus_uuid)
+        starfish_set_zone_userparam.send(
+            sender=sender,
+            zone_id=zone_id,
+            param_name='archive_globus_collection',
+            param_value=globus_uuid,
+        )
