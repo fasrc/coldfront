@@ -4,7 +4,6 @@ from coldfront.core.test_helpers.utils import require_plugin
 
 require_plugin('coldfront.plugins.fasrc')
 
-from coldfront.core.allocation.signals import allocation_set_zoneuserparam
 from coldfront.core.test_helpers.factories import (
     AAttributeTypeFactory,
     AllocationAttributeFactory,
@@ -18,12 +17,12 @@ from coldfront.core.test_helpers.factories import (
     ProjectStatusChoiceFactory,
     UserFactory,
 )
-from sftocf.signals import starfish_zone_created
+from sftocf.signals import starfish_set_zone_userparam, starfish_zone_created
 
 
 class PushGlobusUuidToNewZoneTests(TestCase):
     """push_globus_uuid_to_new_zone reacts to sftocf's starfish_zone_created by
-    re-sending the already-generic allocation_set_zoneuserparam signal for any
+    re-sending the already-generic starfish_set_zone_userparam signal for any
     of the project's active allocations that have a Globus UUID attribute."""
 
     def setUp(self):
@@ -39,8 +38,8 @@ class PushGlobusUuidToNewZoneTests(TestCase):
             self._received.append(kwargs)
 
         self._handler = handler
-        allocation_set_zoneuserparam.connect(handler, weak=False)
-        self.addCleanup(allocation_set_zoneuserparam.disconnect, handler)
+        starfish_set_zone_userparam.connect(handler, weak=False)
+        self.addCleanup(starfish_set_zone_userparam.disconnect, handler)
 
     def test_pushes_globus_uuid_for_allocation_with_one(self):
         globus_attr_type = AllocationAttributeTypeFactory(
@@ -89,8 +88,8 @@ class PushGlobusUuidOnApprovalTests(TestCase):
         def handler(sender, **kwargs):
             self._received.append(kwargs)
 
-        allocation_set_zoneuserparam.connect(handler, weak=False)
-        self.addCleanup(allocation_set_zoneuserparam.disconnect, handler)
+        starfish_set_zone_userparam.connect(handler, weak=False)
+        self.addCleanup(starfish_set_zone_userparam.disconnect, handler)
 
     def test_pushes_when_project_already_has_a_zone(self):
         zone_attr_type = ProjectAttributeTypeFactory(

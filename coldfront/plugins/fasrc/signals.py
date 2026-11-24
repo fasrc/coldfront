@@ -9,8 +9,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from coldfront.core.allocation.models import AllocationAttribute
-from coldfront.core.allocation.signals import allocation_set_zoneuserparam
-from sftocf.signals import starfish_zone_created
+from sftocf.signals import starfish_set_zone_userparam, starfish_zone_created
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ def _push_archive_globus_collection(allocation, globus_uuid):
             allocation.project.title, allocation.pk
         )
         return
-    allocation_set_zoneuserparam.send(
+    starfish_set_zone_userparam.send(
         sender=allocation.__class__,
         zone_id=zone_id,
         param_name='archive_globus_collection',
