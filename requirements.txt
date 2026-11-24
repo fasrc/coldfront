@@ -68,7 +68,7 @@ reportlab==4.0.5
 xhtml2pdf==0.2.15
 XlsxWriter
 git+https://github.com/coldfront/slurm-python-sdk.git
-git+https://github.com/fasrc/sftocf.git@1.0.1
+git+https://github.com/fasrc/sftocf.git@1.0.2
 git+https://github.com/theam/coldfront_notifications.git
 vastpy
 django-prometheus
