@@ -870,6 +870,7 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         ProjectUserFactory(
             project=self.project, user=self.nonproj_allocationuser,
             status=ProjectUserStatusChoice.objects.get(name='Deactivated'),
+            primary_group=True,
         )
         mock_signal.return_value = None
         form_data = {
@@ -920,6 +921,7 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         ProjectUserFactory(
             project=self.project, user=self.nonproj_allocationuser,
             status=ProjectUserStatusChoice.objects.get(name='Deactivated'),
+            primary_group=True,
         )
         form_data = {
             'q': 'no_such_user_xyz',
@@ -1073,6 +1075,73 @@ class ProjectAddUsersViewTest(ProjectViewTestBase):
         self.assertEqual(storage_alloc_user.status.name, 'Active')
         mock_slurm_add.assert_not_called()
         mock_activate.assert_not_called()
+
+
+@override_settings(ADDITIONAL_USER_SEARCH_CLASSES=[])  # search local users only, not LDAP
+@patch('coldfront.core.project.signals.project_reactivate_projectuser.send')
+class ProjectReactivatePrimaryGroupTest(ProjectViewTestBase):
+    """Only a deactivated user's primary group may reactivate them,
+    since reactivation re-enables the user's whole AD account."""
+
+    def setUp(self):
+        self.url = reverse('project-add-users', kwargs={'pk': self.project.pk})
+        self.search_url = reverse('project-add-users-search', kwargs={'pk': self.project.pk})
+        self.deactivated_pu = ProjectUserFactory(
+            project=self.project, user=self.nonproj_allocationuser,
+            status=ProjectUserStatusChoice.objects.get(name='Deactivated'),
+        )
+        self.form_data = {
+            'q': 'no_such_user_xyz',
+            'search_by': 'username_only',
+            'userform-TOTAL_FORMS': '0',
+            'userform-INITIAL_FORMS': '0',
+            'userform-MIN_NUM_FORMS': '0',
+            'userform-MAX_NUM_FORMS': '0',
+            'allocationform-allocation': [],
+            'reactivateuserform-TOTAL_FORMS': '1',
+            'reactivateuserform-INITIAL_FORMS': '1',
+            'reactivateuserform-MIN_NUM_FORMS': '0',
+            'reactivateuserform-MAX_NUM_FORMS': '1',
+            'reactivateuserform-0-username': self.nonproj_allocationuser.username,
+            'reactivateuserform-0-role': ProjectUserRoleChoice.objects.get(name='User').pk,
+            'reactivateuserform-0-selected': 'on',
+        }
+
+    def _set_primary_group(self, value):
+        self.deactivated_pu.primary_group = value
+        self.deactivated_pu.save()
+
+    def _status(self):
+        return ProjectUser.objects.get(pk=self.deactivated_pu.pk).status.name
+
+    def test_reactivate_from_secondary_group_is_refused(self, mock_reactivate):
+        self._set_primary_group(False)
+        self.client.force_login(self.proj_accessmanager)
+        self.client.post(self.url, data=self.form_data)
+        self.assertEqual(self._status(), 'Deactivated')
+        mock_reactivate.assert_not_called()
+
+    def test_reactivate_from_primary_group_succeeds(self, mock_reactivate):
+        self._set_primary_group(True)
+        self.client.force_login(self.proj_accessmanager)
+        self.client.post(self.url, data=self.form_data)
+        self.assertEqual(self._status(), 'Active')
+        mock_reactivate.assert_called_once()
+
+    def test_search_page_hides_secondary_group_deactivated_users(self, mock_reactivate):
+        self._set_primary_group(False)
+        self.client.force_login(self.proj_accessmanager)
+        response = self.client.get(self.search_url)
+        self.assertIsNone(response.context['deactivated_formset'])
+
+    def test_search_page_lists_primary_group_deactivated_users(self, mock_reactivate):
+        self._set_primary_group(True)
+        self.client.force_login(self.proj_accessmanager)
+        response = self.client.get(self.search_url)
+        formset = response.context['deactivated_formset']
+        self.assertEqual(
+            [f.initial['username'] for f in formset], [self.nonproj_allocationuser.username]
+        )
 
 
 class ProjectUserDetailViewTest(ProjectViewTestBase):
