@@ -32,4 +32,7 @@ allocation_raw_share_edit = django.dispatch.Signal()
 allocation_user_add_on_slurm = django.dispatch.Signal()
     #providing_args=["username", "cluster", "account"]
 
+allocation_set_zoneuserparam = django.dispatch.Signal()
+    #providing_args=["zone_id", "param_name", "param_value"]
+
 xdmod_account_usage = django.dispatch.Signal()

@@ -417,7 +417,10 @@ class AllocationDetailViewPostTest(AllocationViewBaseTest):
         self.assertEqual(self.new_allocation.status.name, 'Active')
 
     def test_allocationdetail_tape_approval_saves_path_and_globus_uuid(self):
-        """approving a tape allocation stores the entered path and Globus UUID"""
+        """approving a tape allocation stores the entered path and Globus UUID.
+
+        Pushing the UUID to a Starfish zone is FASRC-specific and lives in
+        coldfront.plugins.fasrc.signals, not here (see its own tests)."""
         tape_resource = ResourceFactory(
             name='nesetape/tier3', resource_type=ResourceTypeFactory(name='Storage')
         )
